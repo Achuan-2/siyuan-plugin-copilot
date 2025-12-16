@@ -1958,47 +1958,51 @@
         const otherMessages = messagesToSend.filter(msg => msg.role !== 'system');
         const limitedMessages = otherMessages.slice(-tempModelSettings.contextCount);
 
-        // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
+        // 建立 tool_call_id => tool 消息的索引，便于补全被截断的链条
+        const toolResultById = new Map<string, Message>();
+        for (const msg of otherMessages) {
+            if (msg.role === 'tool' && msg.tool_call_id) {
+                toolResultById.set(msg.tool_call_id, msg);
+            }
+        }
+
         const limitedMessagesWithToolFix: Message[] = [];
-        const missingToolCallIds = new Set<string>();
         const includedToolCallIds = new Set<string>();
 
         for (const msg of limitedMessages) {
             if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-                msg.tool_calls.forEach(tc => missingToolCallIds.add(tc.id));
+                // 先推入 assistant
+                limitedMessagesWithToolFix.push(msg);
+
+                // 紧跟补全每一个 tool_call 的结果，保持顺序
+                for (const tc of msg.tool_calls) {
+                    const toolMsg = toolResultById.get(tc.id);
+                    if (toolMsg && !includedToolCallIds.has(tc.id)) {
+                        limitedMessagesWithToolFix.push(toolMsg);
+                        includedToolCallIds.add(tc.id);
+                    }
+                }
+                continue;
             }
 
             if (msg.role === 'tool') {
+                // 仅在前一条是对应的 assistant 且未加入过时保留，避免孤立 tool
                 const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
-                if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
-                    limitedMessagesWithToolFix.push(msg);
-                    if (msg.tool_call_id) {
-                        includedToolCallIds.add(msg.tool_call_id);
-                        missingToolCallIds.delete(msg.tool_call_id);
-                    }
-                } else {
-                    // 跳过没有对应 tool_calls 的孤立 tool 消息
-                    continue;
-                }
-            } else {
-                limitedMessagesWithToolFix.push(msg);
-            }
-        }
-
-        // 如果缺失对应的 tool 结果（被截断掉），从 older messages 中补齐，保证链路完整
-        if (missingToolCallIds.size > 0) {
-            for (const msg of otherMessages) {
                 if (
-                    msg.role === 'tool' &&
+                    prev &&
+                    prev.role === 'assistant' &&
+                    prev.tool_calls?.some(tc => tc.id === msg.tool_call_id) &&
                     msg.tool_call_id &&
-                    missingToolCallIds.has(msg.tool_call_id) &&
                     !includedToolCallIds.has(msg.tool_call_id)
                 ) {
                     limitedMessagesWithToolFix.push(msg);
                     includedToolCallIds.add(msg.tool_call_id);
-                    missingToolCallIds.delete(msg.tool_call_id);
                 }
+                continue;
             }
+
+            // 其他消息正常保留
+            limitedMessagesWithToolFix.push(msg);
         }
 
         messagesToSend = [...systemMessages, ...limitedMessagesWithToolFix];
@@ -2736,47 +2740,51 @@
         const otherMessages = messagesToSend.filter(msg => msg.role !== 'system');
         const limitedMessages = otherMessages.slice(-tempModelSettings.contextCount);
 
-        // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
+        // 建立 tool_call_id => tool 消息的索引，便于补全被截断的链条
+        const toolResultById = new Map<string, Message>();
+        for (const msg of otherMessages) {
+            if (msg.role === 'tool' && msg.tool_call_id) {
+                toolResultById.set(msg.tool_call_id, msg);
+            }
+        }
+
         const limitedMessagesWithToolFix: Message[] = [];
-        const missingToolCallIds = new Set<string>();
         const includedToolCallIds = new Set<string>();
 
         for (const msg of limitedMessages) {
             if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-                msg.tool_calls.forEach(tc => missingToolCallIds.add(tc.id));
+                // 先推入 assistant
+                limitedMessagesWithToolFix.push(msg);
+
+                // 紧跟补全每一个 tool_call 的结果，保持顺序
+                for (const tc of msg.tool_calls) {
+                    const toolMsg = toolResultById.get(tc.id);
+                    if (toolMsg && !includedToolCallIds.has(tc.id)) {
+                        limitedMessagesWithToolFix.push(toolMsg);
+                        includedToolCallIds.add(tc.id);
+                    }
+                }
+                continue;
             }
 
             if (msg.role === 'tool') {
+                // 仅在前一条是对应的 assistant 且未加入过时保留，避免孤立 tool
                 const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
-                if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
-                    limitedMessagesWithToolFix.push(msg);
-                    if (msg.tool_call_id) {
-                        includedToolCallIds.add(msg.tool_call_id);
-                        missingToolCallIds.delete(msg.tool_call_id);
-                    }
-                } else {
-                    // 跳过没有对应 tool_calls 的孤立 tool 消息
-                    continue;
-                }
-            } else {
-                limitedMessagesWithToolFix.push(msg);
-            }
-        }
-
-        // 如果缺失对应的 tool 结果（被截断掉），从 older messages 中补齐，保证链路完整
-        if (missingToolCallIds.size > 0) {
-            for (const msg of otherMessages) {
                 if (
-                    msg.role === 'tool' &&
+                    prev &&
+                    prev.role === 'assistant' &&
+                    prev.tool_calls?.some(tc => tc.id === msg.tool_call_id) &&
                     msg.tool_call_id &&
-                    missingToolCallIds.has(msg.tool_call_id) &&
                     !includedToolCallIds.has(msg.tool_call_id)
                 ) {
                     limitedMessagesWithToolFix.push(msg);
                     includedToolCallIds.add(msg.tool_call_id);
-                    missingToolCallIds.delete(msg.tool_call_id);
                 }
+                continue;
             }
+
+            // 其他消息正常保留
+            limitedMessagesWithToolFix.push(msg);
         }
 
         messagesToSend = [...systemMessages, ...limitedMessagesWithToolFix];
