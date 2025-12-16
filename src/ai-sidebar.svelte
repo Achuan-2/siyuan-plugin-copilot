@@ -1960,17 +1960,44 @@
 
         // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
         const limitedMessagesWithToolFix: Message[] = [];
+        const missingToolCallIds = new Set<string>();
+        const includedToolCallIds = new Set<string>();
+
         for (const msg of limitedMessages) {
+            if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+                msg.tool_calls.forEach(tc => missingToolCallIds.add(tc.id));
+            }
+
             if (msg.role === 'tool') {
                 const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
                 if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
                     limitedMessagesWithToolFix.push(msg);
+                    if (msg.tool_call_id) {
+                        includedToolCallIds.add(msg.tool_call_id);
+                        missingToolCallIds.delete(msg.tool_call_id);
+                    }
                 } else {
                     // 跳过没有对应 tool_calls 的孤立 tool 消息
                     continue;
                 }
             } else {
                 limitedMessagesWithToolFix.push(msg);
+            }
+        }
+
+        // 如果缺失对应的 tool 结果（被截断掉），从 older messages 中补齐，保证链路完整
+        if (missingToolCallIds.size > 0) {
+            for (const msg of otherMessages) {
+                if (
+                    msg.role === 'tool' &&
+                    msg.tool_call_id &&
+                    missingToolCallIds.has(msg.tool_call_id) &&
+                    !includedToolCallIds.has(msg.tool_call_id)
+                ) {
+                    limitedMessagesWithToolFix.push(msg);
+                    includedToolCallIds.add(msg.tool_call_id);
+                    missingToolCallIds.delete(msg.tool_call_id);
+                }
             }
         }
 
@@ -2711,17 +2738,44 @@
 
         // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
         const limitedMessagesWithToolFix: Message[] = [];
+        const missingToolCallIds = new Set<string>();
+        const includedToolCallIds = new Set<string>();
+
         for (const msg of limitedMessages) {
+            if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+                msg.tool_calls.forEach(tc => missingToolCallIds.add(tc.id));
+            }
+
             if (msg.role === 'tool') {
                 const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
                 if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
                     limitedMessagesWithToolFix.push(msg);
+                    if (msg.tool_call_id) {
+                        includedToolCallIds.add(msg.tool_call_id);
+                        missingToolCallIds.delete(msg.tool_call_id);
+                    }
                 } else {
                     // 跳过没有对应 tool_calls 的孤立 tool 消息
                     continue;
                 }
             } else {
                 limitedMessagesWithToolFix.push(msg);
+            }
+        }
+
+        // 如果缺失对应的 tool 结果（被截断掉），从 older messages 中补齐，保证链路完整
+        if (missingToolCallIds.size > 0) {
+            for (const msg of otherMessages) {
+                if (
+                    msg.role === 'tool' &&
+                    msg.tool_call_id &&
+                    missingToolCallIds.has(msg.tool_call_id) &&
+                    !includedToolCallIds.has(msg.tool_call_id)
+                ) {
+                    limitedMessagesWithToolFix.push(msg);
+                    includedToolCallIds.add(msg.tool_call_id);
+                    missingToolCallIds.delete(msg.tool_call_id);
+                }
             }
         }
 
