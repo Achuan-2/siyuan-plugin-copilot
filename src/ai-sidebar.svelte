@@ -1737,7 +1737,10 @@
                         typeof msg.content === 'string'
                             ? msg.content
                             : getMessageText(msg.content || []);
-                    return text && text.toString().trim() !== '';
+                    const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+                    const hasReasoning = !!msg.reasoning_content;
+                    // 保留有 tool_calls 或 reasoning_content 的 assistant 消息，即便正文为空
+                    return (text && text.toString().trim() !== '') || hasToolCalls || hasReasoning;
                 }
                 return true;
             })
@@ -1954,7 +1957,24 @@
         const systemMessages = messagesToSend.filter(msg => msg.role === 'system');
         const otherMessages = messagesToSend.filter(msg => msg.role !== 'system');
         const limitedMessages = otherMessages.slice(-tempModelSettings.contextCount);
-        messagesToSend = [...systemMessages, ...limitedMessages];
+
+        // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
+        const limitedMessagesWithToolFix: Message[] = [];
+        for (const msg of limitedMessages) {
+            if (msg.role === 'tool') {
+                const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
+                if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
+                    limitedMessagesWithToolFix.push(msg);
+                } else {
+                    // 跳过没有对应 tool_calls 的孤立 tool 消息
+                    continue;
+                }
+            } else {
+                limitedMessagesWithToolFix.push(msg);
+            }
+        }
+
+        messagesToSend = [...systemMessages, ...limitedMessagesWithToolFix];
 
         return messagesToSend;
     }
@@ -2239,6 +2259,21 @@
 
         await scrollToBottom(true);
 
+        // DeepSeek 思考模式：开启新一轮对话前清理历史消息中的 reasoning_content，保留工具调用链
+        if (chatMode === 'agent' && currentProvider === 'deepseek') {
+            messages = messages.map(msg => {
+                if (msg.role === 'assistant' && msg.reasoning_content) {
+                    const { reasoning_content, ...rest } = msg as any;
+                    return rest as Message;
+                }
+                return msg;
+            });
+        }
+
+        const isDeepseekThinkingAgent =
+            chatMode === 'agent' && currentProvider === 'deepseek' &&
+            modelConfig.capabilities?.thinking && (modelConfig.thinkingEnabled || false);
+
         // 准备发送给AI的消息（包含系统提示词和上下文文档）
         // 深拷贝消息数组，避免修改原始消息
         // 保留工具调用相关字段（如果存在），以便在 Agent 模式下正确处理历史工具调用
@@ -2251,7 +2286,10 @@
                         typeof msg.content === 'string'
                             ? msg.content
                             : getMessageText(msg.content || []);
-                    return text && text.toString().trim() !== '';
+                    const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+                    const hasReasoning = !!msg.reasoning_content;
+                    // 保留有 tool_calls 或 reasoning_content 的 assistant 消息，即便正文为空
+                    return (text && text.toString().trim() !== '') || hasToolCalls || hasReasoning;
                 }
                 return true;
             })
@@ -2268,6 +2306,10 @@
                 if (msg.tool_call_id) {
                     baseMsg.tool_call_id = msg.tool_call_id;
                     baseMsg.name = msg.name;
+                }
+
+                if (isDeepseekThinkingAgent && msg.reasoning_content) {
+                    baseMsg.reasoning_content = msg.reasoning_content;
                 }
 
                 // 只处理历史用户消息的上下文（不是最后一条消息）
@@ -2666,7 +2708,24 @@
         const systemMessages = messagesToSend.filter(msg => msg.role === 'system');
         const otherMessages = messagesToSend.filter(msg => msg.role !== 'system');
         const limitedMessages = otherMessages.slice(-tempModelSettings.contextCount);
-        messagesToSend = [...systemMessages, ...limitedMessages];
+
+        // 确保 tool 消息前一条保留了携带 tool_calls 的 assistant 消息，避免 DeepSeek 报错
+        const limitedMessagesWithToolFix: Message[] = [];
+        for (const msg of limitedMessages) {
+            if (msg.role === 'tool') {
+                const prev = limitedMessagesWithToolFix[limitedMessagesWithToolFix.length - 1];
+                if (prev && prev.tool_calls && prev.tool_calls.length > 0) {
+                    limitedMessagesWithToolFix.push(msg);
+                } else {
+                    // 跳过没有对应 tool_calls 的孤立 tool 消息
+                    continue;
+                }
+            } else {
+                limitedMessagesWithToolFix.push(msg);
+            }
+        }
+
+        messagesToSend = [...systemMessages, ...limitedMessagesWithToolFix];
 
         // 创建新的 AbortController
         abortController = new AbortController();
@@ -2744,6 +2803,11 @@
                                         content: streamingMessage || '',
                                         tool_calls: toolCalls,
                                     };
+
+                                    if (isDeepseekThinkingAgent && streamingThinking) {
+                                        assistantMessage.reasoning_content = streamingThinking;
+                                        assistantMessage.thinking = streamingThinking;
+                                    }
                                     messages = [...messages, assistantMessage];
                                     firstToolCallMessageIndex = messages.length - 1;
                                 } else {
@@ -2753,6 +2817,11 @@
                                         ...(existingMessage.tool_calls || []),
                                         ...toolCalls,
                                     ];
+
+                                    if (isDeepseekThinkingAgent && streamingThinking) {
+                                        existingMessage.reasoning_content = streamingThinking;
+                                        existingMessage.thinking = streamingThinking;
+                                    }
                                     messages = [...messages];
                                 }
                                 streamingMessage = '';
@@ -2854,6 +2923,10 @@
                                         baseMsg.name = msg.name;
                                     }
 
+                                    if (isDeepseekThinkingAgent && msg.reasoning_content) {
+                                        baseMsg.reasoning_content = msg.reasoning_content;
+                                    }
+
                                     return baseMsg;
                                 });
 
@@ -2887,6 +2960,10 @@
                                         // 将AI的最终回复存储到 finalReply 字段
                                         existingMessage.finalReply = convertedText;
 
+                                        if (isDeepseekThinkingAgent && streamingThinking) {
+                                            existingMessage.reasoning_content = streamingThinking;
+                                        }
+
                                         // 添加思考内容（如果有）
                                         if (enableThinking && streamingThinking) {
                                             existingMessage.thinking = streamingThinking;
@@ -2902,6 +2979,9 @@
 
                                         if (enableThinking && streamingThinking) {
                                             assistantMessage.thinking = streamingThinking;
+                                            if (isDeepseekThinkingAgent) {
+                                                assistantMessage.reasoning_content = streamingThinking;
+                                            }
                                         }
 
                                         messages = [...messages, assistantMessage];

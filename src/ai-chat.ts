@@ -47,28 +47,29 @@ export interface ContextDocument {
 }
 
 export interface Message {
-    role: 'user' | 'assistant' | 'system' | 'tool';
-    content: string | MessageContent[];
-    attachments?: MessageAttachment[];
-    contextDocuments?: ContextDocument[]; // 关联的上下文文档
-    thinking?: string; // 思考过程内容
-    editOperations?: EditOperation[]; // 编辑操作
-    tool_calls?: ToolCall[]; // Tool Calls
-    tool_call_id?: string; // Tool 结果的 call_id
-    name?: string; // Tool 的名称
-    finalReply?: string; // Agent模式：工具调用后的最终回复
-    multiModelResponses?: Array<{
-        provider: string;
-        modelId: string;
-        modelName: string;
-        content: string;
-        thinking?: string;
-        isLoading: boolean;
-        error?: string;
-        isSelected?: boolean; // 是否被选择
-        thinkingCollapsed?: boolean; // 思考内容是否折叠
-        thinkingEnabled?: boolean; // 用户是否开启思考模式
-    }>; // 多模型响应
+  role: "user" | "assistant" | "system" | "tool";
+  content: string | MessageContent[];
+  attachments?: MessageAttachment[];
+  contextDocuments?: ContextDocument[]; // 关联的上下文文档
+  thinking?: string; // 思考过程内容
+  reasoning_content?: string; // DeepSeek 思考模式下的思维链内容
+  editOperations?: EditOperation[]; // 编辑操作
+  tool_calls?: ToolCall[]; // Tool Calls
+  tool_call_id?: string; // Tool 结果的 call_id
+  name?: string; // Tool 的名称
+  finalReply?: string; // Agent模式：工具调用后的最终回复
+  multiModelResponses?: Array<{
+    provider: string;
+    modelId: string;
+    modelName: string;
+    content: string;
+    thinking?: string;
+    isLoading: boolean;
+    error?: string;
+    isSelected?: boolean; // 是否被选择
+    thinkingCollapsed?: boolean; // 思考内容是否折叠
+    thinkingEnabled?: boolean; // 用户是否开启思考模式
+  }>; // 多模型响应
 }
 
 // 思考努力程度类型
@@ -457,6 +458,11 @@ async function chatOpenAIFormat(
             role: msg.role,
             content: msg.content
         };
+
+        // 深度思考模式下需要回传的思维链内容（如 DeepSeek reasoning_content）
+        if ((msg as any).reasoning_content) {
+            formatted.reasoning_content = (msg as any).reasoning_content;
+        }
 
         // 添加工具调用信息
         if (msg.tool_calls) {
