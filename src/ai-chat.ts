@@ -749,11 +749,14 @@ async function handleStreamResponse(
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed || trimmed === 'data: [DONE]') continue;
+                if (!trimmed) continue;
 
-                if (trimmed.startsWith('data: ')) {
+                if (trimmed.startsWith('data:')) {
+                    const payload = trimmed.slice(5).trimStart();
+                    if (!payload || payload === '[DONE]') continue;
+
                     try {
-                        const json = JSON.parse(trimmed.slice(6));
+                        const json = JSON.parse(payload);
                         const delta = json.choices?.[0]?.delta;
 
                         // 检查是否有思考内容
@@ -880,10 +883,13 @@ async function handleGeminiStreamResponse(
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                if (!trimmed || !trimmed.startsWith('data:')) continue;
+
+                const payload = trimmed.slice(5).trimStart();
+                if (!payload || payload === '[DONE]') continue;
 
                 try {
-                    const json = JSON.parse(trimmed.slice(6));
+                    const json = JSON.parse(payload);
                     const parts = json.candidates?.[0]?.content?.parts;
 
                     if (parts && Array.isArray(parts)) {
