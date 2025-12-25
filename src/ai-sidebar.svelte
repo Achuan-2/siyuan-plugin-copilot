@@ -7698,72 +7698,6 @@
         {/if}
     </div>
 
-    <!-- 上下文文档和附件列表 -->
-    {#if contextDocuments.length > 0 || currentAttachments.length > 0}
-        <div class="ai-sidebar__context-docs">
-            <div class="ai-sidebar__context-docs-title">📎 {t('aiSidebar.context.content')}</div>
-            <div class="ai-sidebar__context-docs-list">
-                <!-- 显示上下文文档 -->
-                {#each contextDocuments as doc (doc.id)}
-                    <div class="ai-sidebar__context-doc-item">
-                        <button
-                            class="ai-sidebar__context-doc-remove"
-                            on:click={() => removeContextDocument(doc.id)}
-                            title="移除文档"
-                        >
-                            ×
-                        </button>
-                        <button
-                            class="ai-sidebar__context-doc-link"
-                            on:click={() => openDocument(doc.id)}
-                            title="点击查看文档"
-                        >
-                            📄 {doc.title}
-                        </button>
-                        <button
-                            class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                            on:click={() => copyMessage(doc.content || '')}
-                            title={t('aiSidebar.actions.copyMessage')}
-                        >
-                            <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        </button>
-                    </div>
-                {/each}
-
-                <!-- 显示当前附件 -->
-                {#each currentAttachments as attachment, index}
-                    <div class="ai-sidebar__context-doc-item">
-                        <button
-                            class="ai-sidebar__context-doc-remove"
-                            on:click={() => removeAttachment(index)}
-                            title="移除附件"
-                        >
-                            ×
-                        </button>
-                        {#if attachment.type === 'image'}
-                            <img
-                                src={attachment.data}
-                                alt={attachment.name}
-                                class="ai-sidebar__context-attachment-preview"
-                                title={attachment.name}
-                            />
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                🖼️ {attachment.name}
-                            </span>
-                        {:else}
-                            <svg class="ai-sidebar__context-attachment-icon">
-                                <use xlink:href="#iconFile"></use>
-                            </svg>
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                📄 {attachment.name}
-                            </span>
-                        {/if}
-                    </div>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
     <div
         class="ai-sidebar__input-container"
         bind:this={inputContainer}
@@ -7820,6 +7754,71 @@
                 </div>
             {/if}
         </div>
+
+        <!-- 上下文文档和附件列表 -->
+        {#if contextDocuments.length > 0 || currentAttachments.length > 0}
+            <div class="ai-sidebar__context-docs">
+                <div class="ai-sidebar__context-docs-list">
+                    <!-- 显示上下文文档 -->
+                    {#each contextDocuments as doc (doc.id)}
+                        <div class="ai-sidebar__context-doc-item">
+                            <button
+                                class="ai-sidebar__context-doc-remove"
+                                on:click={() => removeContextDocument(doc.id)}
+                                title="移除文档"
+                            >
+                                ×
+                            </button>
+                            <button
+                                class="ai-sidebar__context-doc-link"
+                                on:click={() => openDocument(doc.id)}
+                                title="点击查看文档"
+                            >
+                                📄 {doc.title}
+                            </button>
+                            <button
+                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
+                                on:click={() => copyMessage(doc.content || '')}
+                                title={t('aiSidebar.actions.copyMessage')}
+                            >
+                                <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
+                            </button>
+                        </div>
+                    {/each}
+
+                    <!-- 显示当前附件 -->
+                    {#each currentAttachments as attachment, index}
+                        <div class="ai-sidebar__context-doc-item">
+                            <button
+                                class="ai-sidebar__context-doc-remove"
+                                on:click={() => removeAttachment(index)}
+                                title="移除附件"
+                            >
+                                ×
+                            </button>
+                            {#if attachment.type === 'image'}
+                                <img
+                                    src={attachment.data}
+                                    alt={attachment.name}
+                                    class="ai-sidebar__context-attachment-preview"
+                                    title={attachment.name}
+                                />
+                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
+                                    🖼️ {attachment.name}
+                                </span>
+                            {:else}
+                                <svg class="ai-sidebar__context-attachment-icon">
+                                    <use xlink:href="#iconFile"></use>
+                                </svg>
+                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
+                                    📄 {attachment.name}
+                                </span>
+                            {/if}
+                        </div>
+                    {/each}
+                </div>
+            </div>
+        {/if}
 
         <div class="ai-sidebar__input-row">
             <div class="ai-sidebar__input-wrapper">
@@ -8737,9 +8736,6 @@
     }
 
     .ai-sidebar__context-docs {
-        padding: 8px 12px;
-        background: var(--b3-theme-surface);
-        border-top: 1px solid var(--b3-border-color);
         flex-shrink: 0;
     }
 
@@ -8752,45 +8748,55 @@
 
     .ai-sidebar__context-docs-list {
         display: flex;
-        flex-direction: column;
+        flex-wrap: wrap;
         gap: 4px;
     }
 
     .ai-sidebar__context-doc-item {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
+        padding: 4px 4px;
         background: var(--b3-theme-background);
-        border-radius: 4px;
+        border-radius: 12px;
         border: 1px solid var(--b3-border-color);
+        transition: all 0.2s ease;
+        cursor: pointer;
+        max-width: 100%;
+
+        &:hover {
+            background: var(--b3-theme-surface);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
     }
 
     .ai-sidebar__context-doc-remove {
         flex-shrink: 0;
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         padding: 0;
         border: none;
         background: none;
         color: var(--b3-theme-on-surface-light);
         cursor: pointer;
-        font-size: 18px;
+        font-size: 16px;
         line-height: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 4px;
+        border-radius: 50%;
+        transition: all 0.15s ease;
 
         &:hover {
             background: var(--b3-theme-error-lighter);
             color: var(--b3-theme-error);
+            transform: scale(1.1);
         }
     }
 
     .ai-sidebar__context-doc-copy {
         flex-shrink: 0;
-        padding: 4px;
+        padding: 2px;
         border: none;
         background: none;
         cursor: pointer;
@@ -8798,6 +8804,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 4px;
+        transition: all 0.15s ease;
 
         .b3-button__icon {
             width: 14px;
@@ -8806,48 +8814,54 @@
 
         &:hover {
             color: var(--b3-theme-primary);
+            background: var(--b3-theme-primary-lightest);
+            transform: scale(1.1);
         }
     }
 
     .ai-sidebar__context-doc-link {
         flex: 1;
         text-align: left;
-        padding: 0;
+        padding: 0 4px;
         border: none;
         background: none;
         color: var(--b3-theme-primary);
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 500;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        transition: color 0.15s ease;
 
         &:hover {
-            text-decoration: underline;
+            color: var(--b3-theme-primary);
         }
     }
 
     .ai-sidebar__context-doc-name {
         flex: 1;
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 500;
         color: var(--b3-theme-on-surface);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        padding: 0 4px;
     }
 
     .ai-sidebar__context-attachment-preview {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         object-fit: cover;
-        border-radius: 4px;
+        border-radius: 6px;
         flex-shrink: 0;
         border: 1px solid var(--b3-border-color);
     }
 
     .ai-sidebar__context-attachment-icon {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         color: var(--b3-theme-on-surface-light);
         flex-shrink: 0;
     }
