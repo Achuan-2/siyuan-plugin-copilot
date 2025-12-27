@@ -5634,6 +5634,18 @@
         isPromptManagerOpen = true;
     }
 
+    // 删除提示词
+    async function deletePrompt(promptId: string) {
+        confirm(
+            t('aiSidebar.confirm.deletePrompt.title'),
+            t('aiSidebar.confirm.deletePrompt.message'),
+            async () => {
+                prompts = prompts.filter(p => p.id !== promptId);
+                await savePrompts();
+            }
+        );
+    }
+
     // 工具配置管理
     async function loadToolsConfig() {
         try {
@@ -7976,15 +7988,26 @@
                                 title={prompt.content}
                             >
                                 <span class="ai-sidebar__prompt-item-title">{prompt.title}</span>
-                                <button
-                                    class="ai-sidebar__prompt-item-edit"
-                                    on:click|stopPropagation={() => editPrompt(prompt)}
-                                    title="编辑"
-                                >
-                                    <svg class="b3-button__icon">
-                                        <use xlink:href="#iconEdit"></use>
-                                    </svg>
-                                </button>
+                                <div class="ai-sidebar__prompt-item-actions">
+                                    <button
+                                        class="ai-sidebar__prompt-item-edit"
+                                        on:click|stopPropagation={() => editPrompt(prompt)}
+                                        title={t('aiSidebar.prompt.edit')}
+                                    >
+                                        <svg class="b3-button__icon">
+                                            <use xlink:href="#iconEdit"></use>
+                                        </svg>
+                                    </button>
+                                    <button
+                                        class="ai-sidebar__prompt-item-delete"
+                                        on:click|stopPropagation={() => deletePrompt(prompt.id)}
+                                        title={t('aiSidebar.prompt.delete')}
+                                    >
+                                        <svg class="b3-button__icon">
+                                            <use xlink:href="#iconTrashcan"></use>
+                                        </svg>
+                                    </button>
+                                </div>
                             </button>
                         {/each}
                     {/if}
@@ -9571,7 +9594,7 @@
         max-height: 300px;
         overflow-y: auto;
         margin-bottom: 8px;
-        z-index: 100;
+        z-index: 10;
     }
 
     .ai-sidebar__prompt-list {
@@ -9644,6 +9667,42 @@
         &:hover {
             background: var(--b3-theme-surface);
             color: var(--b3-theme-primary);
+        }
+
+        .b3-button__icon {
+            width: 14px;
+            height: 14px;
+        }
+    }
+
+    .ai-sidebar__prompt-item-actions {
+        display: flex;
+        gap: 0;
+        flex-shrink: 0;
+        opacity: 0;
+        transition: opacity 0.2s;
+
+        .ai-sidebar__prompt-item:hover & {
+            opacity: 1;
+        }
+    }
+
+    .ai-sidebar__prompt-item-delete {
+        padding: 4px;
+        border: none;
+        background: none;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background-color 0.2s, color 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        &:hover {
+            background: var(--b3-theme-error-lightest);
+            color: var(--b3-theme-error);
         }
 
         .b3-button__icon {
