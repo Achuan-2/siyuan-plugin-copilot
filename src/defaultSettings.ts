@@ -81,6 +81,7 @@ export const getDefaultSettings = () => ({
 
     // 显示设置
     messageFontSize: 14 as number, // 消息字体大小
+    modeSelectorType: 'buttons' as 'buttons' | 'select', // 模式选择器类型：buttons=横向按钮, select=下拉菜单
 
     // 多模型设置
     selectedMultiModels: [] as Array<{ provider: string; modelId: string }>, // 选中的多模型列表

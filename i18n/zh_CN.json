@@ -68,6 +68,14 @@
             "title": "消息字体大小",
             "description": "调整消息内容的字体大小（默认12px）"
         },
+        "modeSelectorType": {
+            "title": "模式选择器样式",
+            "description": "选择聊天模式选择器的显示方式",
+            "options": {
+                "buttons": "横向按钮（全部展开）",
+                "select": "下拉菜单"
+            }
+        },
         "exportNotebook": {
             "title": "导出笔记本",
             "description": "选择保存会话的默认笔记本",

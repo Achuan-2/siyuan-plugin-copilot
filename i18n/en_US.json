@@ -68,6 +68,14 @@
             "title": "Message Font Size",
             "description": "Adjust the font size of message content (default 12px)"
         },
+        "modeSelectorType": {
+            "title": "Mode Selector Style",
+            "description": "Choose the display style of the chat mode selector",
+            "options": {
+                "buttons": "Horizontal Buttons (All Expanded)",
+                "select": "Dropdown Menu"
+            }
+        },
         "exportNotebook": {
             "title": "Export Notebook",
             "description": "Select the default notebook for saving sessions",

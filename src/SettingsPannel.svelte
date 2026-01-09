@@ -273,6 +273,17 @@
                         step: 1,
                     },
                 },
+                {
+                    key: 'modeSelectorType',
+                    value: settings.modeSelectorType,
+                    type: 'select',
+                    title: t('settings.modeSelectorType.title'),
+                    description: t('settings.modeSelectorType.description'),
+                    options: {
+                        'buttons': t('settings.modeSelectorType.options.buttons'),
+                        'select': t('settings.modeSelectorType.options.select'),
+                    },
+                },
             ],
         },
         {
