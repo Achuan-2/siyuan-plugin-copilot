@@ -39,7 +39,7 @@
 .ai-sidebar__mode-selector {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 8px;
 }
 
@@ -49,8 +49,30 @@
   white-space: nowrap;
 }
 
-.ai-sidebar__mode-select {
-  flex-shrink: 0;
+.ai-sidebar__mode-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.ai-sidebar__mode-btn {
+  flex: 1;
+  padding: 4px 12px;
+  font-size: 12px;
+  min-width: 60px;
+  border: 1px solid var(--b3-border-color);
+  background: var(--b3-theme-surface);
+  color: var(--b3-theme-on-surface);
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--b3-theme-background);
+  }
+
+  &--active {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border-color: var(--b3-theme-primary);
+  }
 }
 
 .ai-sidebar__auto-approve-label {

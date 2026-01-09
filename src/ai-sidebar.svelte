@@ -7783,18 +7783,33 @@
     >
         <!-- 模式选择 -->
         <div class="ai-sidebar__mode-selector">
-            <label for="chat-mode-select" class="ai-sidebar__mode-label">
-                {t('aiSidebar.mode.label')}:
-            </label>
-            <select
-                id="chat-mode-select"
-                class="b3-select ai-sidebar__mode-select"
-                bind:value={chatMode}
-            >
-                <option value="ask">{t('aiSidebar.mode.ask')}</option>
-                <option value="edit">{t('aiSidebar.mode.edit')}</option>
-                <option value="agent">{t('aiSidebar.mode.agent')}</option>
-            </select>
+            <span class="ai-sidebar__mode-label">{t('aiSidebar.mode.label')}</span>
+            <div class="ai-sidebar__mode-buttons">
+                <button
+                    class="b3-button ai-sidebar__mode-btn"
+                    class:ai-sidebar__mode-btn--active={chatMode === 'ask'}
+                    on:click={() => chatMode = 'ask'}
+                    title={t('aiSidebar.mode.askDescription')}
+                >
+                    {t('aiSidebar.mode.ask')}
+                </button>
+                <button
+                    class="b3-button ai-sidebar__mode-btn"
+                    class:ai-sidebar__mode-btn--active={chatMode === 'edit'}
+                    on:click={() => chatMode = 'edit'}
+                    title={t('aiSidebar.mode.editDescription')}
+                >
+                    {t('aiSidebar.mode.edit')}
+                </button>
+                <button
+                    class="b3-button ai-sidebar__mode-btn"
+                    class:ai-sidebar__mode-btn--active={chatMode === 'agent'}
+                    on:click={() => chatMode = 'agent'}
+                    title={t('aiSidebar.mode.agentDescription')}
+                >
+                    {t('aiSidebar.mode.agent')}
+                </button>
+            </div>
 
             <!-- 自动批准复选框（仅在编辑模式下显示） -->
             {#if chatMode === 'edit'}
