@@ -71,6 +71,7 @@ export const getDefaultSettings = () => ({
         },
         customProviders: [] as CustomProviderConfig[]
     } as Record<string, any>,
+    platformOrder: [] as string[],            // 平台排序（所有平台的ID数组）
     selectedProviderId: 'openai' as string,  // 设置面板中选中的平台
     currentProvider: 'openai' as string,      // 对话中当前使用的平台
     currentModelId: '' as string,
