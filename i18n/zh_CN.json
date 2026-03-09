@@ -210,6 +210,7 @@
             "settings": "打开设置",
             "upload": "上传文件",
             "addCurrentDoc": "添加当前文档到上下文",
+            "summarizeContext": "AI 总结文档",
             "addWebLink": "添加网页链接",
             "search": "搜索并添加文档",
             "send": "发送",

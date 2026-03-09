@@ -211,6 +211,7 @@
             "settings": "Open Settings",
             "upload": "Upload File",
             "addCurrentDoc": "Add Current Document to Context",
+            "summarizeContext": "AI Summarize Document",
             "addWebLink": "Add Web Link",
             "search": "Search and Add Document",
             "send": "Send",

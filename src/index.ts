@@ -54,6 +54,7 @@ export default class PluginSample extends Plugin {
     private webApps: Map<string, any> = new Map(); // 存储待打开的小程序数据
     private webViewHistory: WebViewHistory[] = []; // WebView 历史记录
     private openMenuDoctreeBindThis = this.openMenuDoctree.bind(this);
+    private clickEditorTitleIconBindThis = this.clickEditorTitleIcon.bind(this);
     private domainIconMap: Map<string, string> = new Map(); // 缓存域名与图标文件名的映射
 
     /**
@@ -414,6 +415,8 @@ export default class PluginSample extends Plugin {
 
         // 注册文档树右键菜单
         this.eventBus.on("open-menu-doctree", this.openMenuDoctreeBindThis);
+        // 注册文档块块标右键菜单
+        this.eventBus.on("click-editortitleicon", this.clickEditorTitleIconBindThis);
 
 
 
@@ -1832,6 +1835,7 @@ export default class PluginSample extends Plugin {
     onunload() {
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);
+        this.eventBus.off("click-editortitleicon", this.clickEditorTitleIconBindThis);
         console.log("Copilot onunload");
     }
 
@@ -1848,14 +1852,38 @@ export default class PluginSample extends Plugin {
             icon: "iconCopilot",
             label: t('menu.summarizeDoc'),
             click: () => {
-                this.openAITab();
-                setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('copilot-summarize-doc', {
-                        detail: { docId }
-                    }));
-                }, 300);
+                this.summarizeDocInSidebar(docId);
             }
         });
+    }
+
+    private clickEditorTitleIcon({ detail }: any) {
+        const menu = detail.menu;
+        const data = detail.data;
+        const docId = data?.rootID || data?.id;
+        if (!docId) return;
+
+        menu.addItem({
+            icon: "iconCopilot",
+            label: t('menu.summarizeDoc'),
+            click: () => {
+                this.summarizeDocInSidebar(docId);
+            }
+        });
+    }
+
+    private summarizeDocInSidebar(docId: string) {
+        // 显示侧栏 dock
+        const dockType = this.name + AI_SIDEBAR_TYPE;
+        const dockBtn = document.querySelector(`span.dock__item[data-type="${dockType}"]`) as HTMLElement;
+        if (dockBtn && !dockBtn.classList.contains("dock__item--active")) {
+            dockBtn.click();
+        }
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('copilot-summarize-doc', {
+                detail: { docId }
+            }));
+        }, 300);
     }
 
     async uninstall() {

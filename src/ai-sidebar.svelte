@@ -6354,9 +6354,16 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
         await addDocumentToContext(docBlock.id, docBlock.content || docBlock.fcontent || docBlock.id);
     }
 
-    // 处理文档总结事件（从右键菜单触发，仅标签页实例响应）
+    // 基于已有上下文文档直接发送总结请求
+    async function summarizeContextDoc() {
+        if (contextDocuments.length === 0) return;
+        currentInput = t('menu.summarizePrompt');
+        await tick();
+        sendMessage();
+    }
+
+    // 处理文档总结事件（从右键菜单触发）
     async function handleSummarizeDoc(event: CustomEvent) {
-        if (!respondToGlobalActions) return;
         const { docId } = event.detail;
         if (!docId) return;
         try {
@@ -10885,6 +10892,15 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconFile"></use></svg>
             </button>
+            {#if contextDocuments.length > 0}
+            <button
+                class="b3-button b3-button--text b3-tooltips b3-tooltips__n"
+                on:click={summarizeContextDoc}
+                aria-label={t('aiSidebar.actions.summarizeContext')}
+            >
+                <svg class="b3-button__icon"><use xlink:href="#iconCopilot"></use></svg>
+            </button>
+            {/if}
             <button
                 class="b3-button b3-button--text ai-sidebar__search-btn b3-tooltips b3-tooltips__n"
                 on:click={() => {
@@ -11760,9 +11776,6 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
         gap: 8px;
         flex-shrink: 1; /* 标题可以缩小 */
         min-width: 0; /* 允许标题缩小 */
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     .ai-sidebar__unsaved {
