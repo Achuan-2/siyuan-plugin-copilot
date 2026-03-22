@@ -482,20 +482,18 @@
         return getModelName(currentProvider, currentModelId);
     }
 
-    // 根据容器宽度自适应显示模型名称（单选模式）
-    $: displayModelName = (() => {
-        // 明确依赖这些变量以确保响应式更新
-        const _provider = currentProvider;
-        const _modelId = currentModelId;
-        const _width = containerWidth;
+    // 完整模型名称（响应式）— 直接引用 currentProvider/currentModelId 确保 Svelte 追踪依赖
+    $: fullModelName = currentProvider && currentModelId
+        ? getModelName(currentProvider, currentModelId)
+        : t('models.selectPlaceholder');
 
-        const name = getCurrentModelName();
-        if (!name || name === t('models.selectPlaceholder')) return name;
-        // 如果容器宽度小于 200px，只显示模型名的前10个字符
-        if (_width > 0 && _width < 200) {
-            return name.length > 10 ? name.substring(0, 10) + '...' : name;
+    // 根据容器宽度自适应截断的模型名称（单选模式）
+    $: displayModelName = (() => {
+        if (!fullModelName || fullModelName === t('models.selectPlaceholder')) return fullModelName;
+        if (containerWidth > 0 && containerWidth < 200 && fullModelName.length > 10) {
+            return fullModelName.substring(0, 10) + '...';
         }
-        return name;
+        return fullModelName;
     })();
 
     function closeOnOutsideClick(event: MouseEvent) {
@@ -621,7 +619,7 @@
         class="multi-model-selector__button b3-button b3-button--text"
         class:multi-model-selector__button--active={enableMultiModel}
         on:click|stopPropagation={() => (isOpen = !isOpen)}
-        title={enableMultiModel ? t('multiModel.title') : getCurrentModelName()}
+        title={enableMultiModel ? t('multiModel.title') : fullModelName}
     >
         <svg class="b3-button__icon">
             <use xlink:href="#iconLayout"></use>
