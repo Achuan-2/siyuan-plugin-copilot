@@ -1756,8 +1756,11 @@ export async function chat(
         // 强制使用 Gemini 原生图片生成接口（支持多轮）
         let customModalities = ["TEXT", "IMAGE"]; // 默认图文并茂
 
-        const imageUrl = `${baseUrlForGemini}/v1beta/models/${options.model}:generateContent`;
-        
+        // 直连 Google 用 ?key= 参数（与 chatGeminiFormat 保持一致）；中转站用 Bearer header
+        const useKeyParam = !customApiUrl;
+        const imageUrl = `${baseUrlForGemini}/v1beta/models/${options.model}:generateContent`
+            + (useKeyParam ? `?key=${options.apiKey}` : '');
+
         let contents = [];
         try {
             contents = await prepareGeminiContents(options.messages, true);
@@ -1777,7 +1780,7 @@ export async function chat(
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${options.apiKey}`
+            ...(useKeyParam ? {} : { 'Authorization': `Bearer ${options.apiKey}` }),
         };
 
         try {
