@@ -530,7 +530,9 @@
             "chatUrlPlaceholderGemini": "Leave empty to use default, e.g.: https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent",
             "chatUrlPlaceholderAnthropic": "Leave empty to use default, e.g.: https://api.anthropic.com/v1/messages",
             "hint": "Advanced settings allow complete customization of API endpoints, suitable for special API proxies or non-standard implementations"
-        }
+        },
+        "useForwardProxy": "Use Siyuan Proxy",
+        "useForwardProxyHint": "Forward requests through Siyuan Note backend to bypass browser CORS restrictions. (Non-streaming output)"
     },
     "common": {
         "untitled": "Untitled Document",

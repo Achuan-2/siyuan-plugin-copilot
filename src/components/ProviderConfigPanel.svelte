@@ -225,7 +225,9 @@
                 providerId,
                 config.apiKey,
                 config.customApiUrl,
-                config.advancedConfig
+                config.advancedConfig,
+                config.useForwardProxy,
+                config.advancedConfig?.chatInterface
             );
             // 去重：使用 Map 以模型 ID 为键进行去重
             const uniqueModelsMap = new Map();
@@ -560,6 +562,24 @@
                         <use xlink:href={showApiKey ? '#iconEye' : '#iconEyeoff'}></use>
                     </svg>
                 </button>
+            </div>
+        </div>
+
+        <div>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    class="b3-switch"
+                    checked={config.useForwardProxy || false}
+                    on:change={e => {
+                        config.useForwardProxy = e.currentTarget.checked;
+                        dispatch('change');
+                    }}
+                />
+                <span>{i18n('platform.useForwardProxy')}</span>
+            </label>
+            <div class="b3-label__text label-description">
+                {i18n('platform.useForwardProxyHint')}
             </div>
         </div>
 

@@ -4,6 +4,7 @@
  * 支持图片生成功能
  */
 
+import { forwardProxyFetch } from './api';
 export interface ToolCall {
     id: string;
     type: 'function';
@@ -139,6 +140,7 @@ export interface ChatOptions {
     customBody?: any; // 自定义请求体参数
     enableImageGeneration?: boolean; // 是否启用图片生成
     onImageGenerated?: (images: GeneratedImageData[]) => void; // 图片生成回调
+    useForwardProxy?: boolean; // 是否使用思源笔记后端代理绕过 CORS
 }
 
 export interface ModelInfo {
@@ -548,7 +550,9 @@ export async function fetchModels(
     provider: string,
     apiKey: string,
     customApiUrl?: string,
-    advancedConfig?: AdvancedProviderConfig
+    advancedConfig?: AdvancedProviderConfig,
+    useForwardProxy?: boolean,
+    chatInterface?: ChatInterfaceType // 根据不同的平台接口，走不同的 API Key 认证方式
 ): Promise<ModelInfo[]> {
     const isBuiltIn = ['gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
@@ -580,16 +584,34 @@ export async function fetchModels(
         };
 
         // 处理不同平台的认证方式
-        if (provider === 'gemini') {
+        if (chatInterface === 'anthropic') {
+        // Anthropic 使用 x-api-key 和 anthropic-version 作为 header，比 Authorization 方式更加规范，且可以适配 Kimi Code API
+            headers['x-api-key'] = apiKey; 
+            headers['anthropic-version'] = '2023-06-01';
+        } else if (provider === 'gemini' || chatInterface === 'gemini') {
             headers[config.apiKeyHeader] = apiKey;
         } else {
-            headers[config.apiKeyHeader] = `Bearer ${apiKey}`;
+            headers['Authorization'] = `Bearer ${apiKey}`; // OpenAI 接口
         }
 
-        const response = await fetch(url, {
-            method: 'GET',
-            headers
-        });
+        let response: Response;
+        if (useForwardProxy) {
+            console.log('[fetchModels] forwardProxy headers:', headers, 'chatInterface:', chatInterface);
+            const result = await forwardProxyFetch(url, {
+                method: 'GET',
+                headers,
+                timeout: 30000
+            });
+            response = new Response(await result.text(), {
+                status: result.status,
+                headers: result.headers
+            });
+        } else {
+            response = await fetch(url, {
+                method: 'GET',
+                headers
+            });
+        }
 
         if (!response.ok) {
             if (shouldUseMiniMaxFallback) {
@@ -907,6 +929,78 @@ async function chatOpenAIFormat(
         'Authorization': `Bearer ${apiKey}`
     };
 
+    // ===== forwardProxy 模式：强制非流式，通过思源后端绕过 CORS =====
+    if (options.useForwardProxy) {
+        requestBody.stream = false;
+        delete requestBody.stream_options;
+
+        try {
+            const result = await forwardProxyFetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                timeout: 120000
+            });
+
+            if (!result.ok) {
+                let errorMessage = `API request failed: ${result.status}`;
+                try {
+                    const errorData = await result.json();
+                    const detailMsg = errorData.error?.message || errorData.message || errorData.error || JSON.stringify(errorData);
+                    errorMessage += `\n\n${detailMsg}`;
+                } catch (e) {
+                    try {
+                        const errorText = await result.text();
+                        if (errorText) errorMessage += `\n\n${errorText}`;
+                    } catch (_) {}
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await result.json();
+            const content = data.choices?.[0]?.message?.content || '';
+            const shouldParseThinkTags =
+                options.enableThinking && isMinimaxThinkingModel(options.model);
+
+            if (shouldParseThinkTags && typeof content === 'string') {
+                const segments = parseThinkTaggedContent(
+                    content,
+                    { carry: '', inThinkTag: false },
+                    true
+                );
+                let visibleContent = '';
+                let thinkingContent = '';
+
+                for (const segment of segments) {
+                    if (segment.type === 'thinking') {
+                        thinkingContent += segment.text;
+                    } else {
+                        visibleContent += segment.text;
+                    }
+                }
+
+                if (thinkingContent) {
+                    options.onThinkingChunk?.(thinkingContent);
+                    options.onThinkingComplete?.(thinkingContent);
+                }
+
+                if (visibleContent) {
+                    options.onChunk?.(visibleContent);
+                }
+
+                options.onComplete?.(visibleContent);
+            } else {
+                options.onChunk?.(content);
+                options.onComplete?.(content);
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            options.onError?.(error as Error);
+            throw error;
+        }
+        return;
+    }
+
     try {
         const response = await fetch(url, {
             method: 'POST',
@@ -1089,7 +1183,9 @@ async function chatGeminiFormat(
     model: string,
     options: ChatOptions
 ): Promise<void> {
-    const url = `${baseUrl}/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+    const streamUrl = `${baseUrl}/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+    const nonStreamUrl = `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const url = options.useForwardProxy ? nonStreamUrl : streamUrl;
 
     // 转换消息格式
     const contents = await prepareGeminiContents(options.messages);
@@ -1151,6 +1247,101 @@ async function chatGeminiFormat(
         requestBody.systemInstruction = {
             parts: [{ text: systemInstruction.content }]
         };
+    }
+
+    // ===== forwardProxy 模式：通过思源后端绕过 CORS =====
+    if (options.useForwardProxy) {
+        try {
+            const result = await forwardProxyFetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                timeout: 120000
+            });
+
+            if (!result.ok) {
+                let errorMessage = `Gemini API request failed: ${result.status}`;
+                try {
+                    const errorData = await result.json();
+                    const detailMsg = errorData.error?.message || errorData.message || errorData.error || JSON.stringify(errorData);
+                    errorMessage += `\n\n${detailMsg}`;
+                } catch (e) {
+                    try {
+                        const errorText = await result.text();
+                        if (errorText) errorMessage += `\n\n${errorText}`;
+                    } catch (_) {}
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await result.json();
+            let fullText = '';
+            let thinkingText = '';
+            let isThinkingPhase = false;
+            const toolCalls: ToolCall[] = [];
+            const generatedImages: GeneratedImageData[] = [];
+
+            if (data.candidates?.[0]?.content?.parts) {
+                for (const part of data.candidates[0].content.parts) {
+                    const inlineData = part.inline_data || part.inlineData;
+                    if (inlineData) {
+                        generatedImages.push({
+                            mimeType: inlineData.mime_type || inlineData.mimeType || 'image/png',
+                            data: inlineData.data
+                        });
+                        continue;
+                    }
+
+                    if (!part.text) continue;
+
+                    if (options.enableThinking && part.thought === true) {
+                        isThinkingPhase = true;
+                        thinkingText += part.text;
+                        options.onThinkingChunk?.(part.text);
+                    } else {
+                        if (isThinkingPhase && options.onThinkingComplete) {
+                            options.onThinkingComplete(thinkingText);
+                            isThinkingPhase = false;
+                        }
+                        fullText += part.text;
+                        options.onChunk?.(part.text);
+                    }
+
+                    if (part.functionCall) {
+                        toolCalls.push({
+                            id: `call_${Math.random().toString(36).substring(2, 9)}`,
+                            type: 'function',
+                            function: {
+                                name: part.functionCall.name,
+                                arguments: typeof part.functionCall.args === 'string'
+                                    ? part.functionCall.args
+                                    : JSON.stringify(part.functionCall.args || {}),
+                                thought_signature: part.functionCall.thought_signature || ''
+                            }
+                        });
+                    }
+                }
+            }
+
+            if (isThinkingPhase && options.onThinkingComplete) {
+                options.onThinkingComplete(thinkingText);
+            }
+
+            if (generatedImages.length > 0 && options.onImageGenerated) {
+                await options.onImageGenerated(generatedImages);
+            }
+
+            if (toolCalls.length > 0 && options.onToolCallComplete) {
+                options.onToolCallComplete(toolCalls);
+            }
+
+            await options.onComplete?.(fullText);
+        } catch (error) {
+            console.error('Gemini chat error:', error);
+            options.onError?.(error as Error);
+            throw error;
+        }
+        return;
     }
 
     try {
@@ -1628,6 +1819,13 @@ async function chatClaudeFormat(
             if (msg.tool_calls && msg.tool_calls.length > 0) {
                 const content: any[] = [];
                 
+                // Claude API 要求：若历史消息包含 thinking 内容，必须以 content block 格式回传，
+                // 否则模型在继续对话时可能丢失上下文或行为异常。
+                // OpenAI 格式使用 reasoning_content 字段回传，Claude 格式则使用 {type: 'thinking'} block。
+                if (msg.thinking) {
+                    content.push({ type: 'thinking', thinking: msg.thinking });
+                }
+                
                 // 添加文本内容（如果有）
                 if (msg.content) {
                     content.push({ type: 'text', text: msg.content });
@@ -1745,6 +1943,93 @@ async function chatClaudeFormat(
         'anthropic-version': '2023-06-01'
     };
 
+    // ===== forwardProxy 模式：强制非流式，通过思源后端绕过 CORS =====
+    // Claude 的流式响应使用 SSE 格式，但思源 forwardProxy 不支持 streaming，
+    // 因此强制 stream: false，复用非流式响应处理逻辑。
+    if (options.useForwardProxy) {
+        requestBody.stream = false;
+
+        try {
+            const result = await forwardProxyFetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                timeout: 120000
+            });
+
+            // 错误处理：优先提取 JSON 中的 error.message，降级为纯文本
+            if (!result.ok) {
+                let errorMessage = `Claude API request failed: ${result.status}`;
+                try {
+                    const errorData = await result.json();
+                    const detailMsg = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+                    errorMessage += `\n\n${detailMsg}`;
+                } catch (e) {
+                    try {
+                        const errorText = await result.text();
+                        if (errorText) errorMessage += `\n\n${errorText}`;
+                    } catch (_) {}
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await result.json();
+            let content = '';
+            let thinking = '';
+            const toolCalls: ToolCall[] = [];
+
+            // Claude 非流式响应格式：data.content 是 block 数组，
+            // 每个 block 有 type 字段（thinking / text / tool_use），
+            // 与 OpenAI 的 choices[0].message.content 格式完全不同，需要遍历解析。
+            if (data.content && Array.isArray(data.content)) {
+                for (const block of data.content) {
+                    if (block.type === 'thinking' && block.thinking) {
+                        thinking += block.thinking;
+                    } else if (block.type === 'text' && block.text) {
+                        content += block.text;
+                    } else if (block.type === 'tool_use') {
+                        // 将 Claude 的 tool_use block 转换为插件内部的 ToolCall 格式
+                        toolCalls.push({
+                            id: block.id,
+                            type: 'function',
+                            function: {
+                                name: block.name,
+                                arguments: JSON.stringify(block.input || {})
+                            }
+                        });
+                    }
+                }
+            }
+
+            // 触发回调：按内容类型分别通知前端
+            // thinking 内容 → onThinkingComplete（一次性显示思考过程）
+            if (thinking) {
+                options.onThinkingComplete?.(thinking);
+            }
+
+            // 文本内容 → onChunk（显示到聊天界面）
+            if (content) {
+                options.onChunk?.(content);
+            }
+
+            // 工具调用 → onToolCall / onToolCallComplete（Agent 模式）
+            for (const toolCall of toolCalls) {
+                options.onToolCall?.(toolCall);
+            }
+            if (toolCalls.length > 0 && options.onToolCallComplete) {
+                options.onToolCallComplete(toolCalls);
+            }
+
+            // 完成回调：通知前端本轮对话结束
+            options.onComplete?.(content);
+        } catch (error) {
+            console.error('Claude chat error:', error);
+            options.onError?.(error as Error);
+            throw error;
+        }
+        return;
+    }
+
     try {
         const response = await fetch(url, {
             method: 'POST',
@@ -1778,11 +2063,14 @@ async function chatClaudeFormat(
             const data = await response.json();
             // 处理 Claude 响应中的 content 数组
             let content = '';
+            let thinking = '';
             const toolCalls: ToolCall[] = [];
             
             if (data.content && Array.isArray(data.content)) {
                 for (const block of data.content) {
-                    if (block.type === 'text' && block.text) {
+                    if (block.type === 'thinking' && block.thinking) {
+                        thinking += block.thinking;
+                    } else if (block.type === 'text' && block.text) {
                         content += block.text;
                     } else if (block.type === 'tool_use') {
                         // 处理 tool_use
@@ -1796,6 +2084,11 @@ async function chatClaudeFormat(
                         });
                     }
                 }
+            }
+            
+            // 发送 thinking 内容
+            if (thinking) {
+                options.onThinkingComplete?.(thinking);
             }
             
             // 发送文本内容
@@ -2145,7 +2438,8 @@ export interface ImageGenerationResult {
 export async function generateImage(
     provider: string,
     options: ImageGenerationOptions,
-    customApiUrl?: string
+    customApiUrl?: string,
+    useForwardProxy?: boolean
 ): Promise<ImageGenerationResult> {
     const isBuiltIn = ['gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
@@ -2225,12 +2519,26 @@ export async function generateImage(
     }
 
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestBody),
-            signal: options.signal
-        });
+        let response: Response;
+        if (useForwardProxy) {
+            const result = await forwardProxyFetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                timeout: 120000
+            });
+            response = new Response(await result.text(), {
+                status: result.status,
+                headers: result.headers
+            });
+        } else {
+            response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                signal: options.signal
+            });
+        }
 
         if (!response.ok) {
             let errorMessage = `Image generation failed: ${response.status} ${response.statusText}`;

@@ -531,7 +531,9 @@
             "chatUrlPlaceholderGemini": "留空使用默认接口，例如: https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent",
             "chatUrlPlaceholderAnthropic": "留空使用默认接口，例如: https://api.anthropic.com/v1/messages",
             "hint": "高级设置允许完全自定义 API 端点，适用于特殊的 API 代理或非标准实现"
-        }
+        },
+        "useForwardProxy": "使用思源代理",
+        "useForwardProxyHint": "通过思源笔记后端转发请求，可绕过浏览器的 CORS 跨域限制。（非流式输出）"
     },
     "common": {
         "untitled": "未命名文档",

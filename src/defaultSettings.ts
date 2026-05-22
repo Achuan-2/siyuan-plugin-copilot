@@ -26,6 +26,7 @@ export interface ProviderConfig {
     models: ModelConfig[];
     enabled?: boolean; // 平台是否启用
     customWebsiteUrl?: string; // 自定义官网链接
+    useForwardProxy?: boolean; // 是否使用思源笔记后端代理绕过 CORS
     advancedConfig?: {
         customModelsUrl?: string; // 自定义模型列表 URL
         customChatUrl?: string;   // 自定义对话 URL

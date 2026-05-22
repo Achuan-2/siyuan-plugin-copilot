@@ -867,6 +867,7 @@
                     response.provider,
                     {
                         apiKey: providerConfig.apiKey,
+                        useForwardProxy: providerConfig.useForwardProxy || false,
                         model: modelConfig.id,
                         messages: modelMessagesToSend,
                         temperature: tempModelSettings.temperatureEnabled
@@ -1153,6 +1154,7 @@
                 response.provider,
                 {
                     apiKey: providerConfig.apiKey,
+                    useForwardProxy: providerConfig.useForwardProxy || false,
                     model: modelConfig.id,
                     messages: messagesToSend,
                     temperature: tempModelSettings.temperatureEnabled
@@ -3234,6 +3236,7 @@
                         model.provider,
                         {
                             apiKey: providerConfig.apiKey,
+                            useForwardProxy: providerConfig.useForwardProxy || false,
                             model: modelConfig.id,
                             messages: modelMessagesToSend,
                             temperature: tempModelSettings.temperatureEnabled
@@ -4178,6 +4181,7 @@
                 settings.autoRenameProvider,
                 {
                     apiKey: providerConfig.apiKey,
+                    useForwardProxy: providerConfig.useForwardProxy || false,
                     model: modelConfig.id,
                     messages: [{ role: 'user', content: prompt }],
                     temperature: modelConfig.temperature,
@@ -5718,6 +5722,7 @@
                         currentProvider,
                         {
                             apiKey: providerConfig.apiKey,
+                            useForwardProxy: providerConfig.useForwardProxy || false,
                             model: modelConfig.id,
                             messages: messagesToSend,
                             temperature: tempModelSettings.temperatureEnabled
@@ -6152,6 +6157,7 @@
                     currentProvider,
                     {
                         apiKey: providerConfig.apiKey,
+                        useForwardProxy: providerConfig.useForwardProxy || false,
                         model: modelConfig.id,
                         messages: messagesToSend,
                         temperature: tempModelSettings.temperatureEnabled
@@ -11095,6 +11101,7 @@
                         currentProvider,
                         {
                             apiKey: providerConfig.apiKey,
+                            useForwardProxy: providerConfig.useForwardProxy || false,
                             model: modelConfig.id,
                             messages: messagesToSend,
                             temperature: tempModelSettings.temperatureEnabled
@@ -11544,6 +11551,7 @@
                     currentProvider,
                     {
                         apiKey: providerConfig.apiKey,
+                        useForwardProxy: providerConfig.useForwardProxy || false,
                         model: modelConfig.id,
                         messages: messagesToSend,
                         temperature: tempModelSettings.temperatureEnabled

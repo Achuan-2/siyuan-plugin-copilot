@@ -334,6 +334,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
 
             await chat(translateProvider, {
                 apiKey: providerConfig.apiKey,
+                useForwardProxy: providerConfig.useForwardProxy || false,
                 model: modelConfig.id,
                 messages: translateMessages,
                 temperature: temperature,

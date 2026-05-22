@@ -662,6 +662,54 @@ export async function forwardProxy(
     return request(url1, data);
 }
 
+/**
+ * 将 forwardProxy 包装为类 fetch 接口，用于替代浏览器原生 fetch 绕过 CORS
+ *
+ * 限制：
+ * - 不支持 streaming（因 body 为完整字符串）
+ * - 不支持 AbortSignal
+ * - 默认超时 120 秒（覆盖原 7000ms）
+ */
+export async function forwardProxyFetch(
+    url: string,
+    init?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        timeout?: number;
+    }
+): Promise<{
+    ok: boolean;
+    status: number;
+    headers: Headers;
+    json: () => Promise<any>;
+    text: () => Promise<string>;
+}> {
+    const method = init?.method || 'GET';
+    const headersArray = Object.entries(init?.headers || {}).map(([name, value]) => ({
+        [name]: value
+    }));
+    const result = await forwardProxy(
+        url,
+        method,
+        init?.body || '',
+        headersArray,
+        init?.timeout || 120000,
+        'application/json'
+    );
+    const responseHeaders = new Headers();
+    Object.entries(result.headers || {}).forEach(([key, value]) => {
+        responseHeaders.set(key, value);
+    });
+    return {
+        ok: result.status >= 200 && result.status < 300,
+        status: result.status,
+        headers: responseHeaders,
+        json: async () => JSON.parse(result.body),
+        text: async () => result.body,
+    };
+}
+
 
 // **************************************** AttributeView (Database) ****************************************
 
