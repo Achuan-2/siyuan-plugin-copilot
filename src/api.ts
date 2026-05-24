@@ -794,7 +794,7 @@ export async function addAttributeViewBlocks(avID: string, srcs: Array<{ id: str
  * 设置数据库块属性
  * @param avID 数据库ID
  * @param keyID 列ID
- * @param itemID 行ID (v3.3.1+使用itemID，之前版本使用rowID)
+ * @param itemID 行ID/ItemID
  * @param value 属性值对象
  */
 export async function setAttributeViewBlockAttr(avID: string, keyID: string, itemID: string, value: any): Promise<any> {
@@ -813,7 +813,7 @@ export async function setAttributeViewBlockAttr(avID: string, keyID: string, ite
  * @param avID 数据库ID
  * @param values 属性值数组
  */
-export async function batchSetAttributeViewBlockAttrs(avID: string, values: Array<{ keyID: string, rowID: string, value: any }>): Promise<any> {
+export async function batchSetAttributeViewBlockAttrs(avID: string, values: Array<{ keyID: string, itemID: string, value: any }>): Promise<any> {
     let data = {
         avID: avID,
         values: values

@@ -1501,7 +1501,7 @@ siyuan_set_database_cell({
 - avID: 数据库ID（必填）
 - values: 属性值数组（必填）
   - keyID: 列ID
-  - rowID: 行ID
+  - itemID: 行ID/ItemID
   - value: 属性值对象
 
 ## 使用示例
@@ -1509,9 +1509,9 @@ siyuan_set_database_cell({
 siyuan_batch_set_database_cells({
   avID: "20250716235026-51p7441",
   values: [
-    { "keyID": "20250716235026-njmx362", "rowID": "20250716235124-6qqlnpw", "value": { "block": { "content": "Test" } } },
-    { "keyID": "20250716235026-a0v1j35", "rowID": "20250716235124-6qqlnpw", "value": { "number": { "content": 111 } } },
-    { "keyID": "20250716235026-a0v1j35", "rowID": "20250716235124-6qqlnpw", "value": { "mSelect": [{ "content": "选项1", "color": "2" }] } }
+    { "keyID": "20250716235026-njmx362", "itemID": "20250716235124-6qqlnpw", "value": { "block": { "content": "Test" } } },
+    { "keyID": "20250716235026-a0v1j35", "itemID": "20250716235124-6qqlnpw", "value": { "number": { "content": 111 } } },
+    { "keyID": "20250716235026-a0v1j35", "itemID": "20250716235124-6qqlnpw", "value": { "mSelect": [{ "content": "选项1", "color": "2" }] } }
   ]
 })
 \`\`\`
@@ -1532,10 +1532,25 @@ siyuan_batch_set_database_cells({
                 },
                 values: {
                     type: 'array',
-                    description: '属性值数组，每个元素包含 keyID、rowID 和 value',
+                    description: '属性值数组，每个元素包含 keyID、itemID 和 value',
                     items: {
                         type: 'object',
-                        description: '单元格值对象，如 { "keyID": "列ID", "rowID": "行ID", "value": { "text": { "content": "文本" } } }',
+                        description: '单元格值对象，如 { "keyID": "列ID", "itemID": "行ID/ItemID", "value": { "text": { "content": "文本" } } }',
+                        properties: {
+                            keyID: {
+                                type: 'string',
+                                description: '列ID',
+                            },
+                            itemID: {
+                                type: 'string',
+                                description: '行ID/ItemID',
+                            },
+                            value: {
+                                type: 'object',
+                                description: '属性值对象',
+                            },
+                        },
+                        required: ['keyID', 'itemID', 'value'],
                     },
                 },
             },
@@ -2731,7 +2746,7 @@ true
 #### POST /api/av/batchSetAttributeViewBlockAttrs - 批量设置属性值
 **参数:**
 - avID: string - 数据库ID
-- values: Array<{keyID: string, rowID: string, value: any}> - 属性值数组
+- values: Array<{keyID: string, itemID: string, value: any}> - 属性值数组
 
 #### POST /api/av/addAttributeViewKey - 添加数据库列
 **参数:**
@@ -3662,15 +3677,20 @@ export async function siyuan_batch_set_database_cells(
     values: any[]
 ): Promise<any> {
     try {
-        if (!avID || !values) {
+        if (!avID || !Array.isArray(values)) {
             throw new Error('avID和values参数是必需的');
         }
         // 规范化每个值中的 mSelect/select color
         const normalizedValues = values.map((item: any) => {
-            if (item && item.value) {
-                item.value = normalizeMSelectColor(item.value);
+            const itemID = item?.itemID;
+            if (!item?.keyID || !itemID || item.value === undefined) {
+                throw new Error('values每项必须包含keyID、itemID和value');
             }
-            return item;
+            return {
+                keyID: item.keyID,
+                itemID: itemID,
+                value: normalizeMSelectColor(item.value),
+            };
         });
         const result = await batchSetAttributeViewBlockAttrs(avID, normalizedValues);
         return result;
