@@ -11,16 +11,16 @@ export function setPluginInstance(plugin: any) {
 export function getCurrentLanguage(): string {
     if (pluginInstance && pluginInstance.i18n) {
         // 从插件实例获取当前语言
-        return pluginInstance.i18n.getCurrentLanguage?.() || 'zh_CN';
+        return pluginInstance.i18n.getCurrentLanguage?.() || 'zh-CN';
     }
 
     // 尝试从全局获取
     try {
         const { i18n } = require("siyuan");
-        return i18n.getCurrentLanguage?.() || 'zh_CN';
+        return i18n.getCurrentLanguage?.() || 'zh-CN';
     } catch (error) {
         console.warn('无法获取当前语言:', error);
-        return 'zh_CN';
+        return 'zh-CN';
     }
 }
 
