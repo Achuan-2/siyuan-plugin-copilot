@@ -371,6 +371,7 @@
 
     // 小程序功能
     let isWebAppManagerOpen = false;
+    let editingWebAppId: string | null = null;
     let showWebAppMenu = false;
     let webAppMenuButton: HTMLButtonElement;
     let webAppMenuDropdown: HTMLDivElement;
@@ -639,6 +640,15 @@
     function openWebAppManager() {
         showWebAppMenu = false;
         document.removeEventListener('click', closeWebAppMenuOnOutsideClick);
+        editingWebAppId = null;
+        isWebAppManagerOpen = true;
+    }
+
+    // 从菜单打开指定小程序的编辑
+    function openWebAppEditor(app: any) {
+        showWebAppMenu = false;
+        document.removeEventListener('click', closeWebAppMenuOnOutsideClick);
+        editingWebAppId = app.id;
         isWebAppManagerOpen = true;
     }
 
@@ -12009,7 +12019,7 @@
                 {#if webApps.length > 0}
                     <div class="b3-menu__separator"></div>
                     {#each webApps as app (app.id)}
-                        <button class="b3-menu__item" on:click={() => openWebAppDirect(app)}>
+                        <button class="b3-menu__item ai-sidebar__webapp-menu-item">
                             <div
                                 class="b3-menu__icon"
                                 style="display: flex; align-items: center; justify-content: center;"
@@ -12024,7 +12034,13 @@
                                     <svg><use xlink:href="#iconGlobe"></use></svg>
                                 {/if}
                             </div>
-                            <span class="b3-menu__label">{app.name}</span>
+                            <span class="b3-menu__label" on:click={() => openWebAppDirect(app)}>{app.name}</span>
+                            <svg
+                                class="b3-menu__accel ai-sidebar__webapp-menu-edit"
+                                on:click|stopPropagation={() => openWebAppEditor(app)}
+                            >
+                                <use xlink:href="#iconEdit"></use>
+                            </svg>
                         </button>
                     {/each}
                 {/if}
@@ -15945,6 +15961,7 @@
     <WebAppManager
         bind:isOpen={isWebAppManagerOpen}
         {plugin}
+        bind:editAppId={editingWebAppId}
         bind:webApps
         on:save={saveWebApps}
         on:open={openWebApp}
@@ -16094,6 +16111,28 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .ai-sidebar__webapp-menu-edit {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            padding: 4px;
+            margin-right: -4px;
+            border-radius: 4px;
+            color: var(--b3-theme-on-surface-light);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+
+            &:hover {
+                background: var(--b3-theme-surface-lighter);
+                color: var(--b3-theme-on-background);
+            }
+        }
+
+        &:hover .ai-sidebar__webapp-menu-edit {
+            opacity: 1;
         }
     }
 

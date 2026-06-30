@@ -4,6 +4,7 @@
 
     export let isOpen = false;
     export let plugin: any;
+    export let editAppId: string | null = null;
     export let webApps: Array<{
         id: string;
         name: string;
@@ -73,6 +74,8 @@
 
     // 取消编辑
     function cancelEdit() {
+        const wasEditOnly = !!editAppId;
+
         isEditMode = false;
         editingApp = null;
         showForm = false;
@@ -83,6 +86,26 @@
             showInSidebar: false,
         };
         iconFile = null;
+        editAppId = null;
+
+        // 便捷编辑模式下取消即关闭弹窗，不回到列表
+        if (wasEditOnly) {
+            isOpen = false;
+        }
+    }
+
+    // 打开指定 id 的小程序编辑表单
+    function openEditDialogById(appId: string | null) {
+        if (!appId) return;
+        const app = webApps.find(a => a.id === appId);
+        if (app) {
+            openEditDialog(app);
+        }
+    }
+
+    // 当管理器以 editAppId 打开时，自动进入编辑模式
+    $: if (isOpen && editAppId) {
+        openEditDialogById(editAppId);
     }
 
     function normalizeWebAppUrl(url: string): string {
@@ -575,7 +598,7 @@
             </div>
 
             <div class="webapp-manager__content">
-                {#if !showForm}
+                {#if !showForm && !editAppId}
                     <!-- 小程序列表 -->
                     <div class="webapp-manager__list">
                         <div class="webapp-manager__list-header">
