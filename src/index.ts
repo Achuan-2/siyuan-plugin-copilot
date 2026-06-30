@@ -447,6 +447,68 @@ export default class PluginSample extends Plugin {
         this.registeredDocks.add(dockType);
     }
 
+    /**
+     * 移除指定小程序的 dock
+     * 用于卸载小程序或取消"注册到侧栏"时，将已注册的 dock 从思源布局中移除
+     */
+    removeWebAppDock(appId: string) {
+        const type = `webapp-dock-${appId}`;
+        const type2 = this.name + type;
+
+        if (!this.registeredDocks.has(type)) {
+            return;
+        }
+
+        // 思源 Plugin 基类内部维护 this.docks[type2] 保存 addDock 的实例
+        const dock = (this as any).docks?.[type2];
+        const position = dock?.config?.position || "RightBottom";
+        const layout = (window as any).siyuan?.layout;
+
+        if (position.startsWith("Left")) {
+            layout?.leftDock?.remove(type2);
+        } else if (position.startsWith("Right")) {
+            layout?.rightDock?.remove(type2);
+        } else if (position.startsWith("Bottom")) {
+            layout?.bottomDock?.remove(type2);
+        }
+
+        // 同时移除可能残留的 dock DOM（思源 API 不一定会自动清理）
+        document.querySelectorAll(`span.dock__item[data-type="${type2}"]`).forEach((el) => {
+            el.remove();
+        });
+
+        this.registeredDocks.delete(type);
+    }
+
+    /**
+     * 根据当前 webApps 列表同步 dock 注册状态：
+     * - 已勾选"注册到侧栏"的注册 dock
+     * - 未勾选或已被删除的移除 dock
+     */
+    syncWebAppDocks(webApps: any[]) {
+        const shouldShowIds = new Set(
+            webApps.filter(app => app.showInSidebar).map(app => app.id)
+        );
+
+        // 先移除不需要的 dock（取消勾选或已删除的小程序）
+        for (const dockType of Array.from(this.registeredDocks)) {
+            const match = dockType.match(/^webapp-dock-(.+)$/);
+            if (match) {
+                const appId = match[1];
+                if (!shouldShowIds.has(appId)) {
+                    this.removeWebAppDock(appId);
+                }
+            }
+        }
+
+        // 再注册需要的 dock（新增或保留勾选的小程序）
+        for (const app of webApps) {
+            if (app.showInSidebar) {
+                this.registerWebAppDock(app);
+            }
+        }
+    }
+
     initWebAppView(element: HTMLElement, app: any, tabInstance?: any) {
         const pluginInstance = this;
         element.style.display = 'flex';

@@ -653,15 +653,15 @@
         settings.webApps = webApps;
         await plugin.saveData('settings.json', settings);
 
-        // 为每个小程序注册图标和侧栏
+        // 为每个小程序注册图标
         for (const app of webApps) {
             if (app.icon && app.icon.startsWith('data:image')) {
                 plugin.registerWebAppIcon(app.id, app.icon);
             }
-            if (app.showInSidebar) {
-                plugin.registerWebAppDock(app);
-            }
         }
+
+        // 同步 dock：新增/保留勾选的注册，删除/取消勾选的移除
+        plugin.syncWebAppDocks(webApps);
     }
 
     // 打开小程序
