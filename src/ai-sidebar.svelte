@@ -653,10 +653,13 @@
         settings.webApps = webApps;
         await plugin.saveData('settings.json', settings);
 
-        // 为每个小程序注册图标
+        // 为每个小程序注册图标和侧栏
         for (const app of webApps) {
             if (app.icon && app.icon.startsWith('data:image')) {
                 plugin.registerWebAppIcon(app.id, app.icon);
+            }
+            if (app.showInSidebar) {
+                plugin.registerWebAppDock(app);
             }
         }
     }

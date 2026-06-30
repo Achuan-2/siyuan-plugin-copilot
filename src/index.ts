@@ -58,6 +58,7 @@ export default class PluginSample extends Plugin {
     private clickEditorTitleIconBindThis = this.clickEditorTitleIcon.bind(this);
     private openMenuLinkBindThis = this.openMenuLink.bind(this);
     private domainIconMap: Map<string, string> = new Map(); // 缓存域名与图标文件名的映射
+    private registeredDocks: Set<string> = new Set();
 
     /**
      * 加载 WebView 历史记录
@@ -419,80 +420,40 @@ export default class PluginSample extends Plugin {
         return 'iconCopilotWebApp';
     }
 
-    async onload() {
-        // 插件被启用时会自动调用这个函数
-        // 设置i18n插件实例
-        setPluginInstance(this);
+    registerWebAppDock(app: any) {
+        if (!app.showInSidebar) return;
+        const dockType = `webapp-dock-${app.id}`;
+        if (this.registeredDocks.has(dockType)) {
+            return;
+        }
 
-        // 注册文档树右键菜单
-        this.eventBus.on("open-menu-doctree", this.openMenuDoctreeBindThis);
-        // 注册文档块块标右键菜单
-        this.eventBus.on("click-editortitleicon", this.clickEditorTitleIconBindThis);
-        // 注册链接右键菜单
-        this.eventBus.on("open-menu-link", this.openMenuLinkBindThis);
-
-
-
-        // 加载历史记录
-        this.webViewHistory = await this.loadWebViewHistory();
-
-        // 加载设置
-        await this.loadSettings();
-
-        this.addIcons(`
-    <symbol id="iconCopilot" viewBox="0 0 1024 1024">
-    <path d="M369.579 617.984a42.71 42.71 0 1 1 85.461 0v85.205a42.71 42.71 0 1 1-85.461 0v-85.205z m284.8 0a42.71 42.71 0 1 0-85.462 0v85.205a42.71 42.71 0 1 0 85.462 0v-85.205zM511.957 171.861c-36.053-52.01-110.848-55.893-168.32-50.688-65.834 6.571-121.301 29.227-152.49 62.464-54.102 59.136-56.576 183.083-30.507 251.307-2.603 11.69-5.12 23.51-6.912 36.053C105.515 483.67 56.32 551.98 56.32 600.832v92.245c0 25.6 11.947 48.982 33.067 64.939 120.49 89.515 270.677 158.89 422.613 158.89 151.893 0 302.08-69.375 422.57-158.89a80.64 80.64 0 0 0 33.067-64.896v-92.288c0-48.853-49.194-117.163-97.408-129.835-1.792-12.544-4.266-24.32-6.912-36.01 26.07-68.267 23.552-192.214-30.506-251.307-31.19-33.28-86.614-55.893-152.491-62.507-57.472-5.162-132.267-1.28-168.363 50.688z m284.8 574.294c-65.493 36.437-174.293 85.333-284.8 85.333S292.693 782.592 227.2 746.155V498.73c105.685 40.96 227.285 19.84 284.715-75.008H512c57.43 94.848 179.03 115.925 284.715 75.008v247.381z m-341.76-454.827c0 67.67-20.48 141.312-113.92 141.312s-111.189-22.357-111.189-85.205c0-99.67 15.19-142.336 141.483-142.336 72.96 0 83.626 23.466 83.626 86.272z m113.92 0c0-62.805 10.667-86.187 83.67-86.187 126.293 0 141.482 42.667 141.482 142.294 0 62.848-17.792 85.205-111.232 85.205s-113.92-73.643-113.92-141.27z" p-id="5384"></path>
-    </symbol>
-    `);
-        this.addIcons(`
-    <symbol id="iconModelSetting" viewBox="0 0 1024 1024">
-    <path d="M1165.18 856.258H444.69c-15.086-57.882-67.556-100.843-130.03-100.843-73.95 0-134.292 60.178-134.292 134.293 0 73.95 60.178 134.292 134.293 134.292 62.473 0 115.107-42.796 130.029-100.678h720.653c18.529 0 33.614-15.086 33.614-33.614-0.164-18.53-15.25-33.45-33.778-33.45zM314.66 956.936c-37.057 0-67.064-30.17-67.064-67.064 0-37.058 30.171-67.065 67.065-67.065s67.064 30.171 67.064 67.065c0 36.893-30.17 67.064-67.064 67.064z m851.175-478.468H1062.37c-14.921-57.882-67.556-100.678-130.029-100.678s-115.108 42.796-130.029 100.678H218.246c-18.53 0-33.614 15.085-33.614 33.614 0 18.529 15.085 33.614 33.614 33.614H802.31c14.921 57.882 67.556 100.678 130.03 100.678 62.472 0 115.107-42.796 130.028-100.678h103.466c18.529 0 33.614-15.085 33.614-33.614 0-18.693-15.085-33.614-33.614-33.614zM932.34 579.146c-37.057 0-67.064-30.17-67.064-67.064s30.17-67.064 67.064-67.064c37.058 0 67.064 30.17 67.064 67.064s-30.006 67.064-67.064 67.064zM314.66 268.421c62.474 0 115.108-42.797 130.03-100.678h720.653c18.529 0 33.614-15.086 33.614-33.615 0-18.528-15.085-33.614-33.614-33.614H444.69C429.604 42.796 377.134 0 314.66 0c-74.114 0-134.292 60.177-134.292 134.292 0 73.951 60.178 134.129 134.293 134.129z m0-201.357c37.058 0 67.065 30.17 67.065 67.064 0 37.058-30.17 67.065-67.064 67.065s-67.065-30.171-67.065-67.065c-0.163-36.893 30.007-67.064 67.065-67.064z m0 0" p-id="4685"></path>
-    </symbol>
-    `);
-        this.addIcons(`
-    <symbol id="iconTranslate" viewBox="0 0 1024 1024">
-<path d="M608 416h288c35.36 0 64 28.48 64 64v416c0 35.36-28.48 64-64 64H480c-35.36 0-64-28.48-64-64v-288H128c-35.36 0-64-28.48-64-64V128c0-35.36 28.48-64 64-64h416c35.36 0 64 28.48 64 64v288z m0 64v64c0 35.36-28.48 64-64 64h-64v256.032c0 17.664 14.304 31.968 31.968 31.968H864a31.968 31.968 0 0 0 31.968-31.968V512a31.968 31.968 0 0 0-31.968-31.968H608zM128 159.968V512c0 17.664 14.304 31.968 31.968 31.968H512a31.968 31.968 0 0 0 31.968-31.968V160A31.968 31.968 0 0 0 512.032 128H160A31.968 31.968 0 0 0 128 159.968z m64 244.288V243.36h112.736V176h46.752c6.4 0.928 9.632 1.824 9.632 2.752a10.56 10.56 0 0 1-1.376 4.128c-2.752 7.328-4.128 16.032-4.128 26.112v34.368h119.648v156.768h-50.88v-20.64h-68.768v118.272H306.112v-118.272H238.752v24.768H192z m46.72-122.368v60.48h67.392V281.92H238.752z m185.664 60.48V281.92h-68.768v60.48h68.768z m203.84 488H576L668.128 576h64.64l89.344 254.4h-54.976l-19.264-53.664h-100.384l-19.232 53.632z m33.024-96.256h72.864l-34.368-108.608h-1.376l-37.12 108.608zM896 320h-64a128 128 0 0 0-128-128V128a192 192 0 0 1 192 192zM128 704h64a128 128 0 0 0 128 128v64a192 192 0 0 1-192-192z" p-id="5072"></path>
-    </symbol>
-    `);
-        this.addIcons(`
-    <symbol id="iconCopilotWebApp" viewBox="0 0 1024 1024">
-<path d="M878.159424 565.40635l-327.396585 0c-11.307533 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.15859 20.466124 20.466124 20.466124l327.396585 0c11.2973 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C898.625548 574.575174 889.456724 565.40635 878.159424 565.40635zM857.6933 892.802936l-286.464337 0 0-286.464337 286.464337 0L857.6933 892.802936z" p-id="7151"></path><path d="M430.606225 565.40635l-327.396585 0c-11.2973 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C451.072349 574.575174 441.913758 565.40635 430.606225 565.40635zM410.140101 892.802936l-286.464337 0 0-286.464337 286.464337 0L410.140101 892.802936z" p-id="7152"></path><path d="M430.606225 115.601878l-327.396585 0c-11.2973 0-20.466124 9.15859-20.466124 20.466124l0 327.386352c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.386352C451.072349 124.760468 441.913758 115.601878 430.606225 115.601878zM410.140101 442.98823l-286.464337 0 0-286.454104 286.464337 0L410.140101 442.98823z" p-id="7153"></path><path d="M965.529307 277.744745l-214.433814-214.433814c-3.837398-3.837398-9.046027-5.996574-14.46955-5.996574-5.433756 0-10.632151 2.159176-14.479783 5.996574l-214.433814 214.433814c-7.992021 7.992021-7.992021 20.957311 0 28.949332l214.433814 214.433814c4.001127 3.990894 9.240455 5.996574 14.479783 5.996574 5.229095 0 10.468422-2.00568 14.46955-5.996574l214.433814-214.433814c3.837398-3.837398 5.996574-9.046027 5.996574-14.46955C971.525881 286.790772 969.366705 281.582143 965.529307 277.744745zM736.625944 477.709009l-185.494715-185.484482 185.494715-185.494715 185.484482 185.494715L736.625944 477.709009z" p-id="7154"></path>
-    </symbol>
-    `);
-        // 注册AI标签页类型
-        const pluginInstance = this;
-        this.addTab({
-            type: AI_TAB_TYPE,
-            init() {
-                const element = this.element as HTMLElement;
-                element.style.display = 'flex';
-                element.style.flexDirection = 'column';
-                element.style.height = '100%';
-                // 创建AI聊天界面
-                new AISidebar({
-                    target: element,
-                    props: {
-                        plugin: pluginInstance,
-                        respondToGlobalActions: true
-                    }
-                });
+        this.addDock({
+            config: {
+                position: (app.sidebarPosition as any) || "RightBottom",
+                size: { width: 400, height: 0 },
+                icon: app.icon && app.icon.startsWith('data:image') ? this.getWebAppIconId(app.id) : "iconCopilotWebApp",
+                title: app.name,
             },
-            destroy() {
-                // Svelte组件会自动清理
+            data: {
+                text: app.name
+            },
+            type: dockType,
+            init: (dock) => {
+                this.initWebAppView(dock.element, app);
+            },
+            destroy: () => {
             }
         });
-        // 注册小程序标签页类型
-        this.addTab({
-            type: WEBAPP_TAB_TYPE,
-            init() {
-                const element = this.element as HTMLElement;
-                element.style.display = 'flex';
+        this.registeredDocks.add(dockType);
+    }
+
+    initWebAppView(element: HTMLElement, app: any, tabInstance?: any) {
+        const pluginInstance = this;
+        element.style.display = 'flex';
                 element.style.flexDirection = 'column';
                 element.style.height = '100%';
                 element.tabIndex = 0; // 允许元素获取焦点以接收键盘事件
 
-                // 从 this.data 中获取 app 信息
-                const app = this.data?.app;
                 if (app) {
                     const normalizedAppUrl = pluginInstance.normalizeWebViewUrl(app.url);
                     if (normalizedAppUrl) {
@@ -739,7 +700,7 @@ export default class PluginSample extends Plugin {
                                 (async () => {
                                     try {
                                         const iconId = await pluginInstance.getOrCreateIconForDomain(selected.url);
-                                        try { if (this.tab) (this.tab as any).icon = iconId; } catch (e) { }
+                                        try { if (tabInstance?.tab) (tabInstance?.tab as any).icon = iconId; } catch (e) { }
                                         // DOM 回退：根据标签标题查找并替换 svg use
                                         try {
                                             const headers = document.querySelectorAll('li[data-type="tab-header"]');
@@ -774,7 +735,7 @@ export default class PluginSample extends Plugin {
                                         (async () => {
                                             try {
                                                 const iconId = await pluginInstance.getOrCreateIconForDomain(targetUrl);
-                                                try { if (this.tab) (this.tab as any).icon = iconId; } catch (e) { }
+                                                try { if (tabInstance?.tab) (tabInstance?.tab as any).icon = iconId; } catch (e) { }
                                                 try {
                                                     const headers = document.querySelectorAll('li[data-type="tab-header"]');
                                                     for (const h of Array.from(headers)) {
@@ -808,7 +769,7 @@ export default class PluginSample extends Plugin {
                                             (async () => {
                                                 try {
                                                     const iconId = await pluginInstance.getOrCreateIconForDomain(targetUrl);
-                                                    try { if (this.tab) (this.tab as any).icon = iconId; } catch (e) { }
+                                                    try { if (tabInstance?.tab) (tabInstance?.tab as any).icon = iconId; } catch (e) { }
                                                     try {
                                                         const headers = document.querySelectorAll('li[data-type="tab-header"]');
                                                         for (const h of Array.from(headers)) {
@@ -868,29 +829,6 @@ export default class PluginSample extends Plugin {
                     fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
                     navbar.appendChild(fullscreenBtn);
 
-                    // 打开开发者工具按钮
-                    const devtoolsBtn = document.createElement('button');
-                    devtoolsBtn.className = 'b3-button b3-button--text';
-                    devtoolsBtn.title = '打开开发者工具';
-                    devtoolsBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconCode"></use></svg>';
-
-                    devtoolsBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        try {
-                            if (webview && typeof webview.openDevTools === 'function') {
-                                webview.openDevTools();
-                            } else if (webview && typeof (webview.getWebContents) === 'function') {
-                                const wc = webview.getWebContents();
-                                if (wc && typeof wc.openDevTools === 'function') wc.openDevTools();
-                            } else {
-                                console.warn('webview.openDevTools not available in this environment.');
-                            }
-                        } catch (err) {
-                            console.warn('打开开发者工具失败:', err);
-                        }
-                    });
-                    navbar.appendChild(devtoolsBtn);
 
                     container.appendChild(navbar);
 
@@ -958,6 +896,7 @@ export default class PluginSample extends Plugin {
                     // 创建 webview/iframe 元素：Electron 环境使用 webview，其他环境降级为 iframe
                     const isElec = navigator.userAgent.toLowerCase().includes('electron');
                     const webview = document.createElement(isElec ? 'webview' : 'iframe') as any;
+
                     if (!isElec) {
                         webview.reload = function () {
                             const t = webview.src;
@@ -1045,6 +984,7 @@ export default class PluginSample extends Plugin {
 
                     // 配置 webview 属性（必须在设置 src 之前设置 partition）
                     webview.setAttribute('allowpopups', 'true');
+
 
 
                     // 所有 webapp 使用同一个 partition，这样可以在不同标签页和跨域导航时共享登录状态
@@ -1249,6 +1189,7 @@ export default class PluginSample extends Plugin {
                             e.stopPropagation();
                             showSearchBar();
                         }
+
                     });
                     // ----------------- 搜索功能逻辑结束 -----------------
 
@@ -1280,10 +1221,10 @@ export default class PluginSample extends Plugin {
                         (async () => {
                             try {
                                 const iconId = await pluginInstance.getOrCreateIconForDomain(newUrl);
-                                try { if (this.tab) (this.tab as any).icon = iconId; } catch (e) { }
+                                try { if (tabInstance?.tab) (tabInstance?.tab as any).icon = iconId; } catch (e) { }
                                 try {
                                     // 根据当前标签页标题尝试更新 tab header 的 svg
-                                    const titleText = (this.tab && this.tab.title) ? this.tab.title : '';
+                                    const titleText = (tabInstance?.tab && tabInstance?.tab.title) ? tabInstance?.tab.title : '';
                                     const headers = document.querySelectorAll('li[data-type="tab-header"]');
                                     for (const h of Array.from(headers)) {
                                         const textEl = h.querySelector('.item__text');
@@ -1335,8 +1276,8 @@ export default class PluginSample extends Plugin {
                     // 监听页面标题更新事件，动态更新标签页标题
                     webview.addEventListener('page-title-updated', (event: any) => {
                         const newTitle = event.title;
-                        if (newTitle && this.tab && typeof this.tab.updateTitle === 'function') {
-                            this.tab.updateTitle(newTitle);
+                        if (newTitle && tabInstance?.tab && typeof tabInstance?.tab.updateTitle === 'function') {
+                            tabInstance?.tab.updateTitle(newTitle);
                         }
 
                         // 更新历史记录的标题
@@ -1437,7 +1378,7 @@ export default class PluginSample extends Plugin {
                         }
 
                         // 使用当前 Tab 的 icon，如果没有则使用默认 icon
-                        const currentIcon = this.tab?.icon || "iconCopilotWebApp";
+                        const currentIcon = tabInstance?.tab?.icon || "iconCopilotWebApp";
 
                         openTab({
                             app: pluginInstance.app,
@@ -1556,6 +1497,7 @@ export default class PluginSample extends Plugin {
                                             console.log('__SIYUAN_COPILOT_HOTKEY__:ctrl-f');
                                             return false;
                                         }
+
                                     }, true);
 
                                     // 链接点击处理函数
@@ -1604,7 +1546,6 @@ export default class PluginSample extends Plugin {
                         }
                     };
 
-                    // 尝试在 webview 加载完成后注入键盘监听和点击拦截
                     webview.addEventListener('dom-ready', () => {
                         webviewReady = true; // 标记 webview 已准备好
 
@@ -1625,8 +1566,79 @@ export default class PluginSample extends Plugin {
                     webview.addEventListener('did-navigate', () => {
                         injectScript();
                     });
+        }
+    }
 
-                }
+    async onload() {
+        // 插件被启用时会自动调用这个函数
+        setPluginInstance(this);
+
+
+
+        // 注册文档树右键菜单
+        this.eventBus.on("open-menu-doctree", this.openMenuDoctreeBindThis);
+        // 注册文档块块标右键菜单
+        this.eventBus.on("click-editortitleicon", this.clickEditorTitleIconBindThis);
+        // 注册链接右键菜单
+        this.eventBus.on("open-menu-link", this.openMenuLinkBindThis);
+
+
+
+        // 加载历史记录
+        this.webViewHistory = await this.loadWebViewHistory();
+
+        // 加载设置
+        await this.loadSettings();
+
+        this.addIcons(`
+    <symbol id="iconCopilot" viewBox="0 0 1024 1024">
+    <path d="M369.579 617.984a42.71 42.71 0 1 1 85.461 0v85.205a42.71 42.71 0 1 1-85.461 0v-85.205z m284.8 0a42.71 42.71 0 1 0-85.462 0v85.205a42.71 42.71 0 1 0 85.462 0v-85.205zM511.957 171.861c-36.053-52.01-110.848-55.893-168.32-50.688-65.834 6.571-121.301 29.227-152.49 62.464-54.102 59.136-56.576 183.083-30.507 251.307-2.603 11.69-5.12 23.51-6.912 36.053C105.515 483.67 56.32 551.98 56.32 600.832v92.245c0 25.6 11.947 48.982 33.067 64.939 120.49 89.515 270.677 158.89 422.613 158.89 151.893 0 302.08-69.375 422.57-158.89a80.64 80.64 0 0 0 33.067-64.896v-92.288c0-48.853-49.194-117.163-97.408-129.835-1.792-12.544-4.266-24.32-6.912-36.01 26.07-68.267 23.552-192.214-30.506-251.307-31.19-33.28-86.614-55.893-152.491-62.507-57.472-5.162-132.267-1.28-168.363 50.688z m284.8 574.294c-65.493 36.437-174.293 85.333-284.8 85.333S292.693 782.592 227.2 746.155V498.73c105.685 40.96 227.285 19.84 284.715-75.008H512c57.43 94.848 179.03 115.925 284.715 75.008v247.381z m-341.76-454.827c0 67.67-20.48 141.312-113.92 141.312s-111.189-22.357-111.189-85.205c0-99.67 15.19-142.336 141.483-142.336 72.96 0 83.626 23.466 83.626 86.272z m113.92 0c0-62.805 10.667-86.187 83.67-86.187 126.293 0 141.482 42.667 141.482 142.294 0 62.848-17.792 85.205-111.232 85.205s-113.92-73.643-113.92-141.27z" p-id="5384"></path>
+    </symbol>
+    `);
+        this.addIcons(`
+    <symbol id="iconModelSetting" viewBox="0 0 1024 1024">
+    <path d="M1165.18 856.258H444.69c-15.086-57.882-67.556-100.843-130.03-100.843-73.95 0-134.292 60.178-134.292 134.293 0 73.95 60.178 134.292 134.293 134.292 62.473 0 115.107-42.796 130.029-100.678h720.653c18.529 0 33.614-15.086 33.614-33.614-0.164-18.53-15.25-33.45-33.778-33.45zM314.66 956.936c-37.057 0-67.064-30.17-67.064-67.064 0-37.058 30.171-67.065 67.065-67.065s67.064 30.171 67.064 67.065c0 36.893-30.17 67.064-67.064 67.064z m851.175-478.468H1062.37c-14.921-57.882-67.556-100.678-130.029-100.678s-115.108 42.796-130.029 100.678H218.246c-18.53 0-33.614 15.085-33.614 33.614 0 18.529 15.085 33.614 33.614 33.614H802.31c14.921 57.882 67.556 100.678 130.03 100.678 62.472 0 115.107-42.796 130.028-100.678h103.466c18.529 0 33.614-15.085 33.614-33.614 0-18.693-15.085-33.614-33.614-33.614zM932.34 579.146c-37.057 0-67.064-30.17-67.064-67.064s30.17-67.064 67.064-67.064c37.058 0 67.064 30.17 67.064 67.064s-30.006 67.064-67.064 67.064zM314.66 268.421c62.474 0 115.108-42.797 130.03-100.678h720.653c18.529 0 33.614-15.086 33.614-33.615 0-18.528-15.085-33.614-33.614-33.614H444.69C429.604 42.796 377.134 0 314.66 0c-74.114 0-134.292 60.177-134.292 134.292 0 73.951 60.178 134.129 134.293 134.129z m0-201.357c37.058 0 67.065 30.17 67.065 67.064 0 37.058-30.17 67.065-67.064 67.065s-67.065-30.171-67.065-67.065c-0.163-36.893 30.007-67.064 67.065-67.064z m0 0" p-id="4685"></path>
+    </symbol>
+    `);
+        this.addIcons(`
+    <symbol id="iconTranslate" viewBox="0 0 1024 1024">
+<path d="M608 416h288c35.36 0 64 28.48 64 64v416c0 35.36-28.48 64-64 64H480c-35.36 0-64-28.48-64-64v-288H128c-35.36 0-64-28.48-64-64V128c0-35.36 28.48-64 64-64h416c35.36 0 64 28.48 64 64v288z m0 64v64c0 35.36-28.48 64-64 64h-64v256.032c0 17.664 14.304 31.968 31.968 31.968H864a31.968 31.968 0 0 0 31.968-31.968V512a31.968 31.968 0 0 0-31.968-31.968H608zM128 159.968V512c0 17.664 14.304 31.968 31.968 31.968H512a31.968 31.968 0 0 0 31.968-31.968V160A31.968 31.968 0 0 0 512.032 128H160A31.968 31.968 0 0 0 128 159.968z m64 244.288V243.36h112.736V176h46.752c6.4 0.928 9.632 1.824 9.632 2.752a10.56 10.56 0 0 1-1.376 4.128c-2.752 7.328-4.128 16.032-4.128 26.112v34.368h119.648v156.768h-50.88v-20.64h-68.768v118.272H306.112v-118.272H238.752v24.768H192z m46.72-122.368v60.48h67.392V281.92H238.752z m185.664 60.48V281.92h-68.768v60.48h68.768z m203.84 488H576L668.128 576h64.64l89.344 254.4h-54.976l-19.264-53.664h-100.384l-19.232 53.632z m33.024-96.256h72.864l-34.368-108.608h-1.376l-37.12 108.608zM896 320h-64a128 128 0 0 0-128-128V128a192 192 0 0 1 192 192zM128 704h64a128 128 0 0 0 128 128v64a192 192 0 0 1-192-192z" p-id="5072"></path>
+    </symbol>
+    `);
+        this.addIcons(`
+    <symbol id="iconCopilotWebApp" viewBox="0 0 1024 1024">
+<path d="M878.159424 565.40635l-327.396585 0c-11.307533 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.15859 20.466124 20.466124 20.466124l327.396585 0c11.2973 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C898.625548 574.575174 889.456724 565.40635 878.159424 565.40635zM857.6933 892.802936l-286.464337 0 0-286.464337 286.464337 0L857.6933 892.802936z" p-id="7151"></path><path d="M430.606225 565.40635l-327.396585 0c-11.2973 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C451.072349 574.575174 441.913758 565.40635 430.606225 565.40635zM410.140101 892.802936l-286.464337 0 0-286.464337 286.464337 0L410.140101 892.802936z" p-id="7152"></path><path d="M430.606225 115.601878l-327.396585 0c-11.2973 0-20.466124 9.15859-20.466124 20.466124l0 327.386352c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.386352C451.072349 124.760468 441.913758 115.601878 430.606225 115.601878zM410.140101 442.98823l-286.464337 0 0-286.454104 286.464337 0L410.140101 442.98823z" p-id="7153"></path><path d="M965.529307 277.744745l-214.433814-214.433814c-3.837398-3.837398-9.046027-5.996574-14.46955-5.996574-5.433756 0-10.632151 2.159176-14.479783 5.996574l-214.433814 214.433814c-7.992021 7.992021-7.992021 20.957311 0 28.949332l214.433814 214.433814c4.001127 3.990894 9.240455 5.996574 14.479783 5.996574 5.229095 0 10.468422-2.00568 14.46955-5.996574l214.433814-214.433814c3.837398-3.837398 5.996574-9.046027 5.996574-14.46955C971.525881 286.790772 969.366705 281.582143 965.529307 277.744745zM736.625944 477.709009l-185.494715-185.484482 185.494715-185.494715 185.484482 185.494715L736.625944 477.709009z" p-id="7154"></path>
+    </symbol>
+    `);
+        // 注册AI标签页类型
+        const pluginInstance = this;
+        this.addTab({
+            type: AI_TAB_TYPE,
+            init() {
+                const element = this.element as HTMLElement;
+                element.style.display = 'flex';
+                element.style.flexDirection = 'column';
+                element.style.height = '100%';
+                // 创建AI聊天界面
+                new AISidebar({
+                    target: element,
+                    props: {
+                        plugin: pluginInstance,
+                        respondToGlobalActions: true
+                    }
+                });
+            },
+            destroy() {
+                // Svelte组件会自动清理
+            }
+        });
+        // 注册小程序标签页类型
+        this.addTab({
+            type: WEBAPP_TAB_TYPE,
+            init() {
+                const element = this.element as HTMLElement;
+                const app = this.data?.app;
+                pluginInstance.initWebAppView(element, app, this);
             },
             beforeDestroy() {
             },
@@ -1677,6 +1689,10 @@ export default class PluginSample extends Plugin {
                 for (const app of settings.webApps) {
                     if (app.icon && app.icon.startsWith('data:image')) {
                         this.registerWebAppIcon(app.id, app.icon);
+                    }
+
+                    if (app.showInSidebar) {
+                        this.registerWebAppDock(app);
                     }
                 }
             }

@@ -23,6 +23,7 @@
         name: '',
         url: '',
         icon: '',
+        showInSidebar: false,
     };
     let iconFile: File | null = null;
     let fileInputElement: HTMLInputElement;
@@ -51,6 +52,7 @@
             name: '',
             url: '',
             icon: '',
+            showInSidebar: false,
         };
         iconFile = null;
     }
@@ -64,6 +66,7 @@
             name: app.name,
             url: app.url,
             icon: app.icon || '',
+            showInSidebar: !!app.showInSidebar,
         };
         iconFile = null;
     }
@@ -77,6 +80,7 @@
             name: '',
             url: '',
             icon: '',
+            showInSidebar: false,
         };
         iconFile = null;
     }
@@ -128,6 +132,8 @@
                         name: editForm.name.trim(),
                         url: normalizedUrl,
                         icon: iconBase64,
+                        showInSidebar: editForm.showInSidebar,
+                        sidebarPosition: 'RightBottom',
                         updatedAt: Date.now(),
                     };
                     pushMsg('小程序已更新');
@@ -139,6 +145,8 @@
                     name: editForm.name.trim(),
                     url: normalizedUrl,
                     icon: iconBase64,
+                    showInSidebar: editForm.showInSidebar,
+                    sidebarPosition: 'RightBottom',
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
                 };
@@ -733,6 +741,24 @@
                                         />
                                     </div>
                                 </div>
+                            </div>
+
+                            <div class="webapp-manager__form-item">
+                                <label class="webapp-manager__form-label">注册到侧栏</label>
+                                <label class="fn__flex" style="align-items: center; gap: 8px; cursor: pointer;">
+                                    <input
+                                        type="checkbox"
+                                        class="b3-switch"
+                                        bind:checked={editForm.showInSidebar}
+                                    />
+                                    <span>在思源侧边栏中作为一个独立面板显示</span>
+                                </label>
+                            </div>
+
+                            <!-- 侧栏位置选项已取消，默认即为右下角，用户可通过思源笔记拖拽调整 -->
+
+                            <div class="webapp-manager__form-item" style="color: var(--b3-theme-on-surface-light); font-size: 12px; margin-top: 8px;">
+                                <span>* 修改侧栏设置需重新加载/启用插件以生效</span>
                             </div>
                         </div>
 
