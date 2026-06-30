@@ -985,6 +985,9 @@ export default class PluginSample extends Plugin {
                     // 配置 webview 属性（必须在设置 src 之前设置 partition）
                     webview.setAttribute('allowpopups', 'true');
 
+                    // 禁止 guest webview 自己响应 Ctrl+Shift+I 打开小程序开发者工具。
+                    webview.setAttribute('webpreferences', 'devTools=false');
+
 
 
                     // 所有 webapp 使用同一个 partition，这样可以在不同标签页和跨域导航时共享登录状态
