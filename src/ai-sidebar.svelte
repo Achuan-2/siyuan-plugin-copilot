@@ -12,6 +12,8 @@
         isSupportedThinkingGeminiModel,
         isSupportedThinkingClaudeModel,
         isGemini3Model,
+        estimateTokens,
+        calculateTotalTokens,
     } from './ai-chat';
     import type { MessageContent } from './ai-chat';
     import { getActiveEditor, openTab } from 'siyuan';
@@ -33,6 +35,7 @@
         putFile,
         removeFile,
     } from './api';
+    import { getModelContextLimit } from './utils/contextEstimator';
     import {
         saveAsset,
         loadAsset,
@@ -1370,6 +1373,81 @@
         thinkingEnabled?: boolean;
         thinkingEffort?: ThinkingEffort;
     }> = []; // 选中的多个模型
+
+    // === 上下文用量监控开始 ===
+    let showContextPopover = false;
+    let pinnedContextPopover = false;
+
+
+
+    function handleContextIndicatorClick(event: MouseEvent) {
+        event.stopPropagation();
+        pinnedContextPopover = !pinnedContextPopover;
+        if (pinnedContextPopover) {
+            showContextPopover = true;
+        } else {
+            showContextPopover = false;
+        }
+    }
+
+    function handleContextIndicatorMouseEnter() {
+        showContextPopover = true;
+    }
+
+    function handleContextIndicatorMouseLeave() {
+        if (!pinnedContextPopover) {
+            showContextPopover = false;
+        }
+    }
+
+    // 响应式计算上下文用量
+    $: totalHistoryTokens = calculateTotalTokens(messages);
+    $: currentInputTokens = estimateTokens(currentInput);
+    $: activeTools = (chatMode === 'agent' || chatMode === 'ask') ? buildToolsForCurrentMode(true) : undefined;
+    $: toolsTokens = activeTools ? estimateTokens(JSON.stringify(activeTools)) : 0;
+    $: totalUsedTokens = totalHistoryTokens + currentInputTokens + toolsTokens;
+
+    $: activeModelsContextInfo = (() => {
+        if (enableMultiModel && selectedMultiModels.length > 0) {
+            return selectedMultiModels.map(model => {
+                const limit = getModelContextLimit(model.modelId, model.provider);
+                const ratio = limit > 0 ? (totalUsedTokens / limit) : 0;
+                const config = getProviderAndModelConfig(model.provider, model.modelId);
+                const modelName = config?.modelConfig?.name || model.modelId;
+                const providerName = config?.providerConfig?.name || model.provider;
+                return {
+                    modelId: model.modelId,
+                    provider: model.provider,
+                    modelName,
+                    providerName,
+                    limit,
+                    used: totalUsedTokens,
+                    ratio
+                };
+            });
+        } else if (currentModelId) {
+            const limit = getModelContextLimit(currentModelId, currentProvider);
+            const ratio = limit > 0 ? (totalUsedTokens / limit) : 0;
+            const config = getProviderAndModelConfig(currentProvider, currentModelId);
+            const modelName = config?.modelConfig?.name || currentModelId;
+            const providerName = config?.providerConfig?.name || currentProvider;
+            return [{
+                modelId: currentModelId,
+                provider: currentProvider,
+                modelName,
+                providerName,
+                limit,
+                used: totalUsedTokens,
+                ratio
+            }];
+        }
+        return [];
+    })();
+
+    $: contextProgress = activeModelsContextInfo.length > 0 
+        ? Math.max(...activeModelsContextInfo.map(m => m.ratio))
+        : 0;
+    // === 上下文用量监控结束 ===
 
     let multiModelResponses: Array<{
         provider: string;
@@ -10113,6 +10191,14 @@
     function handleClickOutside(event: MouseEvent) {
         const target = event.target as HTMLElement;
 
+        // 关闭上下文用量 popover
+        if (pinnedContextPopover) {
+            if (!target.closest('.ai-sidebar__context-indicator') && !target.closest('.ai-sidebar__context-popover')) {
+                pinnedContextPopover = false;
+                showContextPopover = false;
+            }
+        }
+
         // 关闭右键菜单
         if (contextMenuVisible && !target.closest('.ai-sidebar__context-menu')) {
             closeContextMenu();
@@ -14993,6 +15079,59 @@
                     rows="1"
                     spellcheck="false"
                 ></textarea>
+                
+                <!-- 上下文用量圆环进度条 -->
+                {#if activeModelsContextInfo.length > 0}
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <div 
+                        class="ai-sidebar__context-indicator"
+                        on:click={handleContextIndicatorClick}
+                        on:mouseenter={handleContextIndicatorMouseEnter}
+                        on:mouseleave={handleContextIndicatorMouseLeave}
+                    >
+                        <svg width="20" height="20" viewBox="0 0 20 20">
+                            <!-- Track -->
+                            <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary-light)" stroke-width="2" opacity="0.2" />
+                            <!-- Progress -->
+                            <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary)" stroke-width="2"
+                                    stroke-dasharray="50.265" stroke-dashoffset={50.265 * (1 - Math.min(contextProgress, 1))}
+                                    transform="rotate(-90 10 10)" stroke-linecap="round" />
+                            <!-- Dot indicator -->
+                            {#if contextProgress > 0}
+                                {@const angle = -Math.PI / 2 + 2 * Math.PI * Math.min(contextProgress, 1)}
+                                <circle cx={10 + 8 * Math.cos(angle)} cy={10 + 8 * Math.sin(angle)} r="1.8" fill="var(--b3-theme-primary)" />
+                            {/if}
+                        </svg>
+                    </div>
+                {/if}
+
+                <!-- 上下文用量详情弹窗 -->
+                {#if showContextPopover && activeModelsContextInfo.length > 0}
+                    <div class="ai-sidebar__context-popover" on:click|stopPropagation>
+                        <div class="ai-sidebar__context-popover-title">
+                            {enableMultiModel ? i18n('aiSidebar.context.multiUsage') : i18n('aiSidebar.context.usage')}
+                        </div>
+                        <div class="ai-sidebar__context-popover-list">
+                            {#each activeModelsContextInfo as info}
+                                <div class="ai-sidebar__context-popover-item">
+                                    <div class="ai-sidebar__context-popover-model-name">
+                                        {info.modelName} <span class="ai-sidebar__context-popover-provider-name">({info.providerName})</span>
+                                    </div>
+                                    <div class="ai-sidebar__context-popover-progress-bar-wrapper">
+                                        <div class="ai-sidebar__context-popover-progress-bar" style="width: {Math.min(info.ratio * 100, 100)}%;"></div>
+                                    </div>
+                                    <div class="ai-sidebar__context-popover-stats">
+                                        {info.used.toLocaleString()} / {info.limit.toLocaleString()} tokens ({Math.round(info.ratio * 100)}%)
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                        <div class="ai-sidebar__context-popover-hint">
+                            {i18n('aiSidebar.context.usageHint')}
+                        </div>
+                    </div>
+                {/if}
+
                 <button
                     class="b3-button ai-sidebar__send-btn"
                     class:b3-button--primary={!isLoading}
@@ -16808,7 +16947,7 @@
         border: none;
         border-radius: 12px;
         padding: 12px 16px;
-        padding-right: 48px; /* 为发送按钮留出空间 */
+        padding-right: 76px; /* 为发送按钮和上下文指示器留出空间 */
         font-family: var(--b3-font-family);
         font-size: 14px;
         line-height: 1.5;
@@ -16830,6 +16969,118 @@
         &::placeholder {
             color: var(--b3-theme-on-surface-light);
         }
+    }
+
+    .ai-sidebar__context-indicator {
+        position: absolute;
+        right: 48px; /* 6px (right) + 36px (width) + 6px (gap) = 48px */
+        bottom: 14px; /* Centered vertically relative to the 36px send button */
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--b3-theme-primary);
+        z-index: 10;
+        user-select: none;
+        transition: transform 0.2s ease;
+
+        &:hover {
+            transform: scale(1.1);
+        }
+    }
+
+    .ai-sidebar__context-popover {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        right: 6px;
+        background: var(--b3-theme-background);
+        border: 1px solid var(--b3-border-color);
+        box-shadow: var(--b3-dialog-shadow);
+        border-radius: 8px;
+        padding: 12px;
+        width: 260px;
+        z-index: 100;
+        font-size: 13px;
+        color: var(--b3-theme-on-background);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: auto;
+
+        &::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            right: 50px; /* Align arrow below the indicator */
+            width: 10px;
+            height: 10px;
+            background: var(--b3-theme-background);
+            border-bottom: 1px solid var(--b3-border-color);
+            border-right: 1px solid var(--b3-border-color);
+            transform: rotate(45deg);
+        }
+    }
+
+    .ai-sidebar__context-popover-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--b3-theme-on-background);
+        border-bottom: 1px solid var(--b3-border-color);
+        padding-bottom: 6px;
+    }
+
+    .ai-sidebar__context-popover-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .ai-sidebar__context-popover-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .ai-sidebar__context-popover-model-name {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .ai-sidebar__context-popover-provider-name {
+        font-size: 11px;
+        color: var(--b3-theme-on-surface-light);
+    }
+
+    .ai-sidebar__context-popover-progress-bar-wrapper {
+        height: 6px;
+        background: var(--b3-theme-background-light);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .ai-sidebar__context-popover-progress-bar {
+        height: 100%;
+        background: var(--b3-theme-primary);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
+    .ai-sidebar__context-popover-stats {
+        font-size: 11px;
+        color: var(--b3-theme-on-surface-light);
+        text-align: right;
+    }
+
+    .ai-sidebar__context-popover-hint {
+        font-size: 10px;
+        color: var(--b3-theme-on-surface-light);
+        border-top: 1px dashed var(--b3-border-color);
+        padding-top: 6px;
+        margin-top: 4px;
     }
 
     .ai-sidebar__bottom-row {
@@ -19042,7 +19293,12 @@
 
         .ai-sidebar__input {
             padding: 10px 14px;
-            padding-right: 46px;
+            padding-right: 70px;
+        }
+
+        .ai-sidebar__context-indicator {
+            right: 44px;
+            bottom: 12px;
         }
 
         .ai-sidebar__send-btn {
@@ -19071,7 +19327,12 @@
         .ai-sidebar__input {
             font-size: 13px;
             padding: 8px 12px;
-            padding-right: 42px;
+            padding-right: 64px;
+        }
+
+        .ai-sidebar__context-indicator {
+            right: 40px;
+            bottom: 10px;
         }
 
         .ai-sidebar__send-btn {

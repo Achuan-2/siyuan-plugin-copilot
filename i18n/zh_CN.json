@@ -385,7 +385,10 @@
             "content": "上下文内容",
             "addDocument": "添加文档",
             "remove": "移除",
-            "open": "打开"
+            "open": "打开",
+            "usage": "上下文用量",
+            "multiUsage": "多模型上下文用量",
+            "usageHint": "* 用量为估算值，包含当前输入框文本"
         },
         "attachment": {
             "title": "附件",

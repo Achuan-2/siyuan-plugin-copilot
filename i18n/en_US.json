@@ -384,7 +384,10 @@
             "content": "Context Content",
             "addDocument": "Add Document",
             "remove": "Remove",
-            "open": "Open"
+            "open": "Open",
+            "usage": "Context Usage",
+            "multiUsage": "Multi-Model Context Usage",
+            "usageHint": "* Usage is estimated, including text in the input box"
         },
         "attachment": {
             "title": "Attachments",
