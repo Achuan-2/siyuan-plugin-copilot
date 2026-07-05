@@ -9,6 +9,9 @@
         type ToolCall,
         type ContextDocument,
         type ThinkingEffort,
+        type QuestionCardData,
+        type QuestionItem,
+        type QuestionCardAnswers,
         isSupportedThinkingGeminiModel,
         isSupportedThinkingClaudeModel,
         isGemini3Model,
@@ -67,6 +70,7 @@
         soul,
         loadAllSkills,
         type Skill,
+        type ToolExecutionCallbacks,
     } from './tools';
 
     import { Editor } from '@tiptap/core';
@@ -90,6 +94,26 @@
 5. 根据工具返回结果继续后续操作
 **为什么要这样做？**
 - 每个工具都有复杂的参数和特定的使用场景，直接使用而不看文档极有可能导致错误操作`;
+
+    // Question Card 工具使用说明
+    const QUESTION_CARD_INSTRUCTION = `=== 用户确认工具 ===
+当你需要向用户提问、收集偏好、确认选择或让用户从多个选项中决策时，调用 ask_user_question 工具。
+此工具会暂停你的执行，并在聊天流中显示一个交互式问题卡片，直到用户填写并提交答案；答案会作为 tool result 返回给你。
+
+ask_user_question 参数说明：
+- questions: 问题数组，每个问题包含：
+  - id: 必填，唯一标识，提交答案时作为 key
+  - type: 必填，"single"(单选) | "multiple"(多选) | "text"(文本输入)
+  - title: 必填，问题标题
+  - description: 可选，补充说明
+  - options: 单选/多选必填，选项数组，每项 { label, value?, description? }
+  - required: 可选，是否必填
+  - placeholder: 可选，文本输入占位提示
+- submitButtonText: 可选，提交按钮文本，默认"提交"
+
+重要约束：
+- 不要替用户做选择；需要确认时必须调用 ask_user_question。
+- 调用 ask_user_question 的轮次里，尽量不要同时调用其他工具，避免 UI 冲突。`;
 
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
@@ -148,6 +172,125 @@
 
         const toolsForCurrentMode = [...extraTools, ...filteredToolDefs];
         return toolsForCurrentMode.length > 0 ? toolsForCurrentMode : undefined;
+    }
+
+    // ==================== Question Card 工具执行回调 ====================
+
+    function normalizeQuestionOptionValue(value: unknown): string {
+        if (value === null || value === undefined) return '';
+        return String(value);
+    }
+
+    function normalizeQuestionRequired(required: unknown): boolean {
+        if (required === true) return true;
+        if (typeof required === 'string') return required.toLowerCase() === 'true';
+        return false;
+    }
+
+    function normalizeQuestionCardQuestions(questions: QuestionItem[]): QuestionItem[] {
+        return questions.map(question => ({
+            ...question,
+            id: normalizeQuestionOptionValue(question.id),
+            required: normalizeQuestionRequired(question.required),
+            options: question.options?.map(option => ({
+                ...option,
+                label: normalizeQuestionOptionValue(option.label),
+                value: option.value === undefined
+                    ? undefined
+                    : normalizeQuestionOptionValue(option.value),
+            })),
+        }));
+    }
+
+    const toolExecutionCallbacks: ToolExecutionCallbacks = {
+        onAskQuestion: async ({ questions, submitButtonText }) => {
+            const cardId = `qcard_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const normalizedQuestions = normalizeQuestionCardQuestions(questions);
+            pendingQuestionCard = {
+                cardId,
+                questions: normalizedQuestions,
+                submitButtonText,
+            };
+            // 初始化答案对象，确保 Svelte 绑定能正确响应
+            const initialAnswers: QuestionCardAnswers = {};
+            for (const q of normalizedQuestions) {
+                if (q.type === 'multiple') {
+                    initialAnswers[q.id] = [];
+                } else {
+                    initialAnswers[q.id] = '';
+                }
+            }
+            questionCardAnswers = initialAnswers;
+            isWaitingForQuestionAnswer = true;
+            await scrollToBottom(true);
+            return new Promise<QuestionCardAnswers>((resolve) => {
+                pendingQuestionResolve = (answers) => {
+                    pendingQuestionCard = null;
+                    pendingQuestionResolve = null;
+                    isWaitingForQuestionAnswer = false;
+                    questionCardAnswers = {};
+                    resolve(answers);
+                };
+            });
+        },
+    };
+
+    function clearQuestionCardState() {
+        if (pendingQuestionResolve) {
+            pendingQuestionResolve({});
+        }
+        pendingQuestionCard = null;
+        pendingQuestionResolve = null;
+        isWaitingForQuestionAnswer = false;
+        questionCardAnswers = {};
+    }
+
+    function isQuestionCardValid(
+        questions: QuestionItem[],
+        answers: QuestionCardAnswers
+    ): boolean {
+        return questions.every(q => {
+            if (!normalizeQuestionRequired(q.required)) return true;
+            const value = answers[q.id];
+            if (q.type === 'multiple') {
+                return Array.isArray(value) && value.length > 0;
+            }
+            return typeof value === 'string' && value.trim() !== '';
+        });
+    }
+
+    function submitQuestionCard() {
+        if (!pendingQuestionCard || !pendingQuestionResolve) return;
+        if (!isQuestionCardValid(pendingQuestionCard.questions, questionCardAnswers)) {
+            pushErrMsg('请填写所有必填项');
+            return;
+        }
+        pendingQuestionResolve({ ...questionCardAnswers });
+    }
+
+    function toggleMultipleAnswer(questionId: string, value: string, checked: boolean) {
+        const current = questionCardAnswers[questionId];
+        const arr = Array.isArray(current) ? [...current] : [];
+        if (checked) {
+            if (!arr.includes(value)) arr.push(value);
+        } else {
+            const idx = arr.indexOf(value);
+            if (idx !== -1) arr.splice(idx, 1);
+        }
+        questionCardAnswers = { ...questionCardAnswers, [questionId]: arr };
+    }
+
+    function isQuestionOptionSelected(questionId: string, value: string): boolean {
+        const answers = questionCardAnswers[questionId];
+        return Array.isArray(answers) && answers.includes(value);
+    }
+
+    function updateTextAnswer(questionId: string, value: string) {
+        questionCardAnswers = { ...questionCardAnswers, [questionId]: value };
+    }
+
+    function updateSingleAnswer(questionId: string, value: string) {
+        questionCardAnswers = { ...questionCardAnswers, [questionId]: value };
     }
 
     export let plugin: any;
@@ -1368,7 +1511,8 @@
                                 if (!isEnabledTool) {
                                     toolResult = await executeToolCall(
                                         tc,
-                                        allowedExecutableToolNames
+                                        allowedExecutableToolNames,
+                                        toolExecutionCallbacks
                                     );
                                 } else if (autoApprove) {
                                     console.log(
@@ -1376,7 +1520,8 @@
                                     );
                                     toolResult = await executeToolCall(
                                         tc,
-                                        allowedExecutableToolNames
+                                        allowedExecutableToolNames,
+                                        toolExecutionCallbacks
                                     );
                                 } else {
                                     console.log(
@@ -1817,6 +1962,12 @@
     let selectedAnswerIndex: number | null = null; // 用户选择的答案索引
     let multiModelLayout: 'card' | 'tab' = 'tab'; // 多模型布局模式：card 或 tab（会在初始化时从设置读取）
     let selectedTabIndex: number = 0; // 当前选中的页签索引
+
+    // Question Card 状态
+    let pendingQuestionCard: QuestionCardData | null = null; // 当前等待回答的问题卡片
+    let pendingQuestionResolve: ((answers: QuestionCardAnswers) => void) | null = null; // 提交答案后 resolve
+    let isWaitingForQuestionAnswer = false; // 是否在等待用户回答问题卡片
+    let questionCardAnswers: QuestionCardAnswers = {}; // 当前卡片各问题的临时答案
 
     // 保存到笔记相关
     let isSaveToNoteDialogOpen = false; // 保存到笔记对话框是否打开
@@ -4014,7 +4165,8 @@
                                     if (!isEnabledTool) {
                                         toolResult = await executeToolCall(
                                             tc,
-                                            allowedExecutableToolNames
+                                            allowedExecutableToolNames,
+                                            toolExecutionCallbacks
                                         );
                                     } else if (autoApprove) {
                                         console.log(
@@ -4022,7 +4174,8 @@
                                         );
                                         toolResult = await executeToolCall(
                                             tc,
-                                            allowedExecutableToolNames
+                                            allowedExecutableToolNames,
+                                            toolExecutionCallbacks
                                         );
                                     } else {
                                         // 多模型模式下，非自动批准的工具暂时直接拒绝，避免 UI 冲突
@@ -5765,6 +5918,13 @@
             return;
         }
 
+        // 如果处于等待问题卡片回答状态，阻止发送
+        if (isWaitingForQuestionAnswer) {
+            pushErrMsg('请先回答当前问题卡片');
+            isLoading = false;
+            return;
+        }
+
         // 检查设置
         const providerConfig = getCurrentProviderConfig();
         if (!providerConfig) {
@@ -5911,6 +6071,7 @@
         streamingThinking = '';
         thinkingBeforeToolCalls = ''; // 重置工具调用前的思考内容
         isThinkingPhase = false;
+        clearQuestionCardState(); // 发送新消息时清空 question card 状态
         hasUnsavedChanges = true;
         autoScroll = true; // 发送新消息时启用自动滚动
 
@@ -6342,6 +6503,12 @@
                 baseSystemPrompt = AGENT_TOOL_USAGE_INSTRUCTION;
             }
             hasToolInstruction = true;
+
+            // 如果启用了 ask_user_question 工具，追加 question card 使用说明
+            const currentSelectedTools = chatMode === 'ask' ? selectedToolsAsk : selectedTools;
+            if (currentSelectedTools.some(t => t.name === 'ask_user_question')) {
+                baseSystemPrompt += '\n\n' + QUESTION_CARD_INSTRUCTION;
+            }
         }
 
         // 添加最终的系统提示词
@@ -6619,7 +6786,8 @@
                                         if (!isEnabledTool) {
                                             toolResult = await executeToolCall(
                                                 toolCall,
-                                                allowedExecutableToolNames
+                                                allowedExecutableToolNames,
+                                                toolExecutionCallbacks
                                             );
 
                                             const toolResultMessage: Message = {
@@ -6636,7 +6804,8 @@
                                             );
                                             toolResult = await executeToolCall(
                                                 toolCall,
-                                                allowedExecutableToolNames
+                                                allowedExecutableToolNames,
+                                                toolExecutionCallbacks
                                             );
 
                                             // 添加工具结果消息
@@ -6675,7 +6844,8 @@
                                             if (approved) {
                                                 toolResult = await executeToolCall(
                                                     toolCall,
-                                                    allowedExecutableToolNames
+                                                    allowedExecutableToolNames,
+                                                    toolExecutionCallbacks
                                                 );
 
                                                 // 添加工具结果消息
@@ -6916,6 +7086,7 @@
                                 streamingThinking = '';
                                 isThinkingPhase = false;
                                 abortController = null;
+                                clearQuestionCardState(); // 错误时清理 question card 状态
 
                                 // 通知完成（错误时也要结束等待）
                                 toolExecutionComplete?.();
@@ -7073,6 +7244,7 @@
                             streamingThinking = '';
                             isThinkingPhase = false;
                             abortController = null;
+                            clearQuestionCardState(); // 错误时清理 question card 状态
                         },
                     },
                     providerConfig.customApiUrl,
@@ -7111,6 +7283,9 @@
         if (abortController) {
             abortController.abort();
             isAborted = true; // 设置中断标志，防止 onComplete 再次添加消息
+
+            // 清理 question card 等待状态
+            clearQuestionCardState();
 
             // 如果是多模型模式且正在等待选择答案
             if (isWaitingForAnswerSelection && multiModelResponses.length > 0) {
@@ -11852,6 +12027,12 @@
                 baseSystemPrompt = AGENT_TOOL_USAGE_INSTRUCTION;
             }
             hasToolInstruction = true;
+
+            // 如果启用了 ask_user_question 工具，追加 question card 使用说明
+            const currentSelectedTools = chatMode === 'ask' ? selectedToolsAsk : selectedTools;
+            if (currentSelectedTools.some(t => t.name === 'ask_user_question')) {
+                baseSystemPrompt += '\n\n' + QUESTION_CARD_INSTRUCTION;
+            }
         }
 
         // 添加最终的系统提示词
@@ -12078,7 +12259,8 @@
                                         if (!isEnabledTool) {
                                             toolResult = await executeToolCall(
                                                 toolCall,
-                                                allowedExecutableToolNames
+                                                allowedExecutableToolNames,
+                                                toolExecutionCallbacks
                                             );
 
                                             const toolResultMessage: Message = {
@@ -12095,7 +12277,8 @@
                                             );
                                             toolResult = await executeToolCall(
                                                 toolCall,
-                                                allowedExecutableToolNames
+                                                allowedExecutableToolNames,
+                                                toolExecutionCallbacks
                                             );
 
                                             // 添加工具结果消息
@@ -12134,7 +12317,8 @@
                                             if (approved) {
                                                 toolResult = await executeToolCall(
                                                     toolCall,
-                                                    allowedExecutableToolNames
+                                                    allowedExecutableToolNames,
+                                                    toolExecutionCallbacks
                                                 );
 
                                                 // 添加工具结果消息
@@ -12376,6 +12560,7 @@
                                 streamingThinking = '';
                                 isThinkingPhase = false;
                                 abortController = null;
+                                clearQuestionCardState(); // 错误时清理 question card 状态
 
                                 // 通知完成（错误时也要结束等待）
                                 toolExecutionComplete?.();
@@ -14497,7 +14682,101 @@
                     </div>
                 {/if}
 
-                {#if streamingMessage}
+                {#if pendingQuestionCard}
+                    <div
+                        class="ai-message__content b3-typography"
+                        style={messageFontSize ? `font-size: ${messageFontSize}px;` : ''}
+                    >
+                        <div class="agent-chat__question-card">
+                            {#each pendingQuestionCard.questions as question (question.id)}
+                                <div class="agent-chat__question-item">
+                                    <div class="agent-chat__question-title">{question.title}</div>
+                                    {#if question.description}
+                                        <div class="agent-chat__question-description">
+                                            {question.description}
+                                        </div>
+                                    {/if}
+                                    {#if question.type === 'single'}
+                                        <div class="agent-chat__question-options">
+                                            {#each question.options || [] as opt}
+                                                {@const optionValue = opt.value ?? opt.label}
+                                                <label class="agent-chat__question-option">
+                                                    <input
+                                                        type="radio"
+                                                        name={`q_${pendingQuestionCard.cardId}_${question.id}`}
+                                                        value={optionValue}
+                                                        checked={questionCardAnswers[question.id] === optionValue}
+                                                        on:change={() => updateSingleAnswer(question.id, optionValue)}
+                                                    />
+                                                    <span class="agent-chat__question-option-label"
+                                                        >{opt.label}</span
+                                                    >
+                                                    {#if opt.description}
+                                                        <span
+                                                            class="agent-chat__question-option-desc"
+                                                            >{opt.description}</span
+                                                        >
+                                                    {/if}
+                                                </label>
+                                            {/each}
+                                        </div>
+                                    {:else if question.type === 'multiple'}
+                                        <div class="agent-chat__question-options">
+                                            {#each question.options || [] as opt}
+                                                {@const optionValue = opt.value ?? opt.label}
+                                                <label class="agent-chat__question-option">
+                                                    <input
+                                                        type="checkbox"
+                                                        value={optionValue}
+                                                        checked={isQuestionOptionSelected(
+                                                            question.id,
+                                                            optionValue
+                                                        )}
+                                                        on:change={(e) =>
+                                                            toggleMultipleAnswer(
+                                                                question.id,
+                                                                optionValue,
+                                                                e.currentTarget.checked
+                                                            )}
+                                                    />
+                                                    <span class="agent-chat__question-option-label"
+                                                        >{opt.label}</span
+                                                    >
+                                                    {#if opt.description}
+                                                        <span
+                                                            class="agent-chat__question-option-desc"
+                                                            >{opt.description}</span
+                                                        >
+                                                    {/if}
+                                                </label>
+                                            {/each}
+                                        </div>
+                                    {:else}
+                                        <input
+                                            class="b3-text-field"
+                                            type="text"
+                                            value={questionCardAnswers[question.id] || ''}
+                                            placeholder={question.placeholder || ''}
+                                            on:input={(e) => updateTextAnswer(question.id, e.currentTarget.value)}
+                                        />
+                                    {/if}
+                                </div>
+                            {/each}
+                            <div class="agent-chat__question-actions">
+                                <button
+                                    class="b3-button b3-button--primary"
+                                    on:click={submitQuestionCard}
+                                    disabled={!isQuestionCardValid(
+                                        pendingQuestionCard.questions,
+                                        questionCardAnswers
+                                    )}
+                                >
+                                    {pendingQuestionCard.submitButtonText || '提交'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                {:else if streamingMessage}
                     <div
                         class="ai-message__content b3-typography"
                         style={messageFontSize ? `font-size: ${messageFontSize}px;` : ''}
@@ -17367,6 +17646,51 @@
         .ai-message__actions {
             justify-content: flex-start;
         }
+    }
+
+    .agent-chat__question-card {
+        cursor: default;
+        user-select: none;
+    }
+
+    .agent-chat__question-title {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .agent-chat__question-description {
+        color: var(--b3-theme-on-surface-light);
+        font-size: 12px;
+        margin-bottom: 8px;
+    }
+
+    .agent-chat__question-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .agent-chat__question-option,
+    .agent-chat__question-option input,
+    .agent-chat__question-actions .b3-button {
+        cursor: pointer;
+    }
+
+    .agent-chat__question-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .agent-chat__question-option-desc {
+        color: var(--b3-theme-on-surface-light);
+        font-size: 12px;
+    }
+
+    .agent-chat__question-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
     }
 
     .ai-sidebar__input-container {

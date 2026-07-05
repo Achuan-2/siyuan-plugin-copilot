@@ -48,6 +48,7 @@ import { getActiveEditor } from 'siyuan';
 import { parseWebPageToMarkdown, fetchWithWebView } from '../utils/webParser';
 import { settingsStore } from '../stores/settings';
 import { get } from 'svelte/store';
+import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
 
 /**
  * 获取当前激活的编辑器 Protyle 实例
@@ -109,6 +110,7 @@ export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
             'run_python',
             'run_command',
             'create_skill',
+            'ask_user_question',
         ],
     },
 };
@@ -133,6 +135,7 @@ export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
             'soul',
             'run_js',
             'run_command',
+            'ask_user_question',
         ],
     },
 };
@@ -167,6 +170,8 @@ export interface ToolParameter {
     enum?: string[];
     items?: ToolParameter;
     default?: any;
+    properties?: Record<string, ToolParameter>;
+    required?: string[];
 }
 
 export interface ToolCall {
@@ -183,6 +188,19 @@ export interface ToolResult {
     tool_call_id: string;
     name: string;
     content: string;
+}
+
+// ==================== 工具执行回调 ====================
+
+/**
+ * 工具执行期间需要与 UI 交互的回调
+ */
+export interface ToolExecutionCallbacks {
+    /** 当 ask_user_question 工具被调用时，由 UI 阻塞并返回用户答案 */
+    onAskQuestion?: (data: {
+        questions: QuestionItem[];
+        submitButtonText?: string;
+    }) => Promise<QuestionCardAnswers>;
 }
 
 // ==================== 工具定义 ====================
@@ -1304,6 +1322,81 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 },
             },
             required: ['id'],
+        }
+    ),
+
+    // 向用户弹出 question card 并收集答案
+    createTool(
+        'ask_user_question',
+        getBuiltinToolSkillDescription('ask_user_question'),
+        {
+            type: 'object',
+            properties: {
+                questions: {
+                    type: 'array',
+                    description: '要问用户的问题列表。每个问题包含 id、type、title、description、options、required、placeholder。',
+                    items: {
+                        type: 'object',
+                        description: '单个问题',
+                        properties: {
+                            id: {
+                                type: 'string',
+                                description: '问题唯一标识，提交答案时作为 key',
+                            },
+                            type: {
+                                type: 'string',
+                                description: '问题类型：single(单选)、multiple(多选)、text(文本输入)',
+                                enum: ['single', 'multiple', 'text'],
+                            },
+                            title: {
+                                type: 'string',
+                                description: '问题标题',
+                            },
+                            description: {
+                                type: 'string',
+                                description: '可选的补充说明',
+                            },
+                            options: {
+                                type: 'array',
+                                description: '单选/多选时的选项列表；text 类型可省略',
+                                items: {
+                                    type: 'object',
+                                    description: '单个选项',
+                                    properties: {
+                                        label: {
+                                            type: 'string',
+                                            description: '选项显示文本',
+                                        },
+                                        value: {
+                                            type: 'string',
+                                            description: '选项值；省略时使用 label 作为值',
+                                        },
+                                        description: {
+                                            type: 'string',
+                                            description: '选项的额外说明',
+                                        },
+                                    },
+                                    required: ['label'],
+                                },
+                            },
+                            required: {
+                                type: 'boolean',
+                                description: '是否必填',
+                            },
+                            placeholder: {
+                                type: 'string',
+                                description: '文本输入框的占位提示',
+                            },
+                        },
+                        required: ['id', 'type', 'title'],
+                    },
+                },
+                submitButtonText: {
+                    type: 'string',
+                    description: '提交按钮文本，默认为“提交”',
+                },
+            },
+            required: ['questions'],
         }
     ),
 
@@ -3208,7 +3301,8 @@ export async function soul(params: {
  */
 export async function executeToolCall(
     toolCall: ToolCall,
-    allowedToolNames?: Iterable<string>
+    allowedToolNames?: Iterable<string>,
+    callbacks?: ToolExecutionCallbacks
 ): Promise<string> {
     const { name, arguments: argsStr } = toolCall.function;
     const allowedToolNameSet = normalizeAllowedToolNames(allowedToolNames);
@@ -3221,6 +3315,22 @@ export async function executeToolCall(
         const args = JSON.parse(argsStr);
 
         switch (name) {
+            case 'ask_user_question': {
+                if (!Array.isArray(args.questions) || args.questions.length === 0) {
+                    return 'ask_user_question 调用失败：questions 必须是包含至少一个问题的数组';
+                }
+                if (!callbacks?.onAskQuestion) {
+                    return 'ask_user_question 调用失败：当前环境不支持 question card 交互';
+                }
+                const answers = await callbacks.onAskQuestion({
+                    questions: args.questions,
+                    submitButtonText: typeof args.submitButtonText === 'string'
+                        ? args.submitButtonText
+                        : undefined,
+                });
+                return JSON.stringify(answers, null, 2);
+            }
+
             case 'soul':
                 const soulResult = await soul(args);
                 return JSON.stringify(soulResult, null, 2);

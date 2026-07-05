@@ -15,6 +15,77 @@
   }
 }
 
+/* Question Card 样式 */
+.agent-chat__question-card {
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--b3-theme-surface);
+  border: 1px solid var(--b3-border-color);
+  border-radius: 8px;
+}
+
+.agent-chat__question-item {
+  margin-bottom: 16px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.agent-chat__question-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--b3-theme-on-background);
+}
+
+.agent-chat__question-description {
+  font-size: 12px;
+  color: var(--b3-theme-on-surface);
+  margin-bottom: 8px;
+}
+
+.agent-chat__question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-chat__question-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--b3-theme-background-light);
+  }
+
+  input[type="radio"],
+  input[type="checkbox"] {
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+}
+
+.agent-chat__question-option-label {
+  color: var(--b3-theme-on-background);
+}
+
+.agent-chat__question-option-desc {
+  font-size: 12px;
+  color: var(--b3-theme-on-surface);
+  margin-left: auto;
+}
+
+.agent-chat__question-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 /* 滚动条样式 */
 .ai-sidebar__messages {
   &::-webkit-scrollbar {

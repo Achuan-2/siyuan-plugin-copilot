@@ -118,6 +118,34 @@ export interface GeneratedImageData {
 // 思考努力程度类型
 export type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto';
 
+// ==================== Question Card 类型 ====================
+
+export interface QuestionOption {
+    label: string;
+    value?: string;
+    description?: string;
+}
+
+export type QuestionType = 'single' | 'multiple' | 'text';
+
+export interface QuestionItem {
+    id: string;
+    type: QuestionType;
+    title: string;
+    description?: string;
+    options?: QuestionOption[];
+    required?: boolean;
+    placeholder?: string;
+}
+
+export interface QuestionCardData {
+    cardId: string;
+    questions: QuestionItem[];
+    submitButtonText?: string;
+}
+
+export type QuestionCardAnswers = Record<string, string | string[]>;
+
 export interface ChatOptions {
     apiKey: string;
     model: string;
