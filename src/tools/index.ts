@@ -3449,19 +3449,62 @@ function parseYamlFrontmatter(content: string) {
     const yamlStr = match[1];
     const markdown = content.substring(match[0].length).trim();
     const yaml: Record<string, string> = {};
-    const lines = yamlStr.split('\n');
-    for (const line of lines) {
+    
+    const lines = yamlStr.split(/\r?\n/);
+    let currentKey: string | null = null;
+    let inBlockScalar = false;
+    let blockLines: string[] = [];
+    let blockIndent = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        if (inBlockScalar) {
+            const indentMatch = line.match(/^(\s+)/);
+            if (line.trim() === '') {
+                blockLines.push(line);
+                continue;
+            }
+            if (indentMatch) {
+                const indent = indentMatch[1].length;
+                if (blockLines.length === 0) {
+                    blockIndent = indent;
+                }
+                blockLines.push(line.substring(Math.min(indent, blockIndent)));
+                continue;
+            } else {
+                if (currentKey) {
+                    yaml[currentKey] = blockLines.join('\n').trimRight();
+                }
+                inBlockScalar = false;
+                blockLines = [];
+                currentKey = null;
+            }
+        }
+
         const colonIndex = line.indexOf(':');
         if (colonIndex > 0) {
             const key = line.substring(0, colonIndex).trim();
             let val = line.substring(colonIndex + 1).trim();
-            // remove surrounding quotes
+
+            if (val === '|' || val === '|-' || val === '|+' || val === '>' || val === '>-' || val === '>+') {
+                currentKey = key;
+                inBlockScalar = true;
+                blockLines = [];
+                continue;
+            }
+
             if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
                 val = val.substring(1, val.length - 1);
             }
             yaml[key] = val;
         }
     }
+
+    if (inBlockScalar && currentKey) {
+        yaml[currentKey] = blockLines.join('\n').trimRight();
+    }
+
     return { yaml, markdown };
 }
 
