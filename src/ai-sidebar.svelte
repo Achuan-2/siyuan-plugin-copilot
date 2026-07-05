@@ -327,6 +327,50 @@
         }
     });
 
+    const ContextImage = Node.create({
+        name: 'contextImage',
+        group: 'inline',
+        inline: true,
+        selectable: true,
+        atom: true,
+
+        addAttributes() {
+            return {
+                tempId: { default: null },
+                src: { default: '' },
+                name: { default: '图片' },
+                path: { default: '' },
+                mimeType: { default: 'image/png' }
+            };
+        },
+
+        parseHTML() {
+            return [
+                {
+                    tag: 'span[data-context-image]'
+                }
+            ];
+        },
+
+        renderHTML({ HTMLAttributes }) {
+            return [
+                'span',
+                mergeAttributes(HTMLAttributes, {
+                    'data-context-image': '',
+                    class: 'context-image-tag',
+                    contenteditable: 'false'
+                }),
+                ['img', { class: 'context-image-tag__thumb', src: HTMLAttributes.src || '' }],
+                ['span', { class: 'context-image-tag__name' }, HTMLAttributes.name || ''],
+                ['span', { class: 'context-image-tag__remove' }, '×']
+            ];
+        },
+
+        renderText({ node }) {
+            return `[图片: ${node.attrs.name}]`;
+        }
+    });
+
     const SkillSuggestion = Extension.create({
         name: 'skillSuggestion',
 
@@ -1869,6 +1913,7 @@
             extensions: [
                 StarterKit,
                 ContextDocument,
+                ContextImage,
                 SkillSuggestion,
                 Placeholder.configure({
                     placeholder: i18n('aiSidebar.input.placeholder'),
@@ -1879,6 +1924,7 @@
                 currentInput = editor.getText();
                 // 实时同步更新 contextDocuments 数组
                 const tempDocs: ContextDocument[] = [];
+                const presentImageSrcs = new Set<string>();
                 editor.state.doc.descendants((node) => {
                     if (node.type.name === 'contextDocument') {
                         tempDocs.push({
@@ -1887,9 +1933,21 @@
                             content: node.attrs.content || '',
                             type: node.attrs.type || 'doc',
                         });
+                    } else if (node.type.name === 'contextImage') {
+                        if (node.attrs.src) {
+                            presentImageSrcs.add(node.attrs.src);
+                        }
                     }
                 });
                 contextDocuments = tempDocs;
+
+                // 同步附件列表：如果附件是图片，且其 data (blobUrl) 不在编辑器中，说明被删除了
+                currentAttachments = currentAttachments.filter(att => {
+                    if (att.type === 'image') {
+                        return presentImageSrcs.has(att.data);
+                    }
+                    return true;
+                });
             },
             editorProps: {
                 attributes: {
@@ -1897,6 +1955,10 @@
                     spellcheck: 'false',
                 },
                 handleKeyDown(view, event) {
+                    if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
+                        event.stopPropagation();
+                    }
+
                     const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
 
                     if (sendMode === 'ctrl+enter') {
@@ -1931,10 +1993,10 @@
                 },
                 handleClick(view, pos, event) {
                     const target = event.target as HTMLElement;
-                    if (target.classList.contains('context-document-tag__remove')) {
+                    if (target.classList.contains('context-document-tag__remove') || target.classList.contains('context-image-tag__remove')) {
                         event.preventDefault();
                         event.stopPropagation();
-                        const tagElement = target.closest('.context-document-tag');
+                        const tagElement = target.closest('.context-document-tag') || target.closest('.context-image-tag');
                         if (tagElement) {
                             const nodePos = view.posAtDOM(tagElement, 0);
                             view.dispatch(view.state.tr.delete(nodePos, nodePos + 1));
@@ -2198,6 +2260,8 @@
 
         // 先立即显示预览，资源保存在后台进行，减少拖拽后的卡顿感
         const blobUrl = URL.createObjectURL(file);
+        const tempId = 'img_' + Math.random().toString(36).substring(2, 9);
+
         const attachment: MessageAttachment = {
             type: 'image',
             name: file.name,
@@ -2207,17 +2271,60 @@
         };
         currentAttachments = [...currentAttachments, attachment];
 
+        if (editor) {
+            editor.chain().focus().insertContent([
+                {
+                    type: 'contextImage',
+                    attrs: {
+                        tempId: tempId,
+                        src: blobUrl,
+                        name: file.name,
+                        path: '',
+                        mimeType: file.type
+                    }
+                },
+                {
+                    type: 'text',
+                    text: ' '
+                }
+            ]).run();
+        }
+
         isUploadingFile = true;
         const saveTask = (async () => {
             try {
                 const assetPath = await saveAsset(file, file.name);
+                
+                // 同时更新附件列表和编辑器节点属性
                 currentAttachments = currentAttachments.map(att =>
-                    att === attachment ? { ...att, path: assetPath } : att
+                    att.data === blobUrl ? { ...att, path: assetPath } : att
                 );
+
+                if (editor) {
+                    editor.state.doc.descendants((node, pos) => {
+                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
+                            editor.commands.command(({ tr }) => {
+                                tr.setNodeMarkup(pos, undefined, {
+                                    ...node.attrs,
+                                    path: assetPath
+                                });
+                                return true;
+                            });
+                            return false;
+                        }
+                    });
+                }
             } catch (error) {
                 console.error('Add image error:', error);
-                // 保存失败时移除该附件，避免后续会话中保留无效 blob URL
-                currentAttachments = currentAttachments.filter(att => att !== attachment);
+                currentAttachments = currentAttachments.filter(att => att.data !== blobUrl);
+                if (editor) {
+                    editor.state.doc.descendants((node, pos) => {
+                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
+                            editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
+                            return false;
+                        }
+                    });
+                }
                 pushErrMsg(i18n('aiSidebar.errors.addImageFailed'));
             }
         })();
@@ -2339,7 +2446,17 @@
 
     // 移除附件
     function removeAttachment(index: number) {
+        const attachment = currentAttachments[index];
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
+
+        // 如果被删除的附件是图片，且 Tiptap 编辑里有对应的节点，同步从编辑器中删除
+        if (attachment && attachment.type === 'image' && editor) {
+            editor.state.doc.descendants((node, pos) => {
+                if (node.type.name === 'contextImage' && (node.attrs.src === attachment.data || node.attrs.path === attachment.path)) {
+                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
+                }
+            });
+        }
     }
 
     // 打开网页链接对话框
@@ -3548,7 +3665,22 @@
     async function sendMultiModelMessage() {
         // 保存用户输入和附件
         const userContent = (editor ? editor.getText() : currentInput).trim();
-        const userAttachments = [...currentAttachments];
+        
+        const inlineImages: MessageAttachment[] = [];
+        if (editor) {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextImage') {
+                    inlineImages.push({
+                        type: 'image',
+                        name: node.attrs.name,
+                        data: node.attrs.src,
+                        path: node.attrs.path,
+                        mimeType: node.attrs.mimeType
+                    });
+                }
+            });
+        }
+        const userAttachments = [...currentAttachments, ...inlineImages];
         const userContextDocuments = [...contextDocuments];
 
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
@@ -5377,7 +5509,21 @@
             contextDocumentsWithLatestContent
         );
 
-        const userAttachments = [...currentAttachments];
+        const inlineImages: MessageAttachment[] = [];
+        if (editor) {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextImage') {
+                    inlineImages.push({
+                        type: 'image',
+                        name: node.attrs.name,
+                        data: node.attrs.src,
+                        path: node.attrs.path,
+                        mimeType: node.attrs.mimeType
+                    });
+                }
+            });
+        }
+        const userAttachments = [...currentAttachments, ...inlineImages];
         const userImageAttachments = userAttachments.filter(att => att.type === 'image');
         if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
             pushErrMsg('请先选择一张满意的图片，再继续编辑');
@@ -5741,14 +5887,31 @@
                 }
             }
         }
-
         // 用户消息只保存原始输入（不包含文档内容）
         const userContent = (editor ? editor.getText() : currentInput).trim();
+
+        // 提取输入框中的内联图片
+        const inlineImages: MessageAttachment[] = [];
+        if (editor) {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextImage') {
+                    inlineImages.push({
+                        type: 'image',
+                        name: node.attrs.name,
+                        data: node.attrs.src,
+                        path: node.attrs.path,
+                        mimeType: node.attrs.mimeType
+                    });
+                }
+            });
+        }
+
+        const combinedAttachments = [...currentAttachments, ...inlineImages];
 
         const userMessage: Message = {
             role: 'user',
             content: userContent,
-            attachments: currentAttachments.length > 0 ? [...currentAttachments] : undefined,
+            attachments: combinedAttachments.length > 0 ? combinedAttachments : undefined,
             contextDocuments:
                 contextDocumentsWithLatestContent.length > 0
                     ? [...contextDocumentsWithLatestContent]
@@ -15166,13 +15329,24 @@
                             ×
                         </button>
                         {#if attachment.type === 'image'}
+                            <!-- svelte-ignore a11y-click-events-have-key-events -->
+                            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
                             <img
                                 src={attachment.data}
                                 alt={attachment.name}
                                 class="ai-sidebar__context-attachment-preview"
-                                title={attachment.name}
+                                title="点击查看大图"
+                                on:click={() => openImageViewer(attachment.data, attachment.name)}
+                                style="cursor: pointer;"
                             />
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>
+                            <!-- svelte-ignore a11y-click-events-have-key-events -->
+                            <!-- svelte-ignore a11y-no-static-element-interactions -->
+                            <span 
+                                class="ai-sidebar__context-doc-name" 
+                                title="点击查看大图"
+                                on:click={() => openImageViewer(attachment.data, attachment.name)}
+                                style="cursor: pointer;"
+                            >
                                 🖼️ {attachment.name}
                             </span>
                             <button
@@ -16794,7 +16968,6 @@
         white-space: nowrap;
         padding: 0 4px;
     }
-
     .ai-sidebar__context-attachment-preview {
         width: 28px;
         height: 28px;
@@ -16802,8 +16975,14 @@
         border-radius: 6px;
         flex-shrink: 0;
         border: 1px solid var(--b3-border-color);
-    }
+        cursor: pointer;
+        transition: transform 0.2s, opacity 0.2s;
 
+        &:hover {
+            transform: scale(1.05);
+            opacity: 0.9;
+        }
+    }
     .ai-sidebar__context-attachment-icon {
         width: 18px;
         height: 18px;
@@ -20080,6 +20259,70 @@
         &:hover {
             background: var(--b3-theme-background-light);
         }
+    }
+
+    :global(.context-image-tag) {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        background: var(--b3-theme-surface-light) !important;
+        border: 1px solid var(--b3-border-color) !important;
+        color: var(--b3-theme-on-surface) !important;
+        border-radius: 12px !important;
+        padding: 2px 8px !important;
+        margin: 2px 4px !important;
+        font-size: 12px !important;
+        user-select: none !important;
+        vertical-align: middle !important;
+        cursor: pointer !important;
+        line-height: 1.2 !important;
+        box-sizing: border-box !important;
+        height: 22px !important;
+    }
+
+    :global(.context-image-tag:hover) {
+        background: var(--b3-theme-background-light) !important;
+    }
+
+    :global(.context-image-tag__thumb) {
+        width: 16px !important;
+        height: 16px !important;
+        min-width: 16px !important;
+        min-height: 16px !important;
+        max-width: 16px !important;
+        max-height: 16px !important;
+        object-fit: cover !important;
+        border-radius: 4px !important;
+        background: var(--b3-theme-background-light) !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    :global(.context-image-tag__name) {
+        max-width: 120px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+        line-height: 1.2 !important;
+    }
+
+    :global(.context-image-tag__remove) {
+        cursor: pointer !important;
+        margin-left: 2px !important;
+        color: var(--b3-theme-on-surface-light) !important;
+        font-weight: bold !important;
+        font-size: 12px !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+        line-height: 1.2 !important;
+    }
+
+    :global(.context-image-tag__remove:hover) {
+        color: var(--b3-theme-error) !important;
     }
 
     /* ProseMirror Placeholder */
