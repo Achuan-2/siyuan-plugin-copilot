@@ -1699,7 +1699,7 @@
     // 响应式计算上下文用量
     $: totalHistoryTokens = calculateTotalTokens(messages);
     $: currentInputTokens = estimateTokens(currentInput);
-    $: activeTools = (chatMode === 'agent' || chatMode === 'ask') ? buildToolsForCurrentMode(true) : undefined;
+    $: activeTools = (chatMode === 'agent' || chatMode === 'ask') && (selectedTools || selectedToolsAsk) ? buildToolsForCurrentMode(true) : undefined;
     $: toolsTokens = activeTools ? estimateTokens(JSON.stringify(activeTools)) : 0;
     $: totalUsedTokens = totalHistoryTokens + currentInputTokens + toolsTokens;
 
