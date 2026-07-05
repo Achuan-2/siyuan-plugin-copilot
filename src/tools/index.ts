@@ -1480,7 +1480,7 @@ export async function siyuan_update_block(
         const oldBlockDom = oldBlockDomRes?.dom;
 
         // 使用 updateBlock API 更新块内容
-        const result = await updateBlock(dataType, data, id);
+        await updateBlock(dataType, data, id);
         await refreshSql();
 
         // 获取当前编辑器实例并创建可撤回的事务
@@ -1501,7 +1501,7 @@ export async function siyuan_update_block(
             console.warn('创建撤回事务失败，但块内容已更新:', transactionError);
         }
 
-        return result;
+        return { success: true, id };
     } catch (error) {
         console.error('Update block error:', error);
         throw new Error(`更新块失败: ${(error as Error).message}`);
