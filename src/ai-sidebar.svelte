@@ -3665,22 +3665,10 @@
     async function sendMultiModelMessage() {
         // 保存用户输入和附件
         const userContent = (editor ? editor.getText() : currentInput).trim();
-        
-        const inlineImages: MessageAttachment[] = [];
-        if (editor) {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextImage') {
-                    inlineImages.push({
-                        type: 'image',
-                        name: node.attrs.name,
-                        data: node.attrs.src,
-                        path: node.attrs.path,
-                        mimeType: node.attrs.mimeType
-                    });
-                }
-            });
-        }
-        const userAttachments = [...currentAttachments, ...inlineImages];
+
+        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
+        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
+        const userAttachments = [...currentAttachments];
         const userContextDocuments = [...contextDocuments];
 
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
@@ -5509,21 +5497,9 @@
             contextDocumentsWithLatestContent
         );
 
-        const inlineImages: MessageAttachment[] = [];
-        if (editor) {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextImage') {
-                    inlineImages.push({
-                        type: 'image',
-                        name: node.attrs.name,
-                        data: node.attrs.src,
-                        path: node.attrs.path,
-                        mimeType: node.attrs.mimeType
-                    });
-                }
-            });
-        }
-        const userAttachments = [...currentAttachments, ...inlineImages];
+        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
+        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
+        const userAttachments = [...currentAttachments];
         const userImageAttachments = userAttachments.filter(att => att.type === 'image');
         if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
             pushErrMsg('请先选择一张满意的图片，再继续编辑');
@@ -5890,23 +5866,9 @@
         // 用户消息只保存原始输入（不包含文档内容）
         const userContent = (editor ? editor.getText() : currentInput).trim();
 
-        // 提取输入框中的内联图片
-        const inlineImages: MessageAttachment[] = [];
-        if (editor) {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextImage') {
-                    inlineImages.push({
-                        type: 'image',
-                        name: node.attrs.name,
-                        data: node.attrs.src,
-                        path: node.attrs.path,
-                        mimeType: node.attrs.mimeType
-                    });
-                }
-            });
-        }
-
-        const combinedAttachments = [...currentAttachments, ...inlineImages];
+        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
+        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
+        const combinedAttachments = [...currentAttachments];
 
         const userMessage: Message = {
             role: 'user',
@@ -15306,7 +15268,7 @@
     </div>
 
     <!-- 上下文文档和附件列表 -->
-    {#if currentAttachments.length > 0}
+    {#if currentAttachments.length > 0 || contextDocuments.length > 0}
         <div
             class="ai-sidebar__context-docs"
             class:ai-sidebar__context-docs--drag-over={isDragOver && !hasInlineDocs}
@@ -15317,6 +15279,37 @@
             <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebar.context.content')}</div>
             <div class="ai-sidebar__context-docs-list">
 
+                <!-- 显示当前上下文文档/块 -->
+                {#if contextDocuments.length > 0}
+                    {#each contextDocuments as doc}
+                        <div class="ai-sidebar__context-doc-item">
+                            <button
+                                class="ai-sidebar__context-doc-remove"
+                                on:click={() => removeContextDocument(doc.id)}
+                                title="移除文档"
+                            >
+                                ×
+                            </button>
+                            <button
+                                class="ai-sidebar__context-doc-link"
+                                on:click={() => openDocument(doc.id)}
+                                title={doc.title}
+                            >
+                                {doc.type === 'doc' ? '📄' : '📝'}
+                                {doc.title}
+                            </button>
+                            <button
+                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
+                                on:click|stopPropagation={() => copyMessage(doc.content || '')}
+                                title={i18n('aiSidebar.actions.copyMessage')}
+                            >
+                                <svg class="b3-button__icon">
+                                    <use xlink:href="#iconCopy"></use>
+                                </svg>
+                            </button>
+                        </div>
+                    {/each}
+                {/if}
 
                 <!-- 显示当前附件 -->
                 {#each currentAttachments as attachment, index}
