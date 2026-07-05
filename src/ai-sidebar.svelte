@@ -1911,7 +1911,10 @@
         editor = new Editor({
             element: editorElement,
             extensions: [
-                StarterKit,
+                StarterKit.configure({
+                    // 拖拽时不显示 drop cursor，块/文档默认插入到输入框末尾
+                    dropcursor: false,
+                }),
                 ContextDocument,
                 ContextImage,
                 SkillSuggestion,
@@ -1984,6 +1987,21 @@
                             }
                             return true;
                         }
+                    }
+                    return false;
+                },
+                handleDrop(view, event, slice, moved) {
+                    const types = Array.from(event.dataTransfer?.types || []);
+                    const isSiyuanDrop = types.some(
+                        type =>
+                            type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                            type.startsWith(Constants.SIYUAN_DROP_FILE) ||
+                            type === Constants.SIYUAN_DROP_TAB
+                    );
+                    if (isSiyuanDrop) {
+                        // 阻止 ProseMirror/Tiptap 默认 drop 处理，避免插入多余空行/内容
+                        event.preventDefault();
+                        return true;
                     }
                     return false;
                 },
@@ -8783,6 +8801,44 @@
         }
     }
 
+    // 将 contextDocument 节点插入编辑器，空编辑器时避免留下空段落
+    function insertContextDocumentToEditor(attrs: Record<string, any>) {
+        if (!editor) return;
+        if (editor.isEmpty) {
+            // 空编辑器时直接替换整个文档为一个包含 contextDocument 的段落，彻底避免空行
+            const schema = editor.state.schema;
+            const paragraph = schema.nodes.paragraph;
+            const contextDocument = schema.nodes.contextDocument;
+            if (!paragraph || !contextDocument) {
+                // 兜底：使用链式命令
+                editor
+                    .chain()
+                    .focus()
+                    .insertContentAt(1, [
+                        { type: 'contextDocument', attrs },
+                        { type: 'text', text: ' ' }
+                    ])
+                    .run();
+                return;
+            }
+            const tr = editor.state.tr;
+            const node = paragraph.create(null, [
+                contextDocument.create(attrs),
+                schema.text(' ')
+            ]);
+            tr.replaceWith(0, editor.state.doc.content.size, node);
+            editor.view.dispatch(tr);
+            editor.commands.focus('end');
+        } else {
+            editor
+                .chain()
+                .focus()
+                .insertContent({ type: 'contextDocument', attrs })
+                .insertContent(' ')
+                .run();
+        }
+    }
+
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
         if (!editor) return;
@@ -8808,20 +8864,12 @@
                 content = data?.content || '';
             }
 
-            editor
-                .chain()
-                .focus()
-                .insertContent({
-                    type: 'contextDocument',
-                    attrs: {
-                        id: docId,
-                        title: docTitle,
-                        content: content,
-                        type: 'doc'
-                    }
-                })
-                .insertContent(' ')
-                .run();
+            insertContextDocumentToEditor({
+                id: docId,
+                title: docTitle,
+                content: content,
+                type: 'doc'
+            });
 
             isSearchDialogOpen = false;
             searchKeyword = '';
@@ -9014,20 +9062,12 @@
                 }
             }
 
-            editor
-                .chain()
-                .focus()
-                .insertContent({
-                    type: 'contextDocument',
-                    attrs: {
-                        id: blockId,
-                        title: displayTitle,
-                        content: content,
-                        type: isDoc ? 'doc' : 'block'
-                    }
-                })
-                .insertContent(' ')
-                .run();
+            insertContextDocumentToEditor({
+                id: blockId,
+                title: displayTitle,
+                content: content,
+                type: isDoc ? 'doc' : 'block'
+            });
         } catch (error) {
             console.error('Add block error:', error);
             pushErrMsg(i18n('aiSidebar.errors.addBlockContentFailed'));
@@ -15267,8 +15307,8 @@
         {/if}
     </div>
 
-    <!-- 上下文文档和附件列表 -->
-    {#if currentAttachments.length > 0 || contextDocuments.length > 0}
+    <!-- 上下文文档和附件列表：只显示非图片文件/网页附件，文档和图片已在编辑器内联显示 -->
+    {#if currentAttachments.some(att => att.type !== 'image')}
         <div
             class="ai-sidebar__context-docs"
             class:ai-sidebar__context-docs--drag-over={isDragOver && !hasInlineDocs}
@@ -15279,119 +15319,56 @@
             <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebar.context.content')}</div>
             <div class="ai-sidebar__context-docs-list">
 
-                <!-- 显示当前上下文文档/块 -->
-                {#if contextDocuments.length > 0}
-                    {#each contextDocuments as doc}
+                <!-- 显示当前附件（排除已内联显示的图片） -->
+                {#each currentAttachments as attachment, index}
+                    {#if attachment.type !== 'image'}
                         <div class="ai-sidebar__context-doc-item">
                             <button
                                 class="ai-sidebar__context-doc-remove"
-                                on:click={() => removeContextDocument(doc.id)}
-                                title="移除文档"
+                                on:click={() => removeAttachment(index)}
+                                title="移除附件"
                             >
                                 ×
                             </button>
-                            <button
-                                class="ai-sidebar__context-doc-link"
-                                on:click={() => openDocument(doc.id)}
-                                title={doc.title}
-                            >
-                                {doc.type === 'doc' ? '📄' : '📝'}
-                                {doc.title}
-                            </button>
-                            <button
-                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                on:click|stopPropagation={() => copyMessage(doc.content || '')}
-                                title={i18n('aiSidebar.actions.copyMessage')}
-                            >
-                                <svg class="b3-button__icon">
-                                    <use xlink:href="#iconCopy"></use>
+                            {#if attachment.isWebPage}
+                                <span class="ai-sidebar__context-attachment-icon-emoji">🔗</span>
+                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
+                                    {attachment.name}
+                                </span>
+                                <button
+                                    class="b3-button b3-button--text ai-sidebar__context-doc-copy"
+                                    on:click|stopPropagation={() => {
+                                        platformUtils.writeText(attachment.data);
+                                        pushMsg('已复制网页Markdown内容');
+                                    }}
+                                    title="复制网页Markdown"
+                                >
+                                    <svg class="b3-button__icon">
+                                        <use xlink:href="#iconCopy"></use>
+                                    </svg>
+                                </button>
+                            {:else}
+                                <svg class="ai-sidebar__context-attachment-icon">
+                                    <use xlink:href="#iconFile"></use>
                                 </svg>
-                            </button>
+                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
+                                    📄 {attachment.name}
+                                </span>
+                                <button
+                                    class="b3-button b3-button--text ai-sidebar__context-doc-copy"
+                                    on:click|stopPropagation={() => {
+                                        platformUtils.writeText(attachment.data);
+                                        pushMsg('已复制文件内容');
+                                    }}
+                                    title="复制文件内容"
+                                >
+                                    <svg class="b3-button__icon">
+                                        <use xlink:href="#iconCopy"></use>
+                                    </svg>
+                                </button>
+                            {/if}
                         </div>
-                    {/each}
-                {/if}
-
-                <!-- 显示当前附件 -->
-                {#each currentAttachments as attachment, index}
-                    <div class="ai-sidebar__context-doc-item">
-                        <button
-                            class="ai-sidebar__context-doc-remove"
-                            on:click={() => removeAttachment(index)}
-                            title="移除附件"
-                        >
-                            ×
-                        </button>
-                        {#if attachment.type === 'image'}
-                            <!-- svelte-ignore a11y-click-events-have-key-events -->
-                            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-                            <img
-                                src={attachment.data}
-                                alt={attachment.name}
-                                class="ai-sidebar__context-attachment-preview"
-                                title="点击查看大图"
-                                on:click={() => openImageViewer(attachment.data, attachment.name)}
-                                style="cursor: pointer;"
-                            />
-                            <!-- svelte-ignore a11y-click-events-have-key-events -->
-                            <!-- svelte-ignore a11y-no-static-element-interactions -->
-                            <span 
-                                class="ai-sidebar__context-doc-name" 
-                                title="点击查看大图"
-                                on:click={() => openImageViewer(attachment.data, attachment.name)}
-                                style="cursor: pointer;"
-                            >
-                                🖼️ {attachment.name}
-                            </span>
-                            <button
-                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                on:click|stopPropagation={() => {
-                                    platformUtils.writeText(attachment.data);
-                                    pushMsg('已复制图片URL');
-                                }}
-                                title="复制图片URL"
-                            >
-                                <svg class="b3-button__icon">
-                                    <use xlink:href="#iconCopy"></use>
-                                </svg>
-                            </button>
-                        {:else if attachment.isWebPage}
-                            <span class="ai-sidebar__context-attachment-icon-emoji">🔗</span>
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                {attachment.name}
-                            </span>
-                            <button
-                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                on:click|stopPropagation={() => {
-                                    platformUtils.writeText(attachment.data);
-                                    pushMsg('已复制网页Markdown内容');
-                                }}
-                                title="复制网页Markdown"
-                            >
-                                <svg class="b3-button__icon">
-                                    <use xlink:href="#iconCopy"></use>
-                                </svg>
-                            </button>
-                        {:else}
-                            <svg class="ai-sidebar__context-attachment-icon">
-                                <use xlink:href="#iconFile"></use>
-                            </svg>
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                📄 {attachment.name}
-                            </span>
-                            <button
-                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                on:click|stopPropagation={() => {
-                                    platformUtils.writeText(attachment.data);
-                                    pushMsg('已复制文件内容');
-                                }}
-                                title="复制文件内容"
-                            >
-                                <svg class="b3-button__icon">
-                                    <use xlink:href="#iconCopy"></use>
-                                </svg>
-                            </button>
-                        {/if}
-                    </div>
+                    {/if}
                 {/each}
             </div>
         </div>
