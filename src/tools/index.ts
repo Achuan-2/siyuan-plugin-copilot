@@ -541,7 +541,7 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 },
                 data: {
                     type: 'string',
-                    description: '新的块内容，使用Markdown格式',
+                    description: '新的块内容，使用Markdown格式。如果更新的是文档块（type="d"），不需要在内容中使用一级标题（# 标题）作为文档标题，思源笔记有文档名称字段来存储文档标题。',
                 },
                 id: {
                     type: 'string',
