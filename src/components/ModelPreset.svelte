@@ -514,17 +514,6 @@
         return modelId;
     }
 
-    // 获取当前模型提供商和模型ID的helper函数（单模型模式使用）
-    function getCurrentModelSelection(): { provider: string; modelId: string } {
-        if (tempSelectedModels.length > 0) {
-            return {
-                provider: tempSelectedModels[0].provider,
-                modelId: tempSelectedModels[0].modelId,
-            };
-        }
-        return { provider: currentProvider, modelId: currentModelId };
-    }
-
     // 格式化预设的模型列表显示
     function formatPresetModels(
         selectedModels: Array<{
@@ -1619,8 +1608,12 @@
                                 selectedModels={tempSelectedModels}
                                 bind:isOpen={isModelSelectorOpen}
                                 enableMultiModel={tempEnableMultiModel}
-                                currentProvider={getCurrentModelSelection().provider}
-                                currentModelId={getCurrentModelSelection().modelId}
+                                currentProvider={tempSelectedModels.length > 0
+                                    ? tempSelectedModels[0].provider
+                                    : currentProvider}
+                                currentModelId={tempSelectedModels.length > 0
+                                    ? tempSelectedModels[0].modelId
+                                    : currentModelId}
                                 chatMode={tempChatMode}
                                 on:select={handleModelSelect}
                                 on:change={handleModelsChange}
