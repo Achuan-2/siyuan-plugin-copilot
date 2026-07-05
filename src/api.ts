@@ -579,6 +579,14 @@ export async function removeFile(path: string) {
     return request(url, data);
 }
 
+export async function removeSkill(name: string) {
+    let data = {
+        name: name
+    }
+    let url = '/api/ai/agent/removeSkill';
+    return request(url, data);
+}
+
 
 
 export async function readDir(path: string): Promise<IResReadDir> {

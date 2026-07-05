@@ -11,6 +11,7 @@
         putFile,
         getFileBlob,
         removeFile,
+        removeSkill,
         exportMdContent,
         openBlock,
     } from './api';
@@ -453,7 +454,7 @@ description: 描述这个 Skill 的功能
             `确定要删除 Skill "${skill.name}" (${skill.id}) 吗？此操作无法撤销。`,
             async () => {
                 try {
-                    await removeFile(skill.filePath);
+                    await removeSkill(skill.id);
                     pushMsg('删除成功');
                     await refreshSkills();
                 } catch (e) {
