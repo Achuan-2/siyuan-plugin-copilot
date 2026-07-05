@@ -1,3 +1,12 @@
+## v2.5.0 / 20260705
+- 🎨 支持输入／调用skill，支持输入@搜索文档
+- 🎨 skills 文件夹改为存放在/data/storage/ai/agent/skills/，与思源agent一致
+- 🎨 工具：Agent模式支持AI生成question card
+- 🎨 支持计算上下文用量
+- 🎨 工具：updateBlock 工具结果返回简化，节省token消耗
+- 🐛 预设修改模型，没有及时更新选择的模型
+
+
 ## v2.4.4 / 20260630
 
 - 🎨 小程序支持注册到侧边栏（目前有bug：Ctrl+Shift+I无法快捷打开思源开发者工具，目前无法修复）
