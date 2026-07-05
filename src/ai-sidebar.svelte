@@ -69,6 +69,15 @@
         type Skill,
     } from './tools';
 
+    import { Editor } from '@tiptap/core';
+    import StarterKit from '@tiptap/starter-kit';
+    import Placeholder from '@tiptap/extension-placeholder';
+    import { Node, mergeAttributes } from '@tiptap/core';
+    import { Extension } from '@tiptap/core';
+    import Suggestion from '@tiptap/suggestion';
+    import { PluginKey } from '@tiptap/pm/state';
+
+
     // Agent 模式工具使用强制规则（统一常量）
     const AGENT_TOOL_USAGE_INSTRUCTION = `=== 工具使用强制规则 ===
 如果启用了SOUL工具，系统会自动将SOUL文档内容添加到系统提示词中。当用户说记住、下达风格更改要求等情况时，你需要调用soul工具来记录用户要求。
@@ -214,6 +223,293 @@
     let isSearching = false;
     let isDragOver = false;
     let searchTimeout: number | null = null;
+
+    // Tiptap variables and suggestion state
+    let editor: Editor;
+    let editorElement: HTMLElement;
+    let showSuggestions = false;
+    let suggestionType: 'doc' | 'skill' | null = null;
+    let suggestionQuery = '';
+    let suggestionList: any[] = [];
+    let suggestionSelectedIndex = 0;
+    let suggestionStyle = '';
+    let suggestionCommand: any = null;
+
+    // Custom Tiptap Extensions
+    const ContextDocument = Node.create({
+        name: 'contextDocument',
+        group: 'inline',
+        inline: true,
+        selectable: true,
+        atom: true,
+
+        addAttributes() {
+            return {
+                id: { default: null },
+                title: { default: '文档' },
+                type: { default: 'doc' }, // 'doc' | 'block'
+                content: { default: '' }
+            };
+        },
+
+        parseHTML() {
+            return [
+                {
+                    tag: 'span[data-context-document]'
+                }
+            ];
+        },
+
+        renderHTML({ HTMLAttributes }) {
+            return [
+                'span',
+                mergeAttributes(HTMLAttributes, {
+                    'data-context-document': '',
+                    class: 'context-document-tag',
+                    contenteditable: 'false'
+                }),
+                ['span', { class: 'context-document-tag__icon' }, HTMLAttributes.type === 'doc' ? '📄' : '🧩'],
+                ['span', { class: 'context-document-tag__title' }, HTMLAttributes.title || ''],
+                ['span', { class: 'context-document-tag__remove' }, '×']
+            ];
+        },
+
+        renderText({ node }) {
+            return `@${node.attrs.title}`;
+        },
+
+        addProseMirrorPlugins() {
+            return [
+                Suggestion({
+                    pluginKey: new PluginKey('contextDocumentSuggestion'),
+                    editor: this.editor,
+                    char: '@',
+                    allowSpaces: true,
+                    command: ({ editor, range, props }) => {
+                        editor
+                            .chain()
+                            .focus()
+                            .insertContentAt(range, [
+                                {
+                                    type: this.name,
+                                    attrs: {
+                                        id: props.id,
+                                        title: props.title,
+                                        type: props.type || 'doc',
+                                        content: props.content || ''
+                                    }
+                                },
+                                {
+                                    type: 'text',
+                                    text: ' '
+                                }
+                            ])
+                            .run();
+                    },
+                    render: () => {
+                        return {
+                            onStart: (props) => {
+                                handleSuggestionStart('@', props);
+                            },
+                            onUpdate: (props) => {
+                                handleSuggestionUpdate(props);
+                            },
+                            onKeyDown: (props) => {
+                                return handleSuggestionKeyDown(props);
+                            },
+                            onExit: () => {
+                                handleSuggestionExit();
+                            }
+                        };
+                    }
+                })
+            ];
+        }
+    });
+
+    const SkillSuggestion = Extension.create({
+        name: 'skillSuggestion',
+
+        addProseMirrorPlugins() {
+            return [
+                Suggestion({
+                    pluginKey: new PluginKey('skillSuggestionKey'),
+                    editor: this.editor,
+                    char: '/',
+                    allowSpaces: false,
+                    command: ({ editor, range, props }) => {
+                        editor
+                            .chain()
+                            .focus()
+                            .insertContentAt(range, [
+                                {
+                                    type: 'text',
+                                    text: `/${props.id} `
+                                }
+                            ])
+                            .run();
+                    },
+                    render: () => {
+                        return {
+                            onStart: (props) => {
+                                handleSuggestionStart('/', props);
+                            },
+                            onUpdate: (props) => {
+                                handleSuggestionUpdate(props);
+                            },
+                            onKeyDown: (props) => {
+                                return handleSuggestionKeyDown(props);
+                            },
+                            onExit: () => {
+                                handleSuggestionExit();
+                            }
+                        };
+                    }
+                })
+            ];
+        }
+    });
+
+    // 建议下拉框事件处理
+    function handleSuggestionStart(char: string, props: any) {
+        showSuggestions = true;
+        suggestionType = char === '@' ? 'doc' : 'skill';
+        suggestionQuery = props.query;
+        suggestionSelectedIndex = 0;
+        suggestionCommand = props.command;
+        
+        if (suggestionType === 'doc') {
+            searchKeyword = props.query;
+            searchDocuments().then(() => {
+                suggestionList = searchResults;
+                updateSuggestionPosition(props.clientRect);
+            });
+        } else {
+            loadAllSkills().then(skills => {
+                suggestionList = (skills || []).filter(skill =>
+                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
+                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase())
+                );
+                updateSuggestionPosition(props.clientRect);
+            });
+        }
+    }
+
+    function handleSuggestionUpdate(props: any) {
+        suggestionQuery = props.query;
+        suggestionSelectedIndex = 0;
+        suggestionCommand = props.command;
+        
+        if (suggestionType === 'doc') {
+            searchKeyword = props.query;
+            searchDocuments().then(() => {
+                suggestionList = searchResults;
+                updateSuggestionPosition(props.clientRect);
+            });
+        } else {
+            loadAllSkills().then(skills => {
+                suggestionList = (skills || []).filter(skill =>
+                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
+                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
+                    skill.description.toLowerCase().includes(suggestionQuery.toLowerCase())
+                );
+                updateSuggestionPosition(props.clientRect);
+            });
+        }
+    }
+
+    function handleSuggestionKeyDown(props: any) {
+        const { event } = props;
+        if (!showSuggestions) return false;
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            suggestionSelectedIndex = (suggestionSelectedIndex - 1 + suggestionList.length) % suggestionList.length;
+            return true;
+        }
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            suggestionSelectedIndex = (suggestionSelectedIndex + 1) % suggestionList.length;
+            return true;
+        }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            if (suggestionList.length > 0) {
+                selectSuggestion(suggestionList[suggestionSelectedIndex]);
+                return true;
+            }
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            showSuggestions = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    function handleSuggestionExit() {
+        showSuggestions = false;
+        suggestionList = [];
+    }
+
+    function updateSuggestionPosition(clientRectFn: any) {
+        if (!clientRectFn) return;
+        const rect = clientRectFn();
+        if (!rect) return;
+        const popupHeight = 220;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        
+        if (spaceBelow < popupHeight && spaceAbove > spaceBelow) {
+            suggestionStyle = `position: fixed; bottom: ${window.innerHeight - rect.top + 4}px; left: ${rect.left}px; z-index: 9999;`;
+        } else {
+            suggestionStyle = `position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px; z-index: 9999;`;
+        }
+    }
+
+    // 选择建议项
+    async function selectSuggestion(item: any) {
+        if (!suggestionCommand) return;
+        
+        if (suggestionType === 'doc') {
+            let content = '';
+            try {
+                if (!(chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0))) {
+                    const data = await exportMdContent(item.id, false, false, 2, 0, false);
+                    content = data?.content || '';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            suggestionCommand({
+                id: item.id,
+                title: item.content || item.title || i18n('common.untitled'),
+                type: 'doc',
+                content: content
+            });
+        } else {
+            suggestionCommand({
+                id: item.id
+            });
+        }
+        showSuggestions = false;
+    }
+
+    let hasInlineDocs = false;
+    $: if (editor) {
+        let count = 0;
+        try {
+            editor.state.doc.descendants(node => {
+                if (node.type.name === 'contextDocument') count++;
+            });
+        } catch(e) {}
+        hasInlineDocs = count > 0;
+    }
+
 
     // 提示词管理
     interface Prompt {
@@ -1565,12 +1861,96 @@
         // 如果有初始消息，自动填充到输入框
         if (initialMessage) {
             currentInput = initialMessage;
-            // 在dialog模式下，自动聚焦输入框
-            if (mode === 'dialog') {
-                await tick();
-                textareaElement?.focus();
-            }
         }
+
+        // 初始化 Tiptap 外部编辑器
+        editor = new Editor({
+            element: editorElement,
+            extensions: [
+                StarterKit,
+                ContextDocument,
+                SkillSuggestion,
+                Placeholder.configure({
+                    placeholder: i18n('aiSidebar.input.placeholder'),
+                })
+            ],
+            content: currentInput,
+            onUpdate({ editor }) {
+                currentInput = editor.getText();
+                // 实时同步更新 contextDocuments 数组
+                const tempDocs: ContextDocument[] = [];
+                editor.state.doc.descendants((node) => {
+                    if (node.type.name === 'contextDocument') {
+                        tempDocs.push({
+                            id: node.attrs.id,
+                            title: node.attrs.title,
+                            content: node.attrs.content || '',
+                            type: node.attrs.type || 'doc',
+                        });
+                    }
+                });
+                contextDocuments = tempDocs;
+            },
+            editorProps: {
+                attributes: {
+                    class: 'ai-sidebar__input',
+                    spellcheck: 'false',
+                },
+                handleKeyDown(view, event) {
+                    const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
+
+                    if (sendMode === 'ctrl+enter') {
+                        if (event.key === 'Enter' && event.ctrlKey) {
+                            event.preventDefault();
+                            if (isLoading) {
+                                abortMessage();
+                            } else {
+                                sendMessage();
+                            }
+                            return true;
+                        }
+                    } else {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                            if (showSuggestions) {
+                                return false; 
+                            }
+                            event.preventDefault();
+                            if (isLoading) {
+                                abortMessage();
+                            } else {
+                                sendMessage();
+                            }
+                            return true;
+                        }
+                    }
+                    return false;
+                },
+                handlePaste(view, event) {
+                    handlePaste(event);
+                    return false;
+                },
+                handleClick(view, pos, event) {
+                    const target = event.target as HTMLElement;
+                    if (target.classList.contains('context-document-tag__remove')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const tagElement = target.closest('.context-document-tag');
+                        if (tagElement) {
+                            const nodePos = view.posAtDOM(tagElement, 0);
+                            view.dispatch(view.state.tr.delete(nodePos, nodePos + 1));
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+        });
+
+        if (mode === 'dialog' && initialMessage) {
+            await tick();
+            editor?.commands.focus();
+        }
+
 
         // 订阅设置变化
         unsubscribe = settingsStore.subscribe(newSettings => {
@@ -1646,6 +2026,9 @@
     });
 
     onDestroy(async () => {
+        if (editor) {
+            editor.destroy();
+        }
         // 取消订阅
         if (unsubscribe) {
             unsubscribe();
@@ -3164,7 +3547,7 @@
     // 多模型发送消息
     async function sendMultiModelMessage() {
         // 保存用户输入和附件
-        const userContent = currentInput.trim();
+        const userContent = (editor ? editor.getText() : currentInput).trim();
         const userAttachments = [...currentAttachments];
         const userContextDocuments = [...contextDocuments];
 
@@ -3218,6 +3601,9 @@
             messages = [...messages, userMessage];
         }
         currentInput = '';
+        if (editor) {
+            editor.commands.setContent('');
+        }
         currentAttachments = [];
         contextDocuments = [];
         isLoading = true;
@@ -4967,7 +5353,7 @@
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = currentInput.trim();
+        const userContent = (editor ? editor.getText() : currentInput).trim();
         if (!userContent) {
             pushErrMsg('请输入画图提示词');
             isLoading = false;
@@ -5013,6 +5399,9 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
+        if (editor) {
+            editor.commands.setContent('');
+        }
         currentAttachments = [];
         contextDocuments = [];
         isAborted = false;
@@ -5289,9 +5678,23 @@
         // ask模式：使用 exportMdContent 获取 Markdown 格式
         // edit模式：使用 getBlockKramdown 获取 kramdown 格式（包含块ID信息）
         // agent模式：文档块只传递ID，普通块获取kramdown
+        const editorDocs: { id: string; title: string; type: string; content?: string }[] = [];
+        if (editor) {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextDocument') {
+                    editorDocs.push({
+                        id: node.attrs.id,
+                        title: node.attrs.title,
+                        type: node.attrs.type || 'doc',
+                        content: node.attrs.content || ''
+                    });
+                }
+            });
+        }
+
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
-        if (contextDocuments.length > 0) {
-            for (const doc of contextDocuments) {
+        if (editorDocs.length > 0) {
+            for (const doc of editorDocs) {
                 try {
                     let content: string;
 
@@ -5306,7 +5709,7 @@
                                 content = blockData.kramdown;
                             } else {
                                 // 降级使用缓存内容
-                                content = doc.content;
+                                content = doc.content || '';
                             }
                         }
                     } else {
@@ -5316,7 +5719,7 @@
                             content = data.content;
                         } else {
                             // 降级使用缓存内容
-                            content = doc.content;
+                            content = doc.content || '';
                         }
                     }
 
@@ -5329,13 +5732,18 @@
                 } catch (error) {
                     console.error(`Failed to get latest content for block ${doc.id}:`, error);
                     // 出错时使用缓存的内容
-                    contextDocumentsWithLatestContent.push(doc);
+                    contextDocumentsWithLatestContent.push({
+                        id: doc.id,
+                        title: doc.title,
+                        content: doc.content || '',
+                        type: doc.type,
+                    });
                 }
             }
         }
 
         // 用户消息只保存原始输入（不包含文档内容）
-        const userContent = currentInput.trim();
+        const userContent = (editor ? editor.getText() : currentInput).trim();
 
         const userMessage: Message = {
             role: 'user',
@@ -5349,6 +5757,9 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
+        if (editor) {
+            editor.commands.setContent('');
+        }
         currentAttachments = [];
         contextDocuments = []; // 发送后清空全局上下文
         // isLoading 已经在函数开始时设置为 true
@@ -8249,46 +8660,47 @@
 
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
-        // 检查是否已存在
-        if (contextDocuments.find(doc => doc.id === docId)) {
+        if (!editor) return;
+
+        let exists = false;
+        try {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
+                    exists = true;
+                }
+            });
+        } catch (e) {}
+
+        if (exists) {
             pushMsg(i18n('aiSidebar.success.documentExists'));
             return;
         }
 
         try {
-            // agent模式或启用工具的问答模式下，文档只存储块ID
-            if (chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0)) {
-                contextDocuments = [
-                    ...contextDocuments,
-                    {
-                        id: docId,
-                        title: docTitle,
-                        content: '', // agent模式下不存储内容，只存储ID
-                        type: 'doc',
-                    },
-                ];
-                isSearchDialogOpen = false;
-                searchKeyword = '';
-                searchResults = [];
-                return;
+            let content = '';
+            if (!(chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0))) {
+                const data = await exportMdContent(docId, false, false, 2, 0, false);
+                content = data?.content || '';
             }
 
-            // 非agent模式：获取文档内容
-            const data = await exportMdContent(docId, false, false, 2, 0, false);
-            if (data && data.content) {
-                contextDocuments = [
-                    ...contextDocuments,
-                    {
+            editor
+                .chain()
+                .focus()
+                .insertContent({
+                    type: 'contextDocument',
+                    attrs: {
                         id: docId,
                         title: docTitle,
-                        content: data.content,
-                        type: 'doc',
-                    },
-                ];
-                isSearchDialogOpen = false;
-                searchKeyword = '';
-                searchResults = [];
-            }
+                        content: content,
+                        type: 'doc'
+                    }
+                })
+                .insertContent(' ')
+                .run();
+
+            isSearchDialogOpen = false;
+            searchKeyword = '';
+            searchResults = [];
         } catch (error) {
             console.error('Add document error:', error);
             pushErrMsg(i18n('aiSidebar.errors.addDocumentFailed'));
@@ -8418,116 +8830,79 @@
 
     // 添加块到上下文（而不是整个文档）
     async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean) {
-        // 检查是否已存在
-        if (contextDocuments.find(doc => doc.id === blockId)) {
+        if (!editor) return;
+
+        let exists = false;
+        try {
+            editor.state.doc.descendants((node) => {
+                if (node.type.name === 'contextDocument' && node.attrs.id === blockId) {
+                    exists = true;
+                }
+            });
+        } catch (e) {}
+
+        if (exists) {
             pushMsg(i18n('aiSidebar.success.blockExists'));
             return;
         }
 
         try {
-            // 优先复用调用方传入的块类型，避免重复查询
             let isDoc = isDocOverride === true;
             if (isDocOverride === undefined) {
                 const blockInfo = await getBlockByID(blockId);
                 isDoc = blockInfo?.type === 'd'; // 'd' 表示文档块
             }
 
-            // agent模式或启用工具的问答模式：获取kramdown格式（用于AI），但使用Markdown生成显示标题
+            let content = '';
+            let displayTitle = blockTitle;
+
             if (chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0)) {
-                const blockData = await getBlockKramdown(blockId);
-                if (blockData && blockData.kramdown) {
-                    // 获取Markdown格式用于生成友好的显示标题
-                    let displayTitle = '块内容';
-                    try {
-                        const mdData = await exportMdContent(blockId, false, false, 2, 0, false);
-                        if (mdData && mdData.content) {
-                            const contentPreview = mdData.content.replace(/\n/g, ' ').trim();
-                            displayTitle =
-                                contentPreview.length > 20
-                                    ? contentPreview.substring(0, 20) + '...'
-                                    : contentPreview || (isDoc ? '文档内容' : '块内容');
-                        }
-                    } catch (error) {
-                        console.warn('获取Markdown预览失败，使用kramdown生成标题:', error);
-                        // 降级使用kramdown生成标题
-                        const contentPreview = blockData.kramdown.replace(/\n/g, ' ').trim();
+                if (isDoc) {
+                    content = '';
+                } else {
+                    const blockData = await getBlockKramdown(blockId);
+                    content = blockData?.kramdown || '';
+                }
+                
+                // 获取Markdown格式用于生成显示标题
+                try {
+                    const mdData = await exportMdContent(blockId, false, false, 2, 0, false);
+                    if (mdData && mdData.content) {
+                        const contentPreview = mdData.content.replace(/\n/g, ' ').trim();
                         displayTitle =
                             contentPreview.length > 20
                                 ? contentPreview.substring(0, 20) + '...'
-                                : contentPreview || blockTitle || (isDoc ? '文档内容' : '块内容');
+                                : contentPreview || (isDoc ? '文档内容' : '块内容');
                     }
-
-                    contextDocuments = [
-                        ...contextDocuments,
-                        {
-                            id: blockId,
-                            title: displayTitle,
-                            content: blockData.kramdown, // 存储kramdown格式用于AI
-                            type: isDoc ? 'doc' : 'block',
-                        },
-                    ];
+                } catch (error) {
+                    console.warn('获取Markdown预览失败:', error);
                 }
-                return;
+            } else {
+                const data = await exportMdContent(blockId, false, false, 2, 0, false);
+                if (data && data.content) {
+                    const contentPreview = data.content.replace(/\n/g, ' ').trim();
+                    displayTitle =
+                        contentPreview.length > 20
+                            ? contentPreview.substring(0, 20) + '...'
+                            : contentPreview || blockTitle || (isDoc ? '文档内容' : '块内容');
+                    content = data.content;
+                }
             }
 
-            // ask模式：获取块的Markdown内容
-            const data = await exportMdContent(blockId, false, false, 2, 0, false);
-            if (data && data.content) {
-                // 检查是否为纯图片块（只包含图片Markdown语法）
-                const content = data.content.trim();
-                const imageRegex = /^!\[([^\]]*)\]\(([^)]+)\)$/;
-                const match = content.match(imageRegex);
-
-                if (match) {
-                    // 这是一个纯图片块，自动上传图片
-                    const imagePath = match[2]; // 图片路径，如 assets/xxx.png
-                    const imageName = match[1] || '图片'; // 图片名称
-
-                    try {
-                        // 使用思源 API 获取图片文件
-                        // 思源笔记的图片路径格式：assets/xxx-xxxxx.png
-                        const blob = await getFileBlob(`/data/${imagePath}`);
-
-                        if (blob) {
-                            // 从文件路径提取文件名作为默认名称
-                            const fileName = imagePath.split('/').pop() || 'image.png';
-                            const file = new File([blob], imageName || fileName, {
-                                type: blob.type,
-                            });
-
-                            // 使用统一的图片附件添加逻辑（包含保存到资源目录）
-                            await addImageAttachment(file);
-
-                            pushMsg(i18n('aiSidebar.success.imageAutoUploaded'));
-                            return; // 图片已作为附件添加，不需要再添加为上下文文档
-                        } else {
-                            console.warn('无法加载图片，将作为普通块处理');
-                        }
-                    } catch (error) {
-                        console.error('自动上传图片失败:', error);
-                        pushErrMsg(i18n('aiSidebar.errors.autoUploadImageFailed'));
-                        // 失败时继续作为普通块处理
-                    }
-                }
-
-                // 不是纯图片块或上传失败，按照原有逻辑处理
-                // 从块内容中提取前20个字作为显示标题
-                const contentPreview = data.content.replace(/\n/g, ' ').trim();
-                const displayTitle =
-                    contentPreview.length > 20
-                        ? contentPreview.substring(0, 20) + '...'
-                        : contentPreview || blockTitle || (isDoc ? '文档内容' : '块内容');
-
-                contextDocuments = [
-                    ...contextDocuments,
-                    {
+            editor
+                .chain()
+                .focus()
+                .insertContent({
+                    type: 'contextDocument',
+                    attrs: {
                         id: blockId,
                         title: displayTitle,
-                        content: data.content,
-                        type: isDoc ? 'doc' : 'block',
-                    },
-                ];
-            }
+                        content: content,
+                        type: isDoc ? 'doc' : 'block'
+                    }
+                })
+                .insertContent(' ')
+                .run();
         } catch (error) {
             console.error('Add block error:', error);
             pushErrMsg(i18n('aiSidebar.errors.addBlockContentFailed'));
@@ -8536,7 +8911,13 @@
 
     // 删除上下文文档
     function removeContextDocument(docId: string) {
-        contextDocuments = contextDocuments.filter(doc => doc.id !== docId);
+        if (editor) {
+            editor.state.doc.descendants((node, pos) => {
+                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
+                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
+                }
+            });
+        }
     }
 
     // 打开文档
@@ -10175,16 +10556,16 @@
             suppressPromptClickOnce = false;
             return;
         }
-        currentInput = prompt.content + '\n' + currentInput;
+        const oldText = editor ? editor.getText() : currentInput;
+        const newText = prompt.content + '\n' + oldText;
+        currentInput = newText;
         isPromptSelectorOpen = false;
-        tick().then(() => {
-            autoResizeTextarea();
-            if (textareaElement) {
-                textareaElement.focus();
-                const cursorPos = prompt.content.length;
-                textareaElement.setSelectionRange(cursorPos, cursorPos);
-            }
-        });
+        
+        if (editor) {
+            editor.commands.setContent(newText);
+            editor.commands.focus();
+            editor.commands.setTextSelection(prompt.content.length);
+        }
     }
 
     // 点击外部关闭提示词选择器
@@ -14762,42 +15143,17 @@
     </div>
 
     <!-- 上下文文档和附件列表 -->
-    {#if contextDocuments.length > 0 || currentAttachments.length > 0}
+    {#if currentAttachments.length > 0}
         <div
             class="ai-sidebar__context-docs"
-            class:ai-sidebar__context-docs--drag-over={isDragOver && contextDocuments.length > 0}
+            class:ai-sidebar__context-docs--drag-over={isDragOver && !hasInlineDocs}
             on:dragover={handleDragOver}
             on:dragleave={handleDragLeave}
             on:drop={handleDrop}
         >
             <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebar.context.content')}</div>
             <div class="ai-sidebar__context-docs-list">
-                <!-- 显示上下文文档 -->
-                {#each contextDocuments as doc (doc.id)}
-                    <div class="ai-sidebar__context-doc-item">
-                        <button
-                            class="ai-sidebar__context-doc-remove"
-                            on:click={() => removeContextDocument(doc.id)}
-                            title="移除文档"
-                        >
-                            ×
-                        </button>
-                        <button
-                            class="ai-sidebar__context-doc-link"
-                            on:click={() => openDocument(doc.id)}
-                            title="点击查看文档"
-                        >
-                            📄 {doc.title}
-                        </button>
-                        <button
-                            class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                            on:click|stopPropagation={() => copyMessage(doc.content || '')}
-                            title={i18n('aiSidebar.actions.copyMessage')}
-                        >
-                            <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        </button>
-                    </div>
-                {/each}
+
 
                 <!-- 显示当前附件 -->
                 {#each currentAttachments as attachment, index}
@@ -15069,16 +15425,7 @@
         {/if}
         <div class="ai-sidebar__input-row">
             <div class="ai-sidebar__input-wrapper">
-                <textarea
-                    bind:this={textareaElement}
-                    bind:value={currentInput}
-                    on:keydown={handleKeydown}
-                    on:paste={handlePaste}
-                    placeholder={i18n('aiSidebar.input.placeholder')}
-                    class="ai-sidebar__input"
-                    rows="1"
-                    spellcheck="false"
-                ></textarea>
+                <div bind:this={editorElement} class="ai-sidebar__editor-wrapper"></div>
                 
                 <!-- 上下文用量圆环进度条 -->
                 {#if activeModelsContextInfo.length > 0}
@@ -15228,6 +15575,37 @@
                 {plugin}
             />
         </div>
+
+        <!-- Tiptap Suggestions Popup -->
+        {#if showSuggestions}
+            <div class="ai-sidebar__suggestion-popup" style={suggestionStyle}>
+                {#if suggestionList.length > 0}
+                    {#each suggestionList as item, index}
+                        <!-- svelte-ignore a11y-click-events-have-key-events -->
+                        <div
+                            class="ai-sidebar__suggestion-item"
+                            class:ai-sidebar__suggestion-item--selected={index === suggestionSelectedIndex}
+                            on:mousedown|preventDefault|stopPropagation={() => selectSuggestion(item)}
+                        >
+                            {#if suggestionType === 'doc'}
+                                <span class="ai-sidebar__suggestion-icon">📄</span>
+                                <span class="ai-sidebar__suggestion-text">{item.content || item.title || 'Untitled'}</span>
+                            {:else}
+                                <span class="ai-sidebar__suggestion-icon">⚡</span>
+                                <div class="ai-sidebar__suggestion-content">
+                                    <div class="ai-sidebar__suggestion-title">/{item.id} <span class="ai-sidebar__suggestion-name">({item.name})</span></div>
+                                    <div class="ai-sidebar__suggestion-desc">{item.description || ''}</div>
+                                </div>
+                            {/if}
+                        </div>
+                    {/each}
+                {:else}
+                    <div class="ai-sidebar__suggestion-empty">
+                        {suggestionType === 'doc' ? '未找到相关文档' : '未找到相关 Skill'}
+                    </div>
+                {/if}
+            </div>
+        {/if}
 
         <!-- 提示词选择器下拉菜单 -->
         {#if isPromptSelectorOpen}
@@ -16941,7 +17319,7 @@
         }
     }
 
-    .ai-sidebar__input {
+    :global(.ai-sidebar__input) {
         flex: 1;
         resize: none;
         border: none;
@@ -16953,7 +17331,7 @@
         line-height: 1.5;
         background: transparent;
         color: var(--b3-theme-on-background);
-        min-height: 44px;
+        min-height: 80px;
         max-height: 200px;
         overflow-y: auto;
 
@@ -19291,7 +19669,7 @@
             padding: 6px 10px;
         }
 
-        .ai-sidebar__input {
+        :global(.ai-sidebar__input) {
             padding: 10px 14px;
             padding-right: 70px;
         }
@@ -19324,7 +19702,7 @@
             padding: 8px 10px;
         }
 
-        .ai-sidebar__input {
+        :global(.ai-sidebar__input) {
             font-size: 13px;
             padding: 8px 12px;
             padding-right: 64px;
@@ -19535,7 +19913,7 @@
         padding: 16px 18px !important;
     }
 
-    .ai-sidebar--fullscreen .ai-sidebar__input {
+    .ai-sidebar--fullscreen :global(.ai-sidebar__input) {
         font-size: 15px !important;
         padding: 14px 18px !important;
         padding-right: 52px !important;
@@ -19656,6 +20034,149 @@
 
         &:hover {
             opacity: 0.9;
+        }
+    }
+
+    /* Tiptap Inline Tag styles */
+    :global(.context-document-tag) {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--b3-theme-surface-light);
+        border: 1px solid var(--b3-border-color);
+        color: var(--b3-theme-on-surface);
+        border-radius: 12px;
+        padding: 2px 8px;
+        margin: 2px 4px;
+        font-size: 12px;
+        user-select: none;
+        vertical-align: middle;
+        cursor: pointer;
+        line-height: 1.2;
+
+        .context-document-tag__icon {
+            font-size: 11px;
+        }
+
+        .context-document-tag__title {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .context-document-tag__remove {
+            cursor: pointer;
+            margin-left: 2px;
+            color: var(--b3-theme-on-surface-light);
+            font-weight: bold;
+            font-size: 12px;
+
+            &:hover {
+                color: var(--b3-theme-error);
+            }
+        }
+
+        &:hover {
+            background: var(--b3-theme-background-light);
+        }
+    }
+
+    /* ProseMirror Placeholder */
+    :global(.ProseMirror p.is-editor-empty:first-child::before) {
+        color: var(--b3-theme-on-surface-light);
+        content: attr(data-placeholder);
+        float: left;
+        height: 0;
+        pointer-events: none;
+    }
+
+    /* Tiptap Suggestion Popup */
+    .ai-sidebar__suggestion-popup {
+        background-color: var(--b3-menu-background);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 8px;
+        box-shadow: var(--b3-dialog-shadow);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        max-height: 200px;
+        width: 280px;
+        padding: 4px;
+    }
+
+    .ai-sidebar__suggestion-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--b3-theme-on-surface);
+
+        &.ai-sidebar__suggestion-item--selected, &:hover, &:focus {
+            background-color: var(--b3-list-hover);
+            color: var(--b3-theme-primary);
+        }
+    }
+
+    .ai-sidebar__suggestion-icon {
+        flex-shrink: 0;
+        font-size: 14px;
+    }
+
+    .ai-sidebar__suggestion-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-sidebar__suggestion-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .ai-sidebar__suggestion-title {
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-sidebar__suggestion-name {
+        font-weight: normal;
+        font-size: 11px;
+        color: var(--b3-theme-on-surface-light);
+    }
+
+    .ai-sidebar__suggestion-desc {
+        font-size: 11px;
+        color: var(--b3-theme-on-surface-light);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-top: 2px;
+    }
+
+    .ai-sidebar__suggestion-empty {
+        padding: 8px;
+        text-align: center;
+        color: var(--b3-theme-on-surface-light);
+        font-size: 12px;
+    }
+
+    /* Style override for Tiptap editor wrapper */
+    .ai-sidebar__editor-wrapper {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        
+        :global(.ProseMirror) {
+            outline: none;
+            width: 100%;
         }
     }
 </style>

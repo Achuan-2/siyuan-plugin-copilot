@@ -36,6 +36,12 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
+    "@tiptap/core": "^3.27.1",
+    "@tiptap/extension-mention": "^3.27.1",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/pm": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "@tiptap/suggestion": "^3.27.1",
     "katex": "^0.16.25"
   }
 }
