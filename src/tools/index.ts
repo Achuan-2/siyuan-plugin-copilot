@@ -469,7 +469,7 @@ export const AVAILABLE_TOOLS: Tool[] = [
             properties: {
                 skillId: {
                     type: 'string',
-                    description: 'Skill 标识符，会保存到 data/storage/petal/siyuan-plugin-copilot/skills/{skillId}/skill.md。不能包含路径分隔符或文件名非法字符。',
+                    description: 'Skill 标识符，会保存到 data/storage/ai/agent/skills/{skillId}/skill.md。不能包含路径分隔符或文件名非法字符。',
                 },
                 content: {
                     type: 'string',
@@ -3571,7 +3571,7 @@ function getSkillAbsolutePath(...pathParts: string[]): string {
     try {
         // @ts-ignore
         const path = window.require('path');
-        return path.join(dataDir, 'storage', 'petal', 'siyuan-plugin-copilot', 'skills', ...pathParts);
+        return path.join(dataDir, 'storage', 'ai', 'agent', 'skills', ...pathParts);
     } catch (err) {
         console.error('Failed to get absolute path for skill:', err);
         return '';
@@ -3604,7 +3604,7 @@ export interface Skill {
     yamlHeaders: Record<string, string>;
 }
 
-const CUSTOM_SKILLS_DIR = '/data/storage/petal/siyuan-plugin-copilot/skills';
+const CUSTOM_SKILLS_DIR = '/data/storage/ai/agent/skills';
 const CUSTOM_SKILL_FILE_NAME = 'skill.md';
 
 function normalizeCustomSkillId(skillId: string): string {
@@ -3702,11 +3702,51 @@ function buildCustomSkillMarkdown(
 }
 
 /**
- * 从 data/storage/petal/siyuan-plugin-copilot/skills 加载所有自定义 Skill
+ * 从 data/storage/ai/agent/skills 加载所有自定义 Skill
  */
 export async function loadAllSkills(): Promise<Skill[]> {
     const skills: Skill[] = [];
     try {
+        // 迁移旧的 skills (从 /data/storage/petal/siyuan-plugin-copilot/skills 迁移到 /data/storage/ai/agent/skills)
+        const OLD_CUSTOM_SKILLS_DIR = '/data/storage/petal/siyuan-plugin-copilot/skills';
+        try {
+            const oldItems = await readDir(OLD_CUSTOM_SKILLS_DIR);
+            if (oldItems && Array.isArray(oldItems) && oldItems.length > 0) {
+                // 确保新目录存在
+                await putFile(CUSTOM_SKILLS_DIR, true, null);
+                const newItems = await readDir(CUSTOM_SKILLS_DIR);
+                const newFolderNames = new Set(
+                    newItems && Array.isArray(newItems)
+                        ? newItems.filter(item => item.isDir).map(item => item.name)
+                        : []
+                );
+
+                for (const oldItem of oldItems) {
+                    if (oldItem.isDir && !newFolderNames.has(oldItem.name)) {
+                        const oldFolderPath = `${OLD_CUSTOM_SKILLS_DIR}/${oldItem.name}`;
+                        const newFolderPath = `${CUSTOM_SKILLS_DIR}/${oldItem.name}`;
+                        await putFile(newFolderPath, true, null);
+
+                        const files = await readDir(oldFolderPath);
+                        if (files && Array.isArray(files)) {
+                            for (const file of files) {
+                                if (!file.isDir) {
+                                    const oldFilePath = `${oldFolderPath}/${file.name}`;
+                                    const newFilePath = `${newFolderPath}/${file.name}`;
+                                    const blob = await getFileBlob(oldFilePath);
+                                    if (blob) {
+                                        await putFile(newFilePath, false, blob);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (migrationError) {
+            console.error('[Skills] Failed to migrate old skills:', migrationError);
+        }
+
         // 确保目录存在
         await putFile(CUSTOM_SKILLS_DIR, true, null);
 

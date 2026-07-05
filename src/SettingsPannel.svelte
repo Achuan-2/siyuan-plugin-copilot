@@ -51,7 +51,7 @@ description: 描述这个 Skill 的功能
                 pushErrMsg('当前环境不支持打开本地文件夹，请在思源笔记桌面版中使用此功能。');
                 return;
             }
-            const skillsDir = '/data/storage/petal/siyuan-plugin-copilot/skills';
+            const skillsDir = '/data/storage/ai/agent/skills';
             // 确保目录存在
             await putFile(skillsDir, true, null);
 
@@ -68,8 +68,8 @@ description: 描述这个 Skill 的功能
             const absolutePath = path.join(
                 dataDir,
                 'storage',
-                'petal',
-                'siyuan-plugin-copilot',
+                'ai',
+                'agent',
                 'skills'
             );
             shell.openPath(absolutePath);
@@ -434,7 +434,7 @@ description: 描述这个 Skill 的功能
         }
 
         try {
-            const skillFilePath = `/data/storage/petal/siyuan-plugin-copilot/skills/${normalizedId}/skill.md`;
+            const skillFilePath = `/data/storage/ai/agent/skills/${normalizedId}/skill.md`;
             const fileBlob = new Blob([editorContent], { type: 'text/markdown' });
             await putFile(skillFilePath, false, fileBlob);
 
@@ -1756,8 +1756,8 @@ description: 描述这个 Skill 的功能
                     </svg>
                     <div>
                         <p style="margin: 0 0 8px 0;">
-                            模仿 Codex 和 Claude Code 的 Skills 设计。数据存储在 <code>
-                                data/storage/petal/siyuan-plugin-copilot/skills/
+                            数据存储在 <code>
+                                data/storage/ai/agent/skills/
                             </code>
                              目录下。
                         </p>
@@ -2036,7 +2036,7 @@ description: 描述这个 Skill 的功能
                                 style="padding: 24px; text-align: center; border: 1px dashed var(--b3-border-color); border-radius: 4px; color: var(--b3-theme-on-surface-light);"
                             >
                                 暂无自定义 Skill，请点击“新建 Skill”或在 <code>
-                                    data/storage/petal/siyuan-plugin-copilot/skills/
+                                    data/storage/ai/agent/skills/
                                 </code>
                                  文件夹下创建
                             </div>

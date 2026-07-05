@@ -6,7 +6,7 @@
 - 如果要更新已有 Skill，建议先调用 `read_skill` 读取原内容，再生成完整的新 `skill.md` 内容后写回。
 
 ## 参数
-- skillId: Skill 标识符，会保存到 `data/storage/petal/siyuan-plugin-copilot/skills/{skillId}/skill.md`。不能包含路径分隔符或文件名非法字符。
+- skillId: Skill 标识符，会保存到 `data/storage/ai/agent/skills/{skillId}/skill.md`。不能包含路径分隔符或文件名非法字符。
 - content: 完整的 `skill.md` Markdown 内容。建议包含 YAML Frontmatter，例如 `name` 和 `description`。
 - name: 可选。`content` 缺少 YAML Frontmatter 时，用于自动补全 Frontmatter 的 Skill 名称。
 - description: 可选。`content` 缺少 YAML Frontmatter 时，用于自动补全 Frontmatter 的 Skill 描述。
