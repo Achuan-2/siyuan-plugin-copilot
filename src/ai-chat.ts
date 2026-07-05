@@ -475,6 +475,22 @@ function hasAssistantToolCalls(message: any): boolean {
     return message?.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
 }
 
+async function handleNonStreamingOpenAIToolCalls(data: any, options: ChatOptions): Promise<boolean> {
+    const message = data?.choices?.[0]?.message;
+    const toolCalls = message?.tool_calls;
+
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+        return false;
+    }
+
+    if (!options.onToolCallComplete) {
+        return false;
+    }
+
+    await options.onToolCallComplete(toolCalls);
+    return true;
+}
+
 function hasSendableAssistantContent(message: any): boolean {
     if (!message || message.role !== 'assistant') return true;
 
@@ -1118,6 +1134,10 @@ async function chatOpenAIFormat(
             }
 
             const data = await result.json();
+            if (await handleNonStreamingOpenAIToolCalls(data, options)) {
+                return;
+            }
+
             const content = data.choices?.[0]?.message?.content || '';
             const shouldParseThinkTags =
                 options.enableThinking && isMinimaxThinkingModel(options.model);
@@ -1195,6 +1215,10 @@ async function chatOpenAIFormat(
             await handleStreamResponse(response.body, options);
         } else {
             const data = await response.json();
+            if (await handleNonStreamingOpenAIToolCalls(data, options)) {
+                return;
+            }
+
             const content = data.choices?.[0]?.message?.content || '';
             const shouldParseThinkTags =
                 options.enableThinking && isMinimaxThinkingModel(options.model);
