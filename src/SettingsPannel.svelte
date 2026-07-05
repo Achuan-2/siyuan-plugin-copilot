@@ -1869,6 +1869,7 @@ description: 描述这个 Skill 的功能
                                         class="b3-text-field"
                                         type="text"
                                         placeholder="粘贴一个或多个块 ID，用逗号或空格分隔"
+                                        style="width: 100%;"
                                         bind:value={skillBlockIdInput}
                                     />
                                     <button
