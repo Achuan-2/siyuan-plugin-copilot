@@ -2,7 +2,7 @@
   "name": "siyuan-plugin-copilot",
   "author": "Achuan-2",
   "url": "https://github.com/Achuan-2/siyuan-plugin-copilot",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "minAppVersion": "3.6.0",
   "backends": [
     "all"
