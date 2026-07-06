@@ -368,6 +368,124 @@ ask_user_question 参数说明：
     let searchTimeout: number | null = null;
 
     // Tiptap variables and suggestion state
+    // Convert ProseMirror node tree to Markdown
+    function serializeNodeToMarkdown(node: any): string {
+        if (!node) return '';
+
+        if (node.isText) {
+            let text = node.text || '';
+            if (node.marks) {
+                for (const mark of node.marks) {
+                    if (mark.type.name === 'bold') {
+                        text = `**${text}**`;
+                    } else if (mark.type.name === 'italic') {
+                        text = `*${text}*`;
+                    } else if (mark.type.name === 'code') {
+                        text = `\`${text}\``;
+                    } else if (mark.type.name === 'strike') {
+                        text = `~~${text}~~`;
+                    }
+                }
+            }
+            return text;
+        }
+
+        switch (node.type.name) {
+            case 'doc': {
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return children.join('\n\n');
+            }
+            case 'paragraph': {
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return children.join('');
+            }
+            case 'heading': {
+                const level = node.attrs.level || 1;
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return '#'.repeat(level) + ' ' + children.join('');
+            }
+            case 'bulletList': {
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeListItem(child, '* '));
+                });
+                return children.join('\n');
+            }
+            case 'orderedList': {
+                const children: string[] = [];
+                let index = node.attrs.start || 1;
+                node.forEach((child: any) => {
+                    children.push(serializeListItem(child, `${index}. `));
+                    index++;
+                });
+                return children.join('\n');
+            }
+            case 'blockquote': {
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return children.map(line => `> ${line}`).join('\n');
+            }
+            case 'codeBlock': {
+                const language = node.attrs.language || '';
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return `\`\`\`${language}\n${children.join('')}\n\`\`\``;
+            }
+            case 'horizontalRule': {
+                return '---';
+            }
+            case 'hardBreak': {
+                return '\n';
+            }
+            case 'contextDocument': {
+                return `@${node.attrs.title}`;
+            }
+            case 'contextImage': {
+                return `[图片: ${node.attrs.name}]`;
+            }
+            default: {
+                const children: string[] = [];
+                node.forEach((child: any) => {
+                    children.push(serializeNodeToMarkdown(child));
+                });
+                return children.join('');
+            }
+        }
+    }
+
+    function serializeListItem(listItemNode: any, prefix: string): string {
+        const children: string[] = [];
+        listItemNode.forEach((child: any) => {
+            children.push(serializeNodeToMarkdown(child));
+        });
+        const content = children.join('\n');
+        const lines = content.split('\n');
+        const indent = ' '.repeat(prefix.length);
+        const formattedLines = lines.map((line, idx) => {
+            if (idx === 0) return prefix + line;
+            return indent + line;
+        });
+        return formattedLines.join('\n');
+    }
+
+    function getMarkdownFromEditor(editorInstance: any): string {
+        if (!editorInstance) return '';
+        return serializeNodeToMarkdown(editorInstance.state.doc);
+    }
+
     let editor: Editor;
     let editorElement: HTMLElement;
     let showSuggestions = false;
@@ -2075,7 +2193,7 @@ ask_user_question 参数说明：
             ],
             content: currentInput,
             onUpdate({ editor }) {
-                currentInput = editor.getText();
+                currentInput = getMarkdownFromEditor(editor);
                 // 实时同步更新 contextDocuments 数组
                 const tempDocs: ContextDocument[] = [];
                 const presentImageSrcs = new Set<string>();
@@ -3833,7 +3951,7 @@ ask_user_question 参数说明：
     // 多模型发送消息
     async function sendMultiModelMessage() {
         // 保存用户输入和附件
-        const userContent = (editor ? editor.getText() : currentInput).trim();
+        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
 
         // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
         // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
@@ -5644,7 +5762,7 @@ ask_user_question 参数说明：
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = (editor ? editor.getText() : currentInput).trim();
+        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
         if (!userContent) {
             pushErrMsg('请输入画图提示词');
             isLoading = false;
@@ -6042,7 +6160,7 @@ ask_user_question 参数说明：
             }
         }
         // 用户消息只保存原始输入（不包含文档内容）
-        const userContent = (editor ? editor.getText() : currentInput).trim();
+        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
 
         // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
         // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
@@ -10896,7 +11014,7 @@ ask_user_question 参数说明：
             suppressPromptClickOnce = false;
             return;
         }
-        const oldText = editor ? editor.getText() : currentInput;
+        const oldText = editor ? getMarkdownFromEditor(editor) : currentInput;
         const newText = prompt.content + '\n' + oldText;
         currentInput = newText;
         isPromptSelectorOpen = false;
@@ -17820,6 +17938,24 @@ ask_user_question 参数说明：
         &::placeholder {
             color: var(--b3-theme-on-surface-light);
         }
+
+    }
+
+    :global(.ai-sidebar__input ul) {
+        list-style-type: disc !important;
+        padding-left: 20px !important;
+        margin: 8px 0 !important;
+    }
+
+    :global(.ai-sidebar__input ol) {
+        list-style-type: decimal !important;
+        padding-left: 20px !important;
+        margin: 8px 0 !important;
+    }
+
+    :global(.ai-sidebar__input li) {
+        margin: 4px 0 !important;
+        display: list-item !important;
     }
 
     .ai-sidebar__context-indicator {
