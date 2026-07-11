@@ -65,6 +65,7 @@
     import {
         AVAILABLE_TOOLS,
         createGetSiyuanSkillsTool,
+        createReadSkillTool,
         executeToolCall,
         loadAllSkills,
         TOOL_CATEGORIES,
@@ -116,6 +117,7 @@
 
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
+        'read_skill',
     ]);
     const AGENT_ONLY_TOOL_NAMES = new Set<string>([]);
 
@@ -178,6 +180,11 @@
                 (chatMode === 'agent' || !AGENT_ONLY_TOOL_NAMES.has(tool.function.name))
         );
         const extraTools = [];
+
+        // 当存在自定义 Skill 时，自动附加 read_skill 工具
+        if (hasSkills) {
+            extraTools.push(createReadSkillTool());
+        }
 
         if (filteredToolDefs.length > 0) {
             extraTools.push(

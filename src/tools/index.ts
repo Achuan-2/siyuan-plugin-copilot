@@ -6,43 +6,18 @@
 import {
     sql,
     updateBlock,
-    getBlockKramdown,
     exportMdContent,
-    createDocWithMd,
     getBlockByID,
     getBlockDOM,
     refreshSql,
-    openBlock,
-    lsNotebooks,
-    createNotebook,
-    renameDocByID,
-    moveDocsByID,
     appendBlock,
     insertBlock,
-    getBlockAttrs,
-    setBlockAttrs,
     getNotebookConf,
     listDocsByPath,
-    searchAttributeView,
-    getAttributeViewKeysByAvID,
-    renderAttributeView,
-    appendAttributeViewDetachedBlocksWithValues,
-    addAttributeViewBlocks,
-    setAttributeViewBlockAttr,
-    batchSetAttributeViewBlockAttrs,
-    getAttributeViewKeys,
-    getAttributeViewBoundBlockIDsByItemIDs,
-    getAttributeViewItemIDsByBoundIDs,
-    addAttributeViewKey,
-    removeAttributeViewKey,
-    removeAttributeViewBlocks,
     deleteBlock,
-    request,
-    sendNotification,
     putFile,
     readDir,
     getFileBlob,
-    renderSprig,
 } from '../api';
 import { getActiveEditor } from 'siyuan';
 import { parseWebPageToMarkdown, fetchWithWebView } from '../utils/webParser';
@@ -96,7 +71,6 @@ export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
             'soul',
             'run_js',
             'run_command',
-            'ask_user_question',
         ],
     },
 };
@@ -204,12 +178,8 @@ async function readBuiltinToolSkillDescription(toolName: string): Promise<string
         return null;
     }
 
-    let skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
-    let blob = await getFileBlob(skillPath);
-    if (!blob) {
-        skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/siyuan_${toolName}.md`;
-        blob = await getFileBlob(skillPath);
-    }
+    const skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
+    const blob = await getFileBlob(skillPath);
     if (!blob) {
         return null;
     }
@@ -348,39 +318,9 @@ export async function getSiyuanSkills(
 }
 
 const GET_SIYUAN_SKILLS_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('get_siyuan_skills');
+const READ_SKILL_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('read_skill');
 
 const GET_SIYUAN_SKILLS_ALL_TOOL_NAMES = [
-    'siyuan_sql_query',
-    'siyuan_update_block',
-    'siyuan_insert_block',
-    'siyuan_get_block_content',
-    'siyuan_create_document',
-    'siyuan_create_child_document',
-    'siyuan_list_notebooks',
-    'siyuan_get_doc_tree',
-    'siyuan_create_notebook',
-    'siyuan_rename_document',
-    'siyuan_move_documents',
-    'siyuan_get_block_attrs',
-    'siyuan_set_block_attrs',
-    'siyuan_search_database',
-    'siyuan_get_database_columns',
-    'siyuan_render_database',
-    'siyuan_add_database_rows',
-    'siyuan_add_database_blocks',
-    'siyuan_set_database_cell',
-    'siyuan_batch_set_database_cells',
-    'siyuan_get_block_databases',
-    'siyuan_convert_blockid_to_itemid',
-    'siyuan_convert_itemid_to_blockid',
-    'siyuan_add_database_column',
-    'siyuan_remove_database_column',
-    'siyuan_remove_database_rows',
-    'web_fetch',
-    'siyuan_delete_block',
-    'siyuan_fetch_sync_post',
-    'siyuan_send_notification',
-    'siyuan_get_current_time',
     'soul',
     'run_js',
     'run_python',
@@ -423,9 +363,35 @@ export function createGetSiyuanSkillsTool(allowedToolNames?: string[]): Tool {
     };
 }
 
+/**
+ * 构建 read_skill 工具定义
+ * - 用于让模型读取自定义 Skill 的完整工作流文档
+ */
+export function createReadSkillTool(): Tool {
+    return {
+        type: 'function',
+        function: {
+            name: 'read_skill',
+            description: READ_SKILL_TOOL_DESCRIPTION,
+            parameters: {
+                type: 'object',
+                properties: {
+                    skillId: {
+                        type: 'string',
+                        description: '要读取的 Skill 标识符，或 Skill 文件夹下子文件的相对路径（如 "my-skill" 或 "my-skill/references/guide.md"）',
+                    },
+                },
+                required: ['skillId'],
+            },
+        },
+    };
+}
+
 export let AVAILABLE_TOOLS: Tool[] = [
     // 工具详细描述查询工具 - 隐藏工具，不在 UI 中显示
     createGetSiyuanSkillsTool(),
+    // Skill 读取工具 - 隐藏工具，不在 UI 中显示
+    createReadSkillTool(),
     // 运行本地命令工具
     createTool(
         'run_command',
@@ -536,31 +502,7 @@ export let AVAILABLE_TOOLS: Tool[] = [
     ),
 ];
 
-// ==================== 工具实现 ====================
 
-
-/**
- * 执行SQL查询（带限制）
- */
-export async function siyuan_sql_query(sqlQuery: string): Promise<any[]> {
-    try {
-
-        // 限制返回数量
-        const limitedQuery = sqlQuery.includes('LIMIT') ? sqlQuery : `${sqlQuery} LIMIT 1000`;
-
-        const results = await sql(limitedQuery);
-
-        // 如果结果过多，提供摘要
-        if (results.length >= 1000) {
-            console.warn('SQL query returned 1000+ results, might be truncated');
-        }
-
-        return results;
-    } catch (error) {
-        console.error('Execute SQL query error:', error);
-        throw new Error(`SQL查询失败: ${(error as Error).message}`);
-    }
-}
 
 /**
  * 插入块
@@ -716,346 +658,9 @@ export async function siyuan_update_block(
     }
 }
 
-/**
- * 解析并执行单条命令
- */
-function executeCommand(content: string, cmdStr: string): string {
-    const parts = cmdStr.trim().split(/\s+/);
-    const cmd = parts[0]?.toLowerCase();
-
-    switch (cmd) {
-        case 'length': {
-            return String(content.length);
-        }
-
-        case 'grep': {
-            if (parts.length < 2) {
-                throw new Error('grep 命令需要 pattern 参数');
-            }
-            const patternStr = parts.slice(1).join(' ');
-            let regex: RegExp;
-
-            // 检测是否为 /pattern/flags 格式
-            const regexMatch = patternStr.match(/^\/(.*)\/([gimuy]*)$/);
-            if (regexMatch) {
-                regex = new RegExp(regexMatch[1], regexMatch[2] || 'm');
-            } else {
-                // 普通字符串匹配
-                regex = new RegExp(patternStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'm');
-            }
-
-            const lines = content.split('\n');
-            const matchedLines = lines.filter(line => regex.test(line));
-            return matchedLines.join('\n');
-        }
-
-        case 'replace': {
-            if (parts.length < 3) {
-                throw new Error('replace 命令需要 pattern 和 replacement 参数');
-            }
-
-            // 最后一个参数是 replacement，中间的是 pattern
-            const replacement = parts[parts.length - 1];
-            const patternStr = parts.slice(1, -1).join(' ');
-
-            let regex: RegExp;
-            // 检测是否为 /pattern/flags 格式
-            const regexMatch = patternStr.match(/^\/(.*)\/([gimuy]*)$/);
-            if (regexMatch) {
-                regex = new RegExp(regexMatch[1], regexMatch[2] || 'g');
-            } else {
-                // 普通字符串替换，全局替换
-                regex = new RegExp(patternStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            }
-
-            return content.replace(regex, replacement);
-        }
-
-        case 'head': {
-            if (parts.length < 2) {
-                throw new Error('head 命令需要行数参数');
-            }
-
-            const lines = content.split('\n');
-
-            if (parts.length === 2) {
-                // head n: 返回前 n 行
-                const n = parseInt(parts[1], 10);
-                if (isNaN(n) || n < 1) {
-                    throw new Error('head 参数必须是正整数');
-                }
-                return lines.slice(0, n).join('\n');
-            } else {
-                // head start end: 返回第 start 到 end 行（1-based，包含）
-                const start = parseInt(parts[1], 10);
-                const end = parseInt(parts[2], 10);
-                if (isNaN(start) || isNaN(end) || start < 1 || end < start) {
-                    throw new Error('head 参数格式错误，应为 "head start end"');
-                }
-                return lines.slice(start - 1, end).join('\n');
-            }
-        }
-
-        default:
-            throw new Error(`未知命令: ${cmd}`);
-    }
-}
-
-/**
- * 执行命令管道（支持 | 连接的多条命令）
- */
-function executeCommandPipeline(content: string, command: string): string {
-    if (!command || command.trim() === '') {
-        return content;
-    }
-
-    // 分割管道命令
-    const commands = command.split('|').map(cmd => cmd.trim()).filter(cmd => cmd);
-
-    let result = content;
-    for (const cmd of commands) {
-        result = executeCommand(result, cmd);
-    }
-
-    return result;
-}
-
-/**
- * 获取块内容
- * @param id 块ID
- * @param format 格式：markdown 或 kramdown
- * @param command 可选的文本处理命令
- */
-export async function siyuan_get_block_content(
-    id: string,
-    format: 'markdown' | 'kramdown',
-    command?: string
-): Promise<string> {
-    try {
-        let content: string;
-
-        if (format === 'kramdown') {
-            const result = await getBlockKramdown(id);
-            if (!result || !result.kramdown) {
-                throw new Error('获取Kramdown内容失败');
-            }
-            content = result.kramdown;
-        } else {
-            const result = await exportMdContent(id, false, false, 2, 0, false);
-            if (!result || !result.content) {
-                throw new Error('获取Markdown内容失败');
-            }
-            content = result.content;
-        }
-
-        // 如果有命令参数，执行文本处理
-        if (command && command.trim()) {
-            content = executeCommandPipeline(content, command);
-        }
-
-        return content;
-    } catch (error) {
-        console.error('Get block content error:', error);
-        throw new Error(`获取块内容失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 创建文档
- */
-function normalizeDocumentPath(path: string): string {
-    const normalizedPath = path.trim();
-    if (!normalizedPath) {
-        return '';
-    }
-    return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
-}
-
-async function resolveCreateDocumentDefaults(
-    notebook?: string,
-    path?: string,
-    title?: string
-): Promise<{ notebook: string; path: string }> {
-    const fileTreeConfig = window.siyuan?.config?.fileTree;
-    const resolvedNotebook = notebook?.trim() || fileTreeConfig?.docCreateSaveBox;
-    
-    let defaultPath = fileTreeConfig?.docCreateSavePath || '';
-    let defaultDirTemplate = '/';
-    if (defaultPath) {
-        defaultPath = defaultPath.trim();
-        if (defaultPath.endsWith('/')) {
-            defaultPath = defaultPath.slice(0, -1);
-        }
-        const lastSlashIdx = defaultPath.lastIndexOf('/');
-        if (lastSlashIdx > 0) {
-            defaultDirTemplate = defaultPath.substring(0, lastSlashIdx);
-        } else if (lastSlashIdx === 0) {
-            defaultDirTemplate = '/';
-        }
-    }
-
-    let defaultDir = defaultDirTemplate;
-    if (defaultDir.includes('{{')) {
-        defaultDir = await renderSprig(defaultDir);
-    }
-    if (!defaultDir.startsWith('/')) {
-        defaultDir = '/' + defaultDir;
-    }
-    if (!defaultDir.endsWith('/')) {
-        defaultDir = defaultDir + '/';
-    }
-
-    let resolvedDir = defaultDir;
-    const inputPath = path?.trim();
-    if (inputPath) {
-        resolvedDir = inputPath.startsWith('/') ? inputPath : '/' + inputPath;
-        if (resolvedDir.endsWith('/')) {
-            resolvedDir = resolvedDir.slice(0, -1);
-        }
-    } else {
-        if (resolvedDir.endsWith('/') && resolvedDir.length > 1) {
-            resolvedDir = resolvedDir.slice(0, -1);
-        }
-    }
-
-    let resolvedTitle = title?.trim();
-    if (!resolvedTitle) {
-        let fullDefaultPath = fileTreeConfig?.docCreateSavePath || '';
-        if (fullDefaultPath) {
-            fullDefaultPath = fullDefaultPath.trim();
-            if (fullDefaultPath.endsWith('/')) {
-                fullDefaultPath = fullDefaultPath.slice(0, -1);
-            }
-            const lastSlashIdx = fullDefaultPath.lastIndexOf('/');
-            let titleTemplate = '';
-            if (lastSlashIdx >= 0) {
-                titleTemplate = fullDefaultPath.substring(lastSlashIdx + 1);
-            } else {
-                titleTemplate = fullDefaultPath;
-            }
-
-            if (titleTemplate) {
-                if (titleTemplate.includes('{{')) {
-                    resolvedTitle = await renderSprig(titleTemplate);
-                } else {
-                    resolvedTitle = titleTemplate;
-                }
-            }
-        }
-    }
-
-    if (!resolvedTitle) {
-        resolvedTitle = '未命名文档';
-    }
-
-    let finalPath = '';
-    if (resolvedDir === '/') {
-        finalPath = '/' + resolvedTitle;
-    } else {
-        finalPath = resolvedDir + '/' + resolvedTitle;
-    }
-
-    finalPath = normalizeDocumentPath(finalPath);
-
-    if (!resolvedNotebook) {
-        throw new Error('未提供笔记本ID，且无法读取思源默认新建文档笔记本 docCreateSaveBox');
-    }
-    if (!finalPath) {
-        throw new Error('无法生成或解析文档路径');
-    }
-
-    return {
-        notebook: resolvedNotebook,
-        path: finalPath,
-    };
-}
 
 
 
-export async function siyuan_create_document(
-    notebook: string | undefined,
-    path: string | undefined,
-    title: string | undefined,
-    markdown: string
-): Promise<string> {
-    try {
-        const createOptions = await resolveCreateDocumentDefaults(notebook, path, title);
-
-        // 首先创建文档
-        const docId = await createDocWithMd(createOptions.notebook, createOptions.path, markdown);
-
-        // 自动打开创建的文档
-        try {
-            await openBlock(docId);
-        } catch (openError) {
-            console.warn('打开文档失败，但文档已创建:', openError);
-        }
-
-        return docId;
-    } catch (error) {
-        console.error('Create document error:', error);
-        throw new Error(`创建文档失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 创建子文档
- * @param parentId 父文档ID
- * @param title 子文档标题
- * @param markdown 文档内容
- */
-export async function siyuan_create_child_document(
-    parentId: string,
-    title: string,
-    markdown: string
-): Promise<string> {
-    try {
-        // 获取父文档信息
-        const parentBlock = await getBlockByID(parentId);
-        if (!parentBlock) {
-            throw new Error(`父文档不存在，ID: ${parentId}`);
-        }
-        if (parentBlock.type !== 'd') {
-            throw new Error(`指定的 parentId 不是文档类型，当前类型: ${parentBlock.type}`);
-        }
-
-        // 获取父文档的笔记本和路径
-        const notebook = parentBlock.box;
-        const parentPath = parentBlock.hpath;
-
-        // 构建子文档路径
-        const childTitle = title || '未命名文档';
-        const path = `${parentPath}/${childTitle}`;
-
-        // 创建文档
-        const docId = await createDocWithMd(notebook, path, markdown);
-
-        // 自动打开创建的文档
-        try {
-            await openBlock(docId);
-        } catch (openError) {
-            console.warn('打开文档失败，但文档已创建:', openError);
-        }
-
-        return docId;
-    } catch (error) {
-        console.error('Create child document error:', error);
-        throw new Error(`创建子文档失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 列出所有笔记本
- */
-export async function siyuan_list_notebooks(): Promise<any> {
-    try {
-        const result = await lsNotebooks();
-        return result;
-    } catch (error) {
-        console.error('List notebooks error:', error);
-        throw new Error(`获取笔记本列表失败: ${(error as Error).message}`);
-    }
-}
 
 /**
  * 递归获取指定路径下的文档树结构
@@ -1111,546 +716,6 @@ export async function siyuan_get_doc_tree(notebook: string, path: string = '/', 
     }
 }
 
-/**
- * 创建笔记本
- */
-export async function siyuan_create_notebook(name: string): Promise<any> {
-    try {
-        const result = await createNotebook(name);
-        return result;
-    } catch (error) {
-        console.error('Create notebook error:', error);
-        throw new Error(`创建笔记本失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 重命名文档
- */
-export async function siyuan_rename_document(
-    id: string,
-    title: string
-): Promise<string> {
-    try {
-        const result = await renameDocByID(id, title);
-        return result;
-    } catch (error) {
-        console.error('Rename document error:', error);
-        throw new Error(`重命名文档失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 移动文档
- */
-export async function siyuan_move_documents(
-    fromIDs: string[],
-    toID: string
-): Promise<any> {
-    try {
-        if (!fromIDs || fromIDs.length === 0) {
-            throw new Error('fromIDs 不能为空');
-        }
-        if (!toID) {
-            throw new Error('toID 不能为空');
-        }
-
-        const result = await moveDocsByID(fromIDs, toID);
-        return result;
-    } catch (error) {
-        console.error('Move documents error:', error);
-        throw new Error(`移动文档失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 获取块属性
- */
-export async function siyuan_get_block_attrs(id: string): Promise<{ [key: string]: string } | any> {
-    try {
-        const res = await getBlockAttrs(id);
-        return res;
-    } catch (error) {
-        console.error('Get block attrs error:', error);
-        throw new Error(`获取块属性失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 设置块属性
- */
-export async function siyuan_set_block_attrs(id: string, attrs: { [key: string]: string }): Promise<any> {
-    try {
-        const result = await setBlockAttrs(id, attrs);
-        return result;
-    } catch (error) {
-        console.error('Set block attrs error:', error);
-        throw new Error(`设置块属性失败: ${(error as Error).message}`);
-    }
-}
-
-// ==================== 数据库属性视图工具实现 ====================
-
-/**
- * 规范化 mSelect 值中的 color 字段
- * 如果 color > 13，则取余数保证范围在 1-13
- */
-function normalizeMSelectColor(value: any): any {
-    if (!value || typeof value !== 'object') {
-        return value;
-    }
-
-    // 处理 mSelect 类型
-    if (value.mSelect && Array.isArray(value.mSelect)) {
-        value.mSelect = value.mSelect.map((item: any) => {
-            if (item && item.color !== undefined) {
-                const colorNum = parseInt(item.color, 10);
-                if (!isNaN(colorNum)) {
-                    // 取余数，范围为 1-13
-                    const normalizedColor = ((colorNum - 1) % 13) + 1;
-                    item.color = String(normalizedColor);
-                }
-            }
-            return item;
-        });
-    }
-
-    // 处理 select 类型（与 mSelect 类似）
-    if (value.select && Array.isArray(value.select)) {
-        value.select = value.select.map((item: any) => {
-            if (item && item.color !== undefined) {
-                const colorNum = parseInt(item.color, 10);
-                if (!isNaN(colorNum)) {
-                    const normalizedColor = ((colorNum - 1) % 13) + 1;
-                    item.color = String(normalizedColor);
-                }
-            }
-            return item;
-        });
-    }
-
-    return value;
-}
-
-/**
- * 搜索数据库
- */
-export async function siyuan_search_database(keyword: string, avID?: string): Promise<any> {
-    try {
-        if (!keyword) {
-            throw new Error('keyword参数是必需的');
-        }
-        const result = await searchAttributeView(keyword, avID);
-        return result;
-    } catch (error) {
-        console.error('Search database error:', error);
-        throw new Error(`搜索数据库失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 获取数据库列信息
- */
-export async function siyuan_get_database_columns(avID: string): Promise<any> {
-    try {
-        if (!avID) {
-            throw new Error('avID参数是必需的');
-        }
-        const result = await getAttributeViewKeysByAvID(avID);
-        return result;
-    } catch (error) {
-        console.error('Get database columns error:', error);
-        throw new Error(`获取数据库列信息失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 渲染/获取数据库内容
- */
-export async function siyuan_render_database(
-    avID: string,
-    viewID: string,
-    pageSize: number = 9999999,
-    page: number = 1,
-    createIfNotExist: boolean = true
-): Promise<any> {
-    try {
-        if (!avID || !viewID) {
-            throw new Error('avID和viewID参数是必需的');
-        }
-        const result = await renderAttributeView(avID, viewID, pageSize, page, createIfNotExist);
-        return result;
-    } catch (error) {
-        console.error('Render database error:', error);
-        throw new Error(`渲染数据库失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 添加数据库行（非绑定行）
- */
-export async function siyuan_add_database_rows(avID: string, blocksValues: any[][]): Promise<any> {
-    try {
-        if (!avID || !blocksValues) {
-            throw new Error('avID和blocksValues参数是必需的');
-        }
-        // 规范化所有值中的 mSelect/select color
-        const normalizedBlocksValues = blocksValues.map((row: any[]) => {
-            return row.map((cell: any) => {
-                if (cell && (cell.mSelect || cell.select)) {
-                    return normalizeMSelectColor(cell);
-                }
-                return cell;
-            });
-        });
-        const result = await appendAttributeViewDetachedBlocksWithValues(avID, normalizedBlocksValues);
-        return result;
-    } catch (error) {
-        console.error('Add database rows error:', error);
-        throw new Error(`添加数据库行失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 添加绑定块到数据库
- */
-export async function siyuan_add_database_blocks(
-    avID: string,
-    blockIDs: string[],
-    itemIDs?: string[]
-): Promise<any> {
-    try {
-        if (!avID || !blockIDs) {
-            throw new Error('avID和blockIDs参数是必需的');
-        }
-        const srcs = blockIDs.map((id: string, index: number) => ({
-            id: id,
-            isDetached: false,
-            itemID: itemIDs ? itemIDs[index] : id
-        }));
-        const result = await addAttributeViewBlocks(avID, srcs);
-        return result;
-    } catch (error) {
-        console.error('Add database blocks error:', error);
-        throw new Error(`添加数据库绑定块失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 设置数据库单元格值
- */
-export async function siyuan_set_database_cell(
-    avID: string,
-    keyID: string,
-    itemID: string,
-    value: any
-): Promise<any> {
-    try {
-        if (!avID || !keyID || !itemID || !value) {
-            throw new Error('avID、keyID、itemID和value参数是必需的');
-        }
-        // 规范化 mSelect/select 的 color 值
-        const normalizedValue = normalizeMSelectColor(value);
-        const result = await setAttributeViewBlockAttr(avID, keyID, itemID, normalizedValue);
-        return result;
-    } catch (error) {
-        console.error('Set database cell error:', error);
-        throw new Error(`设置数据库单元格失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 批量设置数据库单元格
- */
-export async function siyuan_batch_set_database_cells(
-    avID: string,
-    values: any[]
-): Promise<any> {
-    try {
-        if (!avID || !Array.isArray(values)) {
-            throw new Error('avID和values参数是必需的');
-        }
-        // 规范化每个值中的 mSelect/select color
-        const normalizedValues = values.map((item: any) => {
-            const itemID = item?.itemID;
-            if (!item?.keyID || !itemID || item.value === undefined) {
-                throw new Error('values每项必须包含keyID、itemID和value');
-            }
-            return {
-                keyID: item.keyID,
-                itemID: itemID,
-                value: normalizeMSelectColor(item.value),
-            };
-        });
-        const result = await batchSetAttributeViewBlockAttrs(avID, normalizedValues);
-        return result;
-    } catch (error) {
-        console.error('Batch set database cells error:', error);
-        throw new Error(`批量设置数据库单元格失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 获取块所在的数据库
- */
-export async function siyuan_get_block_databases(blockID: string): Promise<any> {
-    try {
-        if (!blockID) {
-            throw new Error('blockID参数是必需的');
-        }
-        const result = await getAttributeViewKeys(blockID);
-        return result;
-    } catch (error) {
-        console.error('Get block databases error:', error);
-        throw new Error(`获取块所在数据库失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 块ID转ItemID
- */
-export async function siyuan_convert_blockid_to_itemid(
-    avID: string,
-    blockIDs: string[]
-): Promise<any> {
-    try {
-        if (!avID || !blockIDs) {
-            throw new Error('avID和blockIDs参数是必需的');
-        }
-        const result = await getAttributeViewItemIDsByBoundIDs(avID, blockIDs);
-        return result;
-    } catch (error) {
-        console.error('Convert blockID to itemID error:', error);
-        throw new Error(`块ID转ItemID失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * ItemID转块ID
- */
-export async function siyuan_convert_itemid_to_blockid(
-    avID: string,
-    itemIDs: string[]
-): Promise<any> {
-    try {
-        if (!avID || !itemIDs) {
-            throw new Error('avID和itemIDs参数是必需的');
-        }
-        const result = await getAttributeViewBoundBlockIDsByItemIDs(avID, itemIDs);
-        return result;
-    } catch (error) {
-        console.error('Convert itemID to blockID error:', error);
-        throw new Error(`ItemID转块ID失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 添加数据库列
- */
-export async function siyuan_add_database_column(
-    avID: string,
-    keyName: string,
-    keyType: string,
-    previousKeyID: string,
-    keyIcon?: string
-): Promise<any> {
-    try {
-        if (!avID || !keyName || !keyType || !previousKeyID) {
-            throw new Error('avID、keyName、keyType和previousKeyID参数是必需的');
-        }
-        // addAttributeViewKey 会自动生成 keyID，keyIcon 默认为空字符串
-        const result = await addAttributeViewKey(
-            avID,
-            keyName,
-            keyType,
-            previousKeyID,
-            undefined, // keyID 自动生成
-            keyIcon || "" // keyIcon 默认为空字符串
-        );
-        return result;
-    } catch (error) {
-        console.error('Add database column error:', error);
-        throw new Error(`添加数据库列失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 删除数据库列
- */
-export async function siyuan_remove_database_column(avID: string, keyID: string): Promise<any> {
-    try {
-        if (!avID || !keyID) {
-            throw new Error('avID和keyID参数是必需的');
-        }
-        const result = await removeAttributeViewKey(avID, keyID);
-        return result;
-    } catch (error) {
-        console.error('Remove database column error:', error);
-        throw new Error(`删除数据库列失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 删除数据库行
- */
-export async function siyuan_remove_database_rows(avID: string, srcIDs: string[]): Promise<any> {
-    try {
-        if (!avID || !srcIDs) {
-            throw new Error('avID和srcIDs参数是必需的');
-        }
-        const result = await removeAttributeViewBlocks(avID, srcIDs);
-        return result;
-    } catch (error) {
-        console.error('Remove database rows error:', error);
-        throw new Error(`删除数据库行失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 删除块工具
- * @param id 要删除的块ID
- */
-export async function siyuan_delete_block(id: string): Promise<any> {
-    try {
-        if (!id) {
-            throw new Error('块ID是必需的');
-        }
-
-        const targetBlock = await getBlockByID(id);
-        if (!targetBlock) {
-            throw new Error(`块不存在: ${id}`);
-        }
-
-        // 思源中标题块的“子内容”可能不会随 deleteBlock 自动删除。
-        // 对标题块执行递归删除：按 parent_id 收集后代，先删后代，再删标题本身。
-        if (targetBlock.type === 'h') {
-            const descendants: Array<{ id: string; level: number }> = [];
-            const queue: Array<{ id: string; level: number }> = [{ id, level: 0 }];
-
-            // 宽度优先遍历 parent_id 关系，收集整棵子树
-            while (queue.length > 0) {
-                const current = queue.shift();
-                if (!current) break;
-                const safeCurrentId = current.id.replace(/'/g, "''");
-                const children = await sql(`
-                    SELECT id
-                    FROM blocks
-                    WHERE parent_id = '${safeCurrentId}'
-                `);
-
-                for (const child of children || []) {
-                    if (!child?.id) continue;
-                    const childId = String(child.id);
-                    const nextLevel = current.level + 1;
-                    descendants.push({ id: childId, level: nextLevel });
-                    queue.push({ id: childId, level: nextLevel });
-                }
-            }
-
-            // 深层后代先删除，避免父级先删导致子级查找/删除异常
-            descendants.sort((a, b) => b.level - a.level);
-
-            const deletedIds: string[] = [];
-            for (const item of descendants) {
-                await deleteBlock(item.id);
-                deletedIds.push(item.id);
-            }
-
-            const selfResult = await deleteBlock(id);
-            deletedIds.push(id);
-
-            return {
-                id,
-                deletedCount: deletedIds.length,
-                deletedIds,
-                selfResult,
-            };
-        }
-
-        const result = await deleteBlock(id);
-        return {
-            id,
-            deletedCount: 1,
-            deletedIds: [id],
-            selfResult: result,
-        };
-    } catch (error) {
-        console.error('Delete block error:', error);
-        throw new Error(`删除块失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 通用思源API调用工具
- * 可以调用任何思源笔记的API
- * @param api API路径，如 '/api/block/insertBlock'
- * @param data 请求数据对象
- */
-export async function siyuan_fetch_sync_post(api: string, data: any): Promise<any> {
-    try {
-        if (!api) {
-            throw new Error('API路径是必需的');
-        }
-        // 确保API路径以 /api/ 开头
-        const url = api.startsWith('/api/') ? api : `/api/${api}`;
-        const result = await request(url, data || {});
-        return result;
-    } catch (error) {
-        console.error('API call error:', error);
-        throw new Error(`API调用失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 发送系统通知
- * @param title 通知标题
- * @param body 通知内容
- * @param delay 延迟时间（秒）或具体时间字符串/Date对象
- * @param timeoutType 超时类型：'default' 或 'never'
- */
-export async function siyuan_send_notification(
-    title: string,
-    body: string,
-    delay: number | string = 0,
-    timeoutType: 'default' | 'never' = 'default'
-): Promise<any> {
-    try {
-        if (!title) {
-            throw new Error('通知标题是必需的');
-        }
-        console.log(`siyuan_send_notification: title="${title}", delay=${delay}, type=${typeof delay}`);
-        const result = await sendNotification(title, body || '', delay, timeoutType);
-        return result;
-    } catch (error) {
-        console.error('Send notification error:', error);
-        throw new Error(`发送通知失败: ${(error as Error).message}`);
-    }
-}
-
-/**
- * 获取当前日期和时间
- * @param format 返回格式，'iso' | 'local' | 'date' | 'time' | 'timestamp'，默认为 'iso'
- */
-export async function siyuan_get_current_time(
-    format: 'iso' | 'local' | 'date' | 'time' | 'timestamp' = 'local'
-): Promise<string> {
-    const now = new Date();
-
-    switch (format) {
-        case 'iso':
-            return now.toISOString();
-        case 'local':
-            return now.toLocaleString('zh-CN');
-        case 'date':
-            return now.toISOString().split('T')[0];
-        case 'time':
-            return now.toTimeString().split(' ')[0];
-        case 'timestamp':
-            return now.getTime().toString();
-        default:
-            return now.toISOString();
-    }
-}
 
 /**
  * 执行 tool_input 指定的工具并返回结果
@@ -2441,180 +1506,11 @@ export async function executeToolCall(
                 const toolDesc = await getSiyuanSkills(args.toolName, allowedToolNameSet);
                 return toolDesc;
 
-            case 'siyuan_sql_query':
-                const results = await siyuan_sql_query(args.sql);
-                return JSON.stringify(results, null, 2);
-
-            case 'siyuan_insert_block':
-                const insertResult = await siyuan_insert_block(
-                    args.dataType,
-                    args.data,
-                    args.parentID,
-                    args.appendParentID,
-                    args.previousID,
-                    args.nextID
-                );
-                return JSON.stringify(insertResult, null, 2);
-
-            case 'siyuan_update_block':
-                const updateResult = await siyuan_update_block(args.dataType, args.data, args.id);
-                return JSON.stringify(updateResult, null, 2);
-
-            case 'siyuan_get_block_content':
-                return await siyuan_get_block_content(args.id, args.format, args.command);
-
-            case 'siyuan_create_document':
-                const docId = await siyuan_create_document(args.notebook, args.path, args.title, args.markdown);
-                return `文档创建成功，ID: ${docId}`;
-
-            case 'siyuan_create_child_document':
-                const childDocId = await siyuan_create_child_document(args.parentId, args.title, args.markdown);
-                return `子文档创建成功，ID: ${childDocId}`;
-
-            case 'siyuan_list_notebooks':
-                const notebooks = await siyuan_list_notebooks();
-                return JSON.stringify(notebooks, null, 2);
-
-            case 'siyuan_get_doc_tree':
-                {
-                    const tree = await siyuan_get_doc_tree(args.notebook, args.path || '/', args.sortMode);
-                    return JSON.stringify(tree, null, 2);
-                }
-
-            case 'siyuan_create_notebook':
-                const notebook = await siyuan_create_notebook(args.name);
-                return JSON.stringify(notebook, null, 2);
-
-            case 'siyuan_get_block_attrs':
-                {
-                    const attrs = await siyuan_get_block_attrs(args.id);
-                    return JSON.stringify(attrs, null, 2);
-                }
-
-            case 'siyuan_set_block_attrs':
-                {
-                    const setRes = await siyuan_set_block_attrs(args.id, args.attrs);
-                    return JSON.stringify(setRes, null, 2);
-                }
-
-            case 'siyuan_rename_document':
-                const renameResult = await siyuan_rename_document(args.id, args.title);
-                return `文档重命名成功，新ID: ${renameResult}`;
-
-            case 'siyuan_move_documents':
-                const moveResult = await siyuan_move_documents(args.fromIDs, args.toID);
-                return JSON.stringify(moveResult, null, 2);
-
-            // 数据库属性视图工具
-            case 'siyuan_search_database':
-                const searchDbResult = await siyuan_search_database(args.keyword, args.avID);
-                return JSON.stringify(searchDbResult, null, 2);
-
-            case 'siyuan_get_database_columns':
-                const columnsResult = await siyuan_get_database_columns(args.avID);
-                return JSON.stringify(columnsResult, null, 2);
-
-            case 'siyuan_render_database':
-                const renderResult = await siyuan_render_database(
-                    args.avID,
-                    args.viewID,
-                    args.pageSize,
-                    args.page,
-                    args.createIfNotExist
-                );
-                return JSON.stringify(renderResult, null, 2);
-
-            case 'siyuan_add_database_rows':
-                const addRowsResult = await siyuan_add_database_rows(args.avID, args.blocksValues);
-                return JSON.stringify(addRowsResult, null, 2);
-
-            case 'siyuan_add_database_blocks':
-                const addBlocksResult = await siyuan_add_database_blocks(
-                    args.avID,
-                    args.blockIDs,
-                    args.itemIDs
-                );
-                return JSON.stringify(addBlocksResult, null, 2);
-
-            case 'siyuan_set_database_cell':
-                const setCellResult = await siyuan_set_database_cell(
-                    args.avID,
-                    args.keyID,
-                    args.itemID,
-                    args.value
-                );
-                return JSON.stringify(setCellResult, null, 2);
-
-            case 'siyuan_batch_set_database_cells':
-                const batchSetResult = await siyuan_batch_set_database_cells(args.avID, args.values);
-                return JSON.stringify(batchSetResult, null, 2);
-
-            case 'siyuan_get_block_databases':
-                const blockDbsResult = await siyuan_get_block_databases(args.blockID);
-                return JSON.stringify(blockDbsResult, null, 2);
-
-            case 'siyuan_convert_blockid_to_itemid':
-                const blockToItemResult = await siyuan_convert_blockid_to_itemid(
-                    args.avID,
-                    args.blockIDs
-                );
-                return JSON.stringify(blockToItemResult, null, 2);
-
-            case 'siyuan_convert_itemid_to_blockid':
-                const itemToBlockResult = await siyuan_convert_itemid_to_blockid(
-                    args.avID,
-                    args.itemIDs
-                );
-                return JSON.stringify(itemToBlockResult, null, 2);
-
-            case 'siyuan_add_database_column':
-                const addColumnResult = await siyuan_add_database_column(
-                    args.avID,
-                    args.keyName,
-                    args.keyType,
-                    args.previousKeyID,
-                    args.keyIcon
-                );
-                return JSON.stringify(addColumnResult, null, 2);
-
-            case 'siyuan_remove_database_column':
-                const removeColumnResult = await siyuan_remove_database_column(args.avID, args.keyID);
-                return JSON.stringify(removeColumnResult, null, 2);
-
-            case 'siyuan_remove_database_rows':
                 const removeRowsResult = await siyuan_remove_database_rows(args.avID, args.srcIDs);
-                return JSON.stringify(removeRowsResult, null, 2);
-
             case 'web_fetch':
                 const webResult = await web_fetch(args.url, args.useWebView);
                 return webResult;
 
-            case 'siyuan_delete_block':
-                const deleteResult = await siyuan_delete_block(args.id);
-                return JSON.stringify(deleteResult, null, 2);
-
-            case 'siyuan_fetch_sync_post':
-                const apiResult = await siyuan_fetch_sync_post(args.api, args.data);
-                return JSON.stringify(apiResult, null, 2);
-
-            case 'siyuan_send_notification': {
-                // 处理 delay 参数：如果是纯数字字符串，转换为数字
-                let delay: number | string = args.delay;
-                if (typeof delay === 'string' && /^\d+$/.test(delay)) {
-                    delay = parseInt(delay, 10);
-                }
-                const notifyResult = await siyuan_send_notification(
-                    args.title,
-                    args.body,
-                    delay,
-                    args.timeoutType
-                );
-                return JSON.stringify(notifyResult, null, 2);
-            }
-
-            case 'siyuan_get_current_time':
-                const timeResult = await siyuan_get_current_time(args.format);
-                return timeResult;
 
             case 'run_js':
                 const jsResult = await run_js(args.code, args.input, args.tool_input);
@@ -2702,10 +1598,10 @@ export async function executeToolCall(
                     const status = validStatuses.has(item.status ?? '') ? item.status : 'pending';
                     let marker: string;
                     switch (status) {
-                        case 'completed':  marker = '[x]'; break;
+                        case 'completed': marker = '[x]'; break;
                         case 'in_progress': marker = '[/]'; break;
-                        case 'cancelled':  marker = '[-]'; break;
-                        default:           marker = '[ ]'; break;
+                        case 'cancelled': marker = '[-]'; break;
+                        default: marker = '[ ]'; break;
                     }
                     lines.push(`- ${marker} ${content}`);
                 }
@@ -2731,7 +1627,7 @@ function parseYamlFrontmatter(content: string) {
     const yamlStr = match[1];
     const markdown = content.substring(match[0].length).trim();
     const yaml: Record<string, string> = {};
-    
+
     const lines = yamlStr.split(/\r?\n/);
     let currentKey: string | null = null;
     let inBlockScalar = false;
@@ -3403,21 +2299,22 @@ export async function initializeMcpTools() {
     try {
         const mcpToolsList = await listSiyuanMcpTools();
         console.log("Loaded Siyuan MCP tools:", mcpToolsList.map((t) => t.name));
-        
+
         // Keep only base non-MCP tools
         const baseTools = AVAILABLE_TOOLS.filter(t => {
             const name = t.function.name;
-            return name === 'get_siyuan_skills' || 
-                   name === 'soul' || 
-                   name === 'run_js' ||
-                   name === 'run_python' ||
-                   name === 'run_command';
+            return name === 'get_siyuan_skills' ||
+                name === 'read_skill' ||
+                name === 'soul' ||
+                name === 'run_js' ||
+                name === 'run_python' ||
+                name === 'run_command';
         });
 
         // Map MCP tools to Tool interface
         const mappedMcpTools = mcpToolsList.map((mcpTool) => {
             const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
-            
+
             // Translate the description dynamically if there is a translation
             const descKey = `tools.${mcpTool.name}.description`;
             const translatedDesc = i18n(descKey);
@@ -3431,7 +2328,7 @@ export async function initializeMcpTools() {
                     parameters: parameters
                 }
             };
-            
+
             // Register full description in TOOL_FULL_DESCRIPTIONS
             if (!TOOL_FULL_DESCRIPTIONS[mcpTool.name]) {
                 TOOL_FULL_DESCRIPTIONS[mcpTool.name] = description;
@@ -3451,10 +2348,10 @@ export async function initializeMcpTools() {
 
         TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
         TOOL_CATEGORIES.plugin.tools = pluginToolNames;
-        
+
         QA_TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
         QA_TOOL_CATEGORIES.plugin.tools = pluginToolNames;
-        
+
         console.log("Successfully initialized Siyuan MCP tools!");
     } catch (error) {
         console.error("Failed to initialize Siyuan MCP tools:", error);
