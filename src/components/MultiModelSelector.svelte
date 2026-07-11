@@ -1455,9 +1455,7 @@
 
     .multi-model-selector__thinking-effort {
         font-size: 11px;
-        padding: 2px 4px;
         border-radius: 3px;
         cursor: pointer;
-        min-width: 50px;
     }
 </style>
