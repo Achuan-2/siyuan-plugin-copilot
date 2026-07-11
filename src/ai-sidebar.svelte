@@ -66,6 +66,7 @@
         AVAILABLE_TOOLS,
         createGetSiyuanSkillsTool,
         createReadSkillTool,
+        createCreateSkillTool,
         executeToolCall,
         loadAllSkills,
         TOOL_CATEGORIES,
@@ -118,8 +119,11 @@
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
         'read_skill',
+        'create_skill',
     ]);
-    const AGENT_ONLY_TOOL_NAMES = new Set<string>([]);
+    const AGENT_ONLY_TOOL_NAMES = new Set<string>([
+        'create_skill',
+    ]);
 
     const MULTI_MODEL_AUTO_EXECUTE_TOOLS = new Set([
         ...SYSTEM_TOOL_NAMES,
@@ -184,6 +188,11 @@
         // 当存在自定义 Skill 时，自动附加 read_skill 工具
         if (hasSkills) {
             extraTools.push(createReadSkillTool());
+        }
+
+        // Agent 模式自动附加 create_skill 工具
+        if (chatMode === 'agent') {
+            extraTools.push(createCreateSkillTool());
         }
 
         if (filteredToolDefs.length > 0) {
@@ -11186,17 +11195,23 @@
 
     async function resolveToolChangeContext(toolCall: ToolCall): Promise<ToolChangeContext | null> {
         const toolName = toolCall.function.name;
-        const isUpdate = toolName === 'siyuan_update_block' || toolName === 'update_block';
-        const isInsert = toolName === 'siyuan_insert_block' || toolName === 'insert_block';
-        const isDelete = toolName === 'siyuan_delete_block' || toolName === 'delete_block';
-        const isRename = toolName === 'siyuan_rename_document' || toolName === 'rename_document' || toolName === 'rename_doc';
+        let args: Record<string, any> = {};
+        try {
+            args = JSON.parse(toolCall.function.arguments || '{}');
+        } catch {
+            return null;
+        }
+
+        const isUpdate = toolName === 'block' && args.action === 'update';
+        const isInsert = toolName === 'block' && args.action === 'insert';
+        const isDelete = toolName === 'block' && args.action === 'remove';
+        const isRename = toolName === 'document' && args.action === 'rename';
 
         if (!isUpdate && !isInsert && !isDelete && !isRename) {
             return null;
         }
 
         try {
-            const args = JSON.parse(toolCall.function.arguments || '{}');
             let operationType: ToolChangeContext['operationType'];
             let targetBlockId = '';
 
@@ -11243,10 +11258,7 @@
                 docId,
                 docTitle,
                 affectedBlockId: targetBlockId,
-                renameTitleTo:
-                    toolName === 'siyuan_rename_document'
-                        ? String(args.title || '').trim()
-                        : undefined,
+                renameTitleTo: isRename ? String(args.title || '').trim() : undefined,
                 oldDocTitle: currentDocName,
             };
         } catch (error) {

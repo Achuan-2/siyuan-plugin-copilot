@@ -75,6 +75,14 @@ export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     },
 };
 
+/**
+ * 默认屏蔽的思源 MCP 工具名称
+ * 这些工具不会出现在可用工具列表和工具选择器中
+ */
+const SIYUAN_MCP_BLOCKED_TOOL_NAMES = new Set([
+    'skill',
+]);
+
 // ==================== 工具类型定义 ====================
 
 export interface Tool {
@@ -319,6 +327,7 @@ export async function getSiyuanSkills(
 
 const GET_SIYUAN_SKILLS_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('get_siyuan_skills');
 const READ_SKILL_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('read_skill');
+const CREATE_SKILL_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('create_skill');
 
 const GET_SIYUAN_SKILLS_ALL_TOOL_NAMES = [
     'soul',
@@ -387,11 +396,57 @@ export function createReadSkillTool(): Tool {
     };
 }
 
+/**
+ * 构建 create_skill 工具定义
+ * - 用于让模型在 Agent 模式中创建或更新自定义 Skill
+ */
+export function createCreateSkillTool(): Tool {
+    return {
+        type: 'function',
+        function: {
+            name: 'create_skill',
+            description: CREATE_SKILL_TOOL_DESCRIPTION,
+            parameters: {
+                type: 'object',
+                properties: {
+                    skillId: {
+                        type: 'string',
+                        description: 'Skill 标识符，会保存到 data/storage/ai/agent/skills/{skillId}/skill.md。不能包含路径分隔符或文件名非法字符。',
+                    },
+                    content: {
+                        type: 'string',
+                        description: '完整的 skill.md Markdown 内容。建议包含 YAML Frontmatter，例如 name 和 description。',
+                    },
+                    name: {
+                        type: 'string',
+                        description: '可选。content 缺少 YAML Frontmatter 时，用于自动补全 Frontmatter 的 Skill 名称。',
+                    },
+                    description: {
+                        type: 'string',
+                        description: '可选。content 缺少 YAML Frontmatter 时，用于自动补全 Frontmatter 的 Skill 描述。',
+                    },
+                    blockIds: {
+                        type: 'array',
+                        description: '可选。思源块 ID 列表。提供后会写入或更新 siyuan-plugin-copilot:skill-blocks 标记，使 Skill 内容从这些块展开。',
+                        items: {
+                            type: 'string',
+                            description: '思源块 ID',
+                        },
+                    },
+                },
+                required: ['skillId', 'content'],
+            },
+        },
+    };
+}
+
 export let AVAILABLE_TOOLS: Tool[] = [
     // 工具详细描述查询工具 - 隐藏工具，不在 UI 中显示
     createGetSiyuanSkillsTool(),
     // Skill 读取工具 - 隐藏工具，不在 UI 中显示
     createReadSkillTool(),
+    // Skill 创建/更新工具 - 隐藏工具，仅在 Agent 模式下自动启用
+    createCreateSkillTool(),
     // 运行本地命令工具
     createTool(
         'run_command',
@@ -2305,14 +2360,20 @@ export async function initializeMcpTools() {
             const name = t.function.name;
             return name === 'get_siyuan_skills' ||
                 name === 'read_skill' ||
+                name === 'create_skill' ||
                 name === 'soul' ||
                 name === 'run_js' ||
                 name === 'run_python' ||
                 name === 'run_command';
         });
 
+        // 过滤默认屏蔽的思源 MCP 工具
+        const filteredMcpToolsList = mcpToolsList.filter(
+            t => !SIYUAN_MCP_BLOCKED_TOOL_NAMES.has(t.name)
+        );
+
         // Map MCP tools to Tool interface
-        const mappedMcpTools = mcpToolsList.map((mcpTool) => {
+        const mappedMcpTools = filteredMcpToolsList.map((mcpTool) => {
             const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
 
             // Translate the description dynamically if there is a translation
@@ -2343,8 +2404,8 @@ export async function initializeMcpTools() {
 
         // Update TOOL_CATEGORIES and QA_TOOL_CATEGORIES
         // Group plugin tools and siyuan tools
-        const pluginToolNames = mcpToolsList.filter(t => t.name.startsWith("plugin__")).map(t => t.name);
-        const siyuanToolNames = mcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
+        const pluginToolNames = filteredMcpToolsList.filter(t => t.name.startsWith("plugin__")).map(t => t.name);
+        const siyuanToolNames = filteredMcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
 
         TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
         TOOL_CATEGORIES.plugin.tools = pluginToolNames;
