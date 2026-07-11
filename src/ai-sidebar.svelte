@@ -3715,12 +3715,12 @@
             currentProvider === 'gemini' ||
             providerConfig?.advancedConfig?.chatInterface === 'gemini' ||
             /generativelanguage\.googleapis\.com/i.test(customUrls) ||
-            /^gemini-/i.test(modelConfig?.id || '')
+            /(?:^|\/)gemini-/i.test(modelConfig?.id || '')
         );
     }
 
     function geminiModelSupportsImageSize(modelId: string): boolean {
-        return /gemini-3(?:\.\d+)?-(?:flash|pro)-image/i.test(modelId || '');
+        return /gemini-3(?:\.\d+)?-(?:flash(?:-lite)?|pro)-image/i.test(modelId || '');
     }
 
     function getDrawImageSizeOptions(providerConfig: any, modelConfig: any) {
@@ -5413,7 +5413,9 @@
             throw new Error('当前平台未配置 API URL，无法调用 Gemini 图片接口');
         }
 
-        const modelId = String(modelConfig?.id || '').replace(/^models\//, '');
+        const modelId = String(modelConfig?.id || '')
+            .replace(/^models\//, '')
+            .replace(/:(?:streamGenerateContent|generateContent)$/i, '');
         const normalizedUrl = rawBaseUrl
             .trim()
             .replace(/#$/, '')
@@ -5535,6 +5537,7 @@
 
     function extractGeminiImagesFromResponse(data: any, prompt: string) {
         const images: any[] = [];
+        const responseTexts: string[] = [];
 
         for (const candidate of data?.candidates || []) {
             const parts = candidate?.content?.parts || [];
@@ -5542,6 +5545,10 @@
                 .map((part: any) => part.text)
                 .filter(Boolean)
                 .join('\n');
+
+            if (responseText) {
+                responseTexts.push(responseText);
+            }
 
             for (const part of parts) {
                 const inlineData = part.inline_data || part.inlineData;
@@ -5555,7 +5562,7 @@
             }
         }
 
-        return images;
+        return { images, responseText: responseTexts.join('\n') };
     }
 
     async function requestGeminiDrawImages(
@@ -5569,7 +5576,7 @@
         const url = getGeminiImageEndpointUrl(providerConfig, modelConfig);
         const imageConfig = getGeminiImageConfig(modelConfig.id, drawImageSize);
         const generationConfig: Record<string, any> = {
-            responseModalities: ['Image'],
+            responseModalities: ['TEXT', 'IMAGE'],
         };
         if (imageConfig) {
             generationConfig.imageConfig = imageConfig;
@@ -5607,9 +5614,19 @@
         };
 
         const count = Math.max(1, Math.min(10, Number(drawImageCount) || 1));
-        const rawImages = (
-            await Promise.all(Array.from({ length: count }, () => requestOnce()))
-        ).flat();
+        const results = await Promise.all(
+            Array.from({ length: count }, () => requestOnce())
+        );
+        const rawImages = results.flatMap(r => r.images);
+        const responseText = results.map(r => r.responseText).filter(Boolean).join('\n');
+
+        if (rawImages.length === 0) {
+            const reason = responseText
+                ? `模型未返回图片，仅返回文本：\n${responseText}`
+                : '模型未返回任何图片或说明文本';
+            throw new Error(reason);
+        }
+
         const savedImages = await Promise.all(rawImages.map(saveGeneratedImageFromApiResult));
         return savedImages.filter(Boolean);
     }

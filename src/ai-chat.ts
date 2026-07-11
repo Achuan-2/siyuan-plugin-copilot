@@ -2509,7 +2509,7 @@ export async function generateImage(
                 }
             ],
             generationConfig: {
-                responseModalities: ["IMAGE"]
+                responseModalities: ["TEXT", "IMAGE"]
             }
         };
 
