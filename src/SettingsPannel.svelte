@@ -676,6 +676,24 @@ description: 描述这个 Skill 的功能
 
     // 处理平台重命名
     function handleProviderRename(providerId: string, newName: string) {
+        if (builtInProviderNames[providerId]) {
+            // 内置平台：将自定义名称存入对应 ProviderConfig
+            const providerConfig = settings.aiProviders[providerId];
+            if (providerConfig) {
+                providerConfig.name = newName;
+                settings = {
+                    ...settings,
+                    aiProviders: {
+                        ...settings.aiProviders,
+                        [providerId]: { ...providerConfig },
+                    },
+                };
+                saveSettings();
+                pushMsg(`平台已重命名为: ${newName}`);
+            }
+            return;
+        }
+
         const provider = settings.aiProviders.customProviders.find(p => p.id === providerId);
         if (provider) {
             provider.name = newName;
@@ -869,7 +887,7 @@ description: 描述这个 Skill 的功能
             })
             .map(id => ({
                 id,
-                name: builtInProviderNames[id],
+                name: settings.aiProviders?.[id]?.name || builtInProviderNames[id],
                 type: 'built-in' as const,
                 enabled: settings.aiProviders?.[id]?.enabled !== false,
             }));
@@ -922,7 +940,8 @@ description: 描述这个 Skill 的功能
         if (!selectedProviderId) return i18n('platform.select');
 
         if (builtInProviderNames[selectedProviderId]) {
-            return builtInProviderNames[selectedProviderId];
+            // 优先使用用户自定义的名称
+            return settings.aiProviders?.[selectedProviderId]?.name || builtInProviderNames[selectedProviderId];
         }
 
         const customProvider = settings.aiProviders?.customProviders?.find(
@@ -1658,8 +1677,12 @@ description: 描述这个 Skill 的功能
                                     defaultApiUrl={builtInProviderDefaultUrls[selectedProviderId]}
                                     websiteUrl={builtInProviderWebsites[selectedProviderId]}
                                     bind:config={settings.aiProviders[selectedProviderId]}
-                                    isCustomProvider={false}
                                     on:change={handleProviderChange}
+                                    on:rename={e =>
+                                        handleProviderRename(
+                                            selectedProviderId,
+                                            e.detail.newName
+                                        )}
                                 />
                             {/key}
                         {:else}
@@ -1672,7 +1695,6 @@ description: 描述这个 Skill 的功能
                                             defaultApiUrl=""
                                             websiteUrl=""
                                             bind:config={customProvider}
-                                            isCustomProvider={true}
                                             on:change={handleProviderChange}
                                             on:rename={e =>
                                                 handleProviderRename(

@@ -30,6 +30,7 @@ export interface ProviderConfig {
     apiKey: string;
     customApiUrl: string;
     models: ModelConfig[];
+    name?: string; // 自定义平台名称（内置平台可覆盖显示名称）
     enabled?: boolean; // 平台是否启用
     customWebsiteUrl?: string; // 自定义官网链接
     useForwardProxy?: boolean; // 是否使用思源笔记后端代理绕过 CORS

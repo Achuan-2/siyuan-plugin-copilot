@@ -11,11 +11,6 @@
     export let defaultApiUrl: string = ''; // 默认 API 地址
     export let websiteUrl: string = ''; // 平台官网链接
     export let config: ProviderConfig;
-    export let isCustomProvider: boolean = false; // 是否为自定义平台
-
-    // 内置平台列表（不需要自定义参数）
-    const builtInProviders = ['Achuan', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'minimax'];
-    $: isBuiltInProvider = builtInProviders.includes(providerId);
 
     const dispatch = createEventDispatcher();
 
@@ -419,7 +414,7 @@
 
 <div class="provider-config">
     <div class="provider-config__header">
-        {#if isCustomProvider && isEditingName}
+        {#if isEditingName}
             <div class="provider-name-editor">
                 <input
                     class="b3-text-field provider-name-input"
@@ -481,17 +476,15 @@
                     </div>
                 {/if}
             </div>
-            {#if isCustomProvider}
-                <button
-                    class="b3-button b3-button--text edit-name-button"
-                    on:click={startEditName}
-                    title="编辑名称"
-                >
-                    <svg class="b3-button__icon">
-                        <use xlink:href="#iconEdit"></use>
-                    </svg>
-                </button>
-            {/if}
+            <button
+                class="b3-button b3-button--text edit-name-button"
+                on:click={startEditName}
+                title="编辑名称"
+            >
+                <svg class="b3-button__icon">
+                    <use xlink:href="#iconEdit"></use>
+                </svg>
+            </button>
         {/if}
     </div>
 
@@ -565,38 +558,39 @@
             </div>
         </div>
 
-        {#if isCustomProvider}
-            <div>
-                <div class="b3-label__text">{i18n('platform.websiteUrl')}</div>
-                <div class="website-url-input-wrapper">
-                    <input
-                        class="b3-text-field fn__flex-1"
-                        type="text"
-                        bind:value={config.customWebsiteUrl}
-                        on:change={() => dispatch('change')}
-                        placeholder={i18n('platform.websiteUrlPlaceholder')}
-                    />
-                    <button
-                        class="b3-button b3-button--text website-url-open"
-                        on:click={() => {
-                            const url = config.customWebsiteUrl?.trim();
-                            if (url) {
-                                window.open(url, '_blank', 'noopener,noreferrer');
-                            }
-                        }}
-                        disabled={!config.customWebsiteUrl?.trim()}
-                        title="打开官网"
-                    >
-                        <svg class="b3-button__icon">
-                            <use xlink:href="#iconOpenWindow"></use>
-                        </svg>
-                    </button>
-                </div>
-                <div class="b3-label__text label-description">
-                    {i18n('platform.websiteUrlHint')}
-                </div>
+        <div>
+            <div class="b3-label__text">{i18n('platform.websiteUrl')}</div>
+            <div class="website-url-input-wrapper">
+                <input
+                    class="b3-text-field fn__flex-1"
+                    type="text"
+                    value={config.customWebsiteUrl || websiteUrl || ''}
+                    on:input={e => {
+                        config.customWebsiteUrl = e.currentTarget.value;
+                        dispatch('change');
+                    }}
+                    placeholder={i18n('platform.websiteUrlPlaceholder')}
+                />
+                <button
+                    class="b3-button b3-button--text website-url-open"
+                    on:click={() => {
+                        const url = (config.customWebsiteUrl || websiteUrl)?.trim();
+                        if (url) {
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                        }
+                    }}
+                    disabled={!(config.customWebsiteUrl || websiteUrl)?.trim()}
+                    title="打开官网"
+                >
+                    <svg class="b3-button__icon">
+                        <use xlink:href="#iconOpenWindow"></use>
+                    </svg>
+                </button>
             </div>
-        {/if}
+            <div class="b3-label__text label-description">
+                {i18n('platform.websiteUrlHint')}
+            </div>
+        </div>
 
         <div>
             <div class="b3-label__text">{i18n('models.management')}</div>

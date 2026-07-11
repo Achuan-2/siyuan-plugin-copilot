@@ -618,7 +618,7 @@
             "database": "数据库",
             "other": "其他",
             "plugin": "思源插件工具",
-            "plugin_task_note_management": "任务笔记管理工具"
+            "plugin_task_note_management": "任务笔记管理插件"
         },
         "selector": {
             "title": "工具选择",
