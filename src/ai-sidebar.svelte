@@ -8623,6 +8623,9 @@
                     // 将占位符还原为公式
                     markdown = restorePlaceholdersToFormulas(markdown, placeholders);
 
+                    // 规范化列表间距：确保列表前有空行，避免粘贴到思源后被识别为缩进/代码块
+                    markdown = normalizeMarkdownListSpacing(markdown);
+
                     // 将Markdown写入剪贴板
                     event.clipboardData?.setData('text/plain', markdown);
                 } else {
@@ -8802,6 +8805,29 @@
         });
 
         return result;
+    }
+
+    // 规范化 Markdown 中的列表间距
+    // 修复：当段落后面紧跟列表时，若列表前没有空行，粘贴到思源后列表项会被错误识别为缩进/代码块
+    function normalizeMarkdownListSpacing(markdown: string): string {
+        const lines = markdown.split('\n');
+        const result: string[] = [];
+        const LIST_LINE_RE = /^[-+*]\s|^\d+\.\s/;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const prevLine = result[result.length - 1] || '';
+            const isListLine = LIST_LINE_RE.test(line);
+            const isPrevListLine = LIST_LINE_RE.test(prevLine);
+            const isPrevEmpty = prevLine === '';
+
+            // 当前行是顶级列表项，且前一行是非空、非列表行时，在它们之间插入空行
+            if (isListLine && !isPrevEmpty && !isPrevListLine) {
+                result.push('');
+            }
+            result.push(line);
+        }
+        return result.join('\n');
     }
 
     // 将渲染后的公式元素还原为 Markdown 格式（已弃用，保留以防需要）
