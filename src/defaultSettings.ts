@@ -1,5 +1,10 @@
 import { i18n } from "./utils/i18n";
 import type { ThinkingEffort, ChatInterfaceType } from "./ai-chat";
+import {
+    DEFAULT_SYSTEM_PROMPT_ASK,
+    DEFAULT_SYSTEM_PROMPT_AGENT,
+    DEFAULT_SYSTEM_PROMPT_DRAW
+} from "./systemPromptDefaults";
 
 export interface ModelConfig {
     id: string;
@@ -91,7 +96,9 @@ export const getDefaultSettings = () => ({
     selectedProviderId: 'openai' as string,  // 设置面板中选中的平台
     currentProvider: 'openai' as string,      // 对话中当前使用的平台
     currentModelId: '' as string,
-    aiSystemPrompt: 'You are a helpful AI assistant.',
+    aiSystemPromptAsk: DEFAULT_SYSTEM_PROMPT_ASK,
+    aiSystemPromptAgent: DEFAULT_SYSTEM_PROMPT_AGENT,
+    aiSystemPromptDraw: DEFAULT_SYSTEM_PROMPT_DRAW,
 
     // 操作设置
     sendMessageShortcut: 'ctrl+enter' as 'ctrl+enter' | 'enter', // 发送消息的快捷键

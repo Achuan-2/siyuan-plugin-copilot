@@ -901,14 +901,34 @@ description: 描述这个 Skill 的功能
             name: i18n('settings.settingsGroup.systemPrompt'),
             items: [
                 {
-                    key: 'aiSystemPrompt',
-                    value: settings.aiSystemPrompt,
+                    key: 'aiSystemPromptAsk',
+                    value: settings.aiSystemPromptAsk,
                     type: 'textarea',
-                    title: i18n('settings.ai.systemPrompt.title'),
-                    description: i18n('settings.ai.systemPrompt.description'),
+                    title: i18n('settings.ai.systemPromptAsk.title'),
+                    description: i18n('settings.ai.systemPromptAsk.description'),
                     direction: 'row',
                     rows: 4,
-                    placeholder: i18n('settings.ai.systemPrompt.placeholder'),
+                    placeholder: i18n('settings.ai.systemPromptAsk.placeholder'),
+                },
+                {
+                    key: 'aiSystemPromptAgent',
+                    value: settings.aiSystemPromptAgent,
+                    type: 'textarea',
+                    title: i18n('settings.ai.systemPromptAgent.title'),
+                    description: i18n('settings.ai.systemPromptAgent.description'),
+                    direction: 'row',
+                    rows: 4,
+                    placeholder: i18n('settings.ai.systemPromptAgent.placeholder'),
+                },
+                {
+                    key: 'aiSystemPromptDraw',
+                    value: settings.aiSystemPromptDraw,
+                    type: 'textarea',
+                    title: i18n('settings.ai.systemPromptDraw.title'),
+                    description: i18n('settings.ai.systemPromptDraw.description'),
+                    direction: 'row',
+                    rows: 4,
+                    placeholder: i18n('settings.ai.systemPromptDraw.placeholder'),
                 },
             ],
         },
@@ -2152,6 +2172,12 @@ description: 描述这个 Skill 的功能
         padding: 2px;
         display: flex;
         flex-direction: column;
+    }
+
+    .config__tab-wrap > :global(.config__tab-container_plugin) {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
     }
 
     /* 平台管理：侧边栏布局 */

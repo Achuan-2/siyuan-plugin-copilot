@@ -53,10 +53,20 @@
                 "title": "最大 Tokens",
                 "description": "限制生成的最大 token 数量"
             },
-            "systemPrompt": {
-                "title": "系统提示词",
-                "description": "设置 AI 的角色和行为",
-                "placeholder": "You are a helpful AI assistant."
+            "systemPromptAsk": {
+                "title": "问答模式默认提示词",
+                "description": "问答模式下使用的默认系统提示词。",
+                "placeholder": "输入问答模式默认系统提示词…"
+            },
+            "systemPromptAgent": {
+                "title": "Agent 模式默认提示词",
+                "description": "Agent 模式下使用的默认系统提示词。",
+                "placeholder": "输入 Agent 模式默认系统提示词…"
+            },
+            "systemPromptDraw": {
+                "title": "画图模式默认提示词",
+                "description": "画图模式下使用的默认系统提示词。",
+                "placeholder": "输入画图模式默认系统提示词…"
             },
             "providerConfig": {
                 "hint": {

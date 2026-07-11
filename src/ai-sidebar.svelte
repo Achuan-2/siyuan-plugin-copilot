@@ -96,6 +96,24 @@
 **为什么要这样做？**
 - 每个工具都有复杂的参数和特定的使用场景，直接使用而不看文档极有可能导致错误操作`;
 
+    /**
+     * 根据当前对话模式选择基础系统提示词。
+     * 优先级：临时模型预设 > 模式默认提示词
+     */
+    function getBaseSystemPrompt(): string {
+        const tempSystemPrompt = tempModelSettings.systemPrompt?.trim();
+        if (tempSystemPrompt) {
+            return tempSystemPrompt;
+        }
+        if (chatMode === 'agent') {
+            return settings.aiSystemPromptAgent || '';
+        }
+        if (chatMode === 'draw') {
+            return settings.aiSystemPromptDraw || '';
+        }
+        return settings.aiSystemPromptAsk || '';
+    }
+
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
     ]);
@@ -2171,8 +2189,8 @@
         webApps = settings.webApps || [];
 
         // 如果有系统提示词，添加到消息列表
-        if (settings.aiSystemPrompt) {
-            messages = [{ role: 'system', content: settings.aiSystemPrompt }];
+        if (getBaseSystemPrompt()) {
+            messages = [{ role: 'system', content: getBaseSystemPrompt() }];
         }
 
         // 如果有初始消息，自动填充到输入框
@@ -2354,10 +2372,10 @@
                 }
 
                 // 更新系统提示词
-                if (settings.aiSystemPrompt && messages.length === 0) {
-                    messages = [{ role: 'system', content: settings.aiSystemPrompt }];
-                } else if (settings.aiSystemPrompt && messages[0]?.role === 'system') {
-                    messages[0].content = settings.aiSystemPrompt;
+                if (getBaseSystemPrompt() && messages.length === 0) {
+                    messages = [{ role: 'system', content: getBaseSystemPrompt() }];
+                } else if (getBaseSystemPrompt() && messages[0]?.role === 'system') {
+                    messages[0].content = getBaseSystemPrompt();
                 }
 
                 // console.debug('AI Sidebar: ' + t('common.configComplete'));
@@ -4895,11 +4913,8 @@
             }
         }
 
-        // 使用临时系统提示词（如果设置了）- 优先使用临时系统提示词作为基础
-        let baseSystemPrompt = settings.aiSystemPrompt || '';
-        if (tempModelSettings.systemPrompt.trim()) {
-            baseSystemPrompt = tempModelSettings.systemPrompt;
-        }
+        // 根据当前模式选择基础系统提示词（临时预设 > 全局 > 模式默认）
+        let baseSystemPrompt = getBaseSystemPrompt();
 
         // 加载自定义 Skills
         if (hasSkills && skills) {
@@ -5765,8 +5780,10 @@
 
     function buildDrawPromptWithSystemPrompt(prompt: string): string {
         const tempSystemPrompt = tempModelSettings.systemPrompt?.trim();
-        if (!tempSystemPrompt) return prompt;
-        return `【生图系统提示词】\n${tempSystemPrompt}\n\n---\n\n【用户生图需求】\n${prompt}`;
+        const defaultDrawPrompt = settings.aiSystemPromptDraw?.trim();
+        const systemPrompt = tempSystemPrompt || defaultDrawPrompt;
+        if (!systemPrompt) return prompt;
+        return `【生图系统提示词】\n${systemPrompt}\n\n---\n\n【用户生图需求】\n${prompt}`;
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
@@ -6597,11 +6614,8 @@
             }
         }
 
-        // 根据模式添加系统提示词
-        let baseSystemPrompt = settings.aiSystemPrompt || '';
-        if (tempModelSettings.systemPrompt.trim()) {
-            baseSystemPrompt = tempModelSettings.systemPrompt;
-        }
+        // 根据当前模式选择基础系统提示词（临时预设 > 全局 > 模式默认）
+        let baseSystemPrompt = getBaseSystemPrompt();
 
         // 加载自定义 Skills
         let hasSkills = false;
@@ -7091,10 +7105,10 @@
                                     });
 
                                 // 添加系统提示词到消息列表开头（工具使用说明已在 prepareMessagesForAI 中添加）
-                                if (settings.aiSystemPrompt) {
+                                if (getBaseSystemPrompt()) {
                                     messagesToSend.unshift({
                                         role: 'system',
-                                        content: settings.aiSystemPrompt,
+                                        content: getBaseSystemPrompt(),
                                     });
                                 }
 
@@ -7576,8 +7590,8 @@
     }
 
     function doClearChat() {
-        messages = settings.aiSystemPrompt
-            ? [{ role: 'system', content: settings.aiSystemPrompt }]
+        messages = getBaseSystemPrompt()
+            ? [{ role: 'system', content: getBaseSystemPrompt() }]
             : [];
         contextDocuments = [];
         streamingMessage = '';
@@ -10015,12 +10029,12 @@
                 // 清空全局上下文文档（上下文现在存储在各个消息中）
                 contextDocuments = [];
                 // 确保系统提示词存在且是最新的
-                if (settings.aiSystemPrompt) {
+                if (getBaseSystemPrompt()) {
                     const systemMsgIndex = messages.findIndex(m => m.role === 'system');
                     if (systemMsgIndex >= 0) {
-                        messages[systemMsgIndex].content = settings.aiSystemPrompt;
+                        messages[systemMsgIndex].content = getBaseSystemPrompt();
                     } else {
-                        messages.unshift({ role: 'system', content: settings.aiSystemPrompt });
+                        messages.unshift({ role: 'system', content: getBaseSystemPrompt() });
                     }
                 }
                 currentSessionId = sessionId;
@@ -10098,8 +10112,8 @@
     }
 
     function doNewSession() {
-        messages = settings.aiSystemPrompt
-            ? [{ role: 'system', content: settings.aiSystemPrompt }]
+        messages = getBaseSystemPrompt()
+            ? [{ role: 'system', content: getBaseSystemPrompt() }]
             : [];
         contextDocuments = [];
         currentSessionId = '';
@@ -12120,11 +12134,8 @@
             }
         }
 
-        // 使用临时系统提示词（如果设置了）- 优先使用临时系统提示词作为基础
-        let baseSystemPrompt = settings.aiSystemPrompt || '';
-        if (tempModelSettings.systemPrompt.trim()) {
-            baseSystemPrompt = tempModelSettings.systemPrompt;
-        }
+        // 根据当前模式选择基础系统提示词（临时预设 > 全局 > 模式默认）
+        let baseSystemPrompt = getBaseSystemPrompt();
 
         // 加载自定义 Skills
         let hasSkills = false;

@@ -53,10 +53,20 @@
                 "title": "Max Tokens",
                 "description": "Limit the maximum number of tokens generated"
             },
-            "systemPrompt": {
-                "title": "System Prompt",
-                "description": "Set the role and behavior of the AI",
-                "placeholder": "You are a helpful AI assistant."
+            "systemPromptAsk": {
+                "title": "Ask Mode Default Prompt",
+                "description": "Default system prompt used in Ask mode.",
+                "placeholder": "Enter Ask mode default system prompt…"
+            },
+            "systemPromptAgent": {
+                "title": "Agent Mode Default Prompt",
+                "description": "Default system prompt used in Agent mode.",
+                "placeholder": "Enter Agent mode default system prompt…"
+            },
+            "systemPromptDraw": {
+                "title": "Draw Mode Default Prompt",
+                "description": "Default system prompt used in Draw mode.",
+                "placeholder": "Enter Draw mode default system prompt…"
             },
             "providerConfig": {
                 "hint": {
