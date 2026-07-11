@@ -98,6 +98,8 @@ export const getDefaultSettings = () => ({
     selectedProviderId: 'openai' as string,  // 设置面板中选中的平台
     currentProvider: 'openai' as string,      // 对话中当前使用的平台
     currentModelId: '' as string,
+    drawProvider: '' as string,               // 画图模式单独记忆的当前平台
+    drawModelId: '' as string,                // 画图模式单独记忆的当前模型
     aiSystemPromptAsk: DEFAULT_SYSTEM_PROMPT_ASK,
     aiSystemPromptAgent: DEFAULT_SYSTEM_PROMPT_AGENT,
     aiSystemPromptDraw: DEFAULT_SYSTEM_PROMPT_DRAW,

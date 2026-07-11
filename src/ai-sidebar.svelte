@@ -975,6 +975,7 @@
     // 对话模式
     type ChatMode = 'ask' | 'agent' | 'draw';
     let chatMode: ChatMode = 'ask';
+    let previousChatMode: ChatMode = 'ask'; // 用于模式切换时恢复对应模型
     let isDiffDialogOpen = false;
     let currentDiffOperation: EditOperation | null = null;
     type DiffViewMode = 'diff' | 'split';
@@ -2034,6 +2035,30 @@
         syncDrawingModeState();
     }
 
+    // 模式切换时恢复对应模式下记忆的模型
+    $: if (!isInitialLoading && chatMode !== previousChatMode) {
+        const oldMode = previousChatMode;
+        previousChatMode = chatMode;
+
+        if (oldMode === 'draw' && chatMode !== 'draw') {
+            // 从画图模式切回问答/Agent模式，恢复之前保存的对话模型
+            const savedConfig = getProviderAndModelConfig(settings.currentProvider, settings.currentModelId);
+            if (savedConfig) {
+                currentProvider = settings.currentProvider;
+                currentModelId = settings.currentModelId;
+            }
+        } else if (oldMode !== 'draw' && chatMode === 'draw') {
+            // 从问答/Agent模式切换到画图模式，恢复单独记忆的生图模型
+            const drawConfig = getProviderAndModelConfig(settings.drawProvider, settings.drawModelId);
+            if (drawConfig) {
+                currentProvider = settings.drawProvider;
+                currentModelId = settings.drawModelId;
+            } else {
+                syncDrawingModeState();
+            }
+        }
+    }
+
     // 记忆当前选择的模式
     $: if (chatMode && settings && !isInitialLoading) {
         // 同步到临时设置以便在预设按钮中正确显示
@@ -2240,6 +2265,17 @@
                 settings.lastUsedChatMode === 'agent' || settings.lastUsedChatMode === 'draw'
                     ? settings.lastUsedChatMode
                     : 'ask';
+        }
+
+        // 如果是画图模式，加载单独记忆的生图模型
+        if (chatMode === 'draw') {
+            const drawConfig = getProviderAndModelConfig(settings.drawProvider, settings.drawModelId);
+            if (drawConfig) {
+                currentProvider = settings.drawProvider;
+                currentModelId = settings.drawModelId;
+            } else {
+                syncDrawingModeState();
+            }
         }
 
         // 初始化多模型选择，过滤掉无效的模型
@@ -2497,6 +2533,7 @@
         window.addEventListener(PROMPTS_SYNC_EVENT, handlePromptsUpdated as EventListener);
 
         isInitialLoading = false;
+        previousChatMode = chatMode;
     });
 
     onDestroy(async () => {
@@ -3059,9 +3096,14 @@
         currentProvider = provider;
         currentModelId = modelId;
 
-        // 保存选择
-        settings.currentProvider = provider;
-        settings.currentModelId = modelId;
+        // 保存选择：生图模式单独记忆，不影响其他模式
+        if (chatMode === 'draw') {
+            settings.drawProvider = provider;
+            settings.drawModelId = modelId;
+        } else {
+            settings.currentProvider = provider;
+            settings.currentModelId = modelId;
+        }
         plugin.saveSettings(settings);
     }
 
@@ -3159,6 +3201,27 @@
         // 应用聊天模式
         if (newSettings.chatMode) {
             chatMode = newSettings.chatMode;
+            // 同步 previousChatMode，避免响应式恢复逻辑覆盖预设中已选择的模型
+            previousChatMode = newSettings.chatMode;
+
+            // 如果预设没有指定模型，根据新模式恢复记忆的模型
+            if (!newSettings.modelSelectionEnabled) {
+                if (chatMode === 'draw') {
+                    const drawConfig = getProviderAndModelConfig(settings.drawProvider, settings.drawModelId);
+                    if (drawConfig) {
+                        currentProvider = settings.drawProvider;
+                        currentModelId = settings.drawModelId;
+                    } else {
+                        syncDrawingModeState();
+                    }
+                } else {
+                    const savedConfig = getProviderAndModelConfig(settings.currentProvider, settings.currentModelId);
+                    if (savedConfig) {
+                        currentProvider = settings.currentProvider;
+                        currentModelId = settings.currentModelId;
+                    }
+                }
+            }
         }
 
         // 如果启用了模型选择
@@ -3187,8 +3250,13 @@
                 if (selectedModel) {
                     // 先更新设置对象（包括selectedProviderId）
                     settings.selectedProviderId = selectedModel.provider;
-                    settings.currentProvider = selectedModel.provider;
-                    settings.currentModelId = selectedModel.modelId;
+                    if (chatMode === 'draw') {
+                        settings.drawProvider = selectedModel.provider;
+                        settings.drawModelId = selectedModel.modelId;
+                    } else {
+                        settings.currentProvider = selectedModel.provider;
+                        settings.currentModelId = selectedModel.modelId;
+                    }
 
                     // 然后更新本地变量
                     currentProvider = selectedModel.provider;
@@ -4064,6 +4132,10 @@
 
         const currentConfig = getProviderAndModelConfig(currentProvider, currentModelId);
         if (modelSupportsImageGeneration(currentConfig?.modelConfig)) {
+            // 当前模型已支持生图，同步到画图模式专用字段
+            settings.drawProvider = currentProvider;
+            settings.drawModelId = currentModelId;
+            plugin.saveSettings(settings);
             drawModeNoModelWarned = false;
             return;
         }
@@ -4072,8 +4144,8 @@
         if (firstImageModel) {
             currentProvider = firstImageModel.provider;
             currentModelId = firstImageModel.modelId;
-            settings.currentProvider = firstImageModel.provider;
-            settings.currentModelId = firstImageModel.modelId;
+            settings.drawProvider = firstImageModel.provider;
+            settings.drawModelId = firstImageModel.modelId;
             plugin.saveSettings(settings);
             drawModeNoModelWarned = false;
         } else if (!drawModeNoModelWarned) {
