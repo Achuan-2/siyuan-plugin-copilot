@@ -434,6 +434,7 @@ export default class PluginSample extends Plugin {
                 size: { width: 400, height: 0 },
                 icon: app.icon && app.icon.startsWith('data:image') ? this.getWebAppIconId(app.id) : "iconCopilotWebApp",
                 title: app.name,
+                show: false,
             },
             data: {
                 text: app.name
@@ -1734,6 +1735,7 @@ export default class PluginSample extends Plugin {
                 size: { width: 400, height: 0 },
                 icon: "iconCopilot",
                 title: "Copilot",
+                show: false,
             },
             data: {
                 text: "Copilot"
