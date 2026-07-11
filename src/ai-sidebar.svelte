@@ -57,6 +57,7 @@
     import ModelPresetButton from './components/ModelPreset.svelte';
     import TranslateDialog from './components/TranslateDialog.svelte';
     import WebAppManager from './components/WebAppManager.svelte';
+    import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
     import { settingsStore } from './stores/settings';
     import { confirm, Constants, platformUtils } from 'siyuan';
@@ -65,10 +66,10 @@
         AVAILABLE_TOOLS,
         createGetSiyuanSkillsTool,
         executeToolCall,
+        loadAllSkills,
         TOOL_CATEGORIES,
         QA_TOOL_CATEGORIES,
         soul,
-        loadAllSkills,
         type Skill,
         type ToolExecutionCallbacks,
     } from './tools';
@@ -95,31 +96,10 @@
 **为什么要这样做？**
 - 每个工具都有复杂的参数和特定的使用场景，直接使用而不看文档极有可能导致错误操作`;
 
-    // Question Card 工具使用说明
-    const QUESTION_CARD_INSTRUCTION = `=== 用户确认工具 ===
-当你需要向用户提问、收集偏好、确认选择或让用户从多个选项中决策时，调用 ask_user_question 工具。
-此工具会暂停你的执行，并在聊天流中显示一个交互式问题卡片，直到用户填写并提交答案；答案会作为 tool result 返回给你。
-
-ask_user_question 参数说明：
-- questions: 问题数组，每个问题包含：
-  - id: 必填，唯一标识，提交答案时作为 key
-  - type: 必填，"single"(单选) | "multiple"(多选) | "text"(文本输入)
-  - title: 必填，问题标题
-  - description: 可选，补充说明
-  - options: 单选/多选必填，选项数组，每项 { label, value?, description? }
-  - required: 可选，是否必填
-  - placeholder: 可选，文本输入占位提示
-- submitButtonText: 可选，提交按钮文本，默认"提交"
-
-重要约束：
-- 不要替用户做选择；需要确认时必须调用 ask_user_question。
-- 调用 ask_user_question 的轮次里，尽量不要同时调用其他工具，避免 UI 冲突。`;
-
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
-        'read_skill',
     ]);
-    const AGENT_ONLY_TOOL_NAMES = new Set(['create_skill']);
+    const AGENT_ONLY_TOOL_NAMES = new Set<string>([]);
 
     const MULTI_MODEL_AUTO_EXECUTE_TOOLS = new Set([
         ...SYSTEM_TOOL_NAMES,
@@ -139,6 +119,30 @@ ask_user_question 参数说明：
 
     function getToolDefinitionNameSet(tools?: any[]): Set<string> {
         return new Set((tools || []).map(getToolDefinitionName).filter(Boolean));
+    }
+
+    function getMessageTodoContents(message: Message, groupMessages: Message[]): string[] {
+        if (!message.tool_calls || message.tool_calls.length === 0) return [];
+        const contents: string[] = [];
+        for (const toolCall of message.tool_calls) {
+            if (toolCall.function.name !== 'todo_write') continue;
+            const toolResult = groupMessages.find(
+                m => m.role === 'tool' && m.tool_call_id === toolCall.id
+            );
+            if (toolResult?.content && typeof toolResult.content === 'string') {
+                contents.push(toolResult.content);
+            }
+        }
+        return contents;
+    }
+
+    function getMultiModelTodoContents(
+        toolCalls?: Message['multiModelResponses'][number]['toolCalls']
+    ): string[] {
+        if (!toolCalls || toolCalls.length === 0) return [];
+        return toolCalls
+            .filter(tc => tc.function.name === 'todo_write' && tc.result)
+            .map(tc => tc.result as string);
     }
 
     function buildToolsForCurrentMode(hasSkills: boolean): any[] | undefined {
@@ -161,13 +165,6 @@ ask_user_question 参数说明：
             extraTools.push(
                 createGetSiyuanSkillsTool(filteredToolDefs.map(tool => tool.function.name))
             );
-        }
-
-        if (hasSkills) {
-            const readSkillTool = AVAILABLE_TOOLS.find(t => t.function.name === 'read_skill');
-            if (readSkillTool) {
-                extraTools.push(readSkillTool);
-            }
         }
 
         const toolsForCurrentMode = [...extraTools, ...filteredToolDefs];
@@ -243,6 +240,7 @@ ask_user_question 参数说明：
         pendingQuestionResolve = null;
         isWaitingForQuestionAnswer = false;
         questionCardAnswers = {};
+        answeredQuestionCards = []; // 新消息/错误时清空历史答题记录
     }
 
     function isQuestionCardValid(
@@ -265,6 +263,11 @@ ask_user_question 参数说明：
             pushErrMsg('请填写所有必填项');
             return;
         }
+        // 提交前先把当前卡片和答案快照保存到历史，确保 UI 保留
+        answeredQuestionCards = [
+            ...answeredQuestionCards,
+            { card: { ...pendingQuestionCard }, answers: { ...questionCardAnswers } },
+        ];
         pendingQuestionResolve({ ...questionCardAnswers });
     }
 
@@ -2086,6 +2089,7 @@ ask_user_question 参数说明：
     let pendingQuestionResolve: ((answers: QuestionCardAnswers) => void) | null = null; // 提交答案后 resolve
     let isWaitingForQuestionAnswer = false; // 是否在等待用户回答问题卡片
     let questionCardAnswers: QuestionCardAnswers = {}; // 当前卡片各问题的临时答案
+    let answeredQuestionCards: Array<{ card: QuestionCardData; answers: QuestionCardAnswers }> = []; // 已提交的问题卡片历史
 
     // 保存到笔记相关
     let isSaveToNoteDialogOpen = false; // 保存到笔记对话框是否打开
@@ -4899,11 +4903,15 @@ ask_user_question 参数说明：
 
         // 加载自定义 Skills
         if (hasSkills && skills) {
-            let skillsPrompt =
-                '\n\n=== 自定义 Skill ===\n你拥有以下自定义 Skill。当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档：\n';
+            let skillsPrompt = '\n\n<available_skills>\n';
             for (const skill of skills) {
-                skillsPrompt += `- **${skill.id}** (${skill.name}): ${skill.description}\n`;
+                skillsPrompt += '  <skill>\n';
+                skillsPrompt += `    <name>${skill.id}</name>\n`;
+                skillsPrompt += `    <description>${skill.description}</description>\n`;
+                skillsPrompt += '  </skill>\n';
             }
+            skillsPrompt += '</available_skills>\n\n';
+            skillsPrompt += '当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档。';
             baseSystemPrompt += skillsPrompt;
         }
 
@@ -6601,11 +6609,15 @@ ask_user_question 参数说明：
             const skills = await loadAllSkills();
             if (skills && skills.length > 0) {
                 hasSkills = true;
-                let skillsPrompt =
-                    '\n\n=== 自定义 Skill ===\n你拥有以下自定义 Skill。当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档：\n';
+                let skillsPrompt = '\n\n<available_skills>\n';
                 for (const skill of skills) {
-                    skillsPrompt += `- **${skill.id}** (${skill.name}): ${skill.description}\n`;
+                    skillsPrompt += '  <skill>\n';
+                    skillsPrompt += `    <name>${skill.id}</name>\n`;
+                    skillsPrompt += `    <description>${skill.description}</description>\n`;
+                    skillsPrompt += '  </skill>\n';
                 }
+                skillsPrompt += '</available_skills>\n\n';
+                skillsPrompt += '当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档。';
                 baseSystemPrompt += skillsPrompt;
             }
         } catch (error) {
@@ -6621,12 +6633,6 @@ ask_user_question 参数说明：
                 baseSystemPrompt = AGENT_TOOL_USAGE_INSTRUCTION;
             }
             hasToolInstruction = true;
-
-            // 如果启用了 ask_user_question 工具，追加 question card 使用说明
-            const currentSelectedTools = chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-            if (currentSelectedTools.some(t => t.name === 'ask_user_question')) {
-                baseSystemPrompt += '\n\n' + QUESTION_CARD_INSTRUCTION;
-            }
         }
 
         // 添加最终的系统提示词
@@ -11159,12 +11165,12 @@ ask_user_question 参数说明：
 
     async function resolveToolChangeContext(toolCall: ToolCall): Promise<ToolChangeContext | null> {
         const toolName = toolCall.function.name;
-        if (
-            toolName !== 'siyuan_update_block' &&
-            toolName !== 'siyuan_insert_block' &&
-            toolName !== 'siyuan_delete_block' &&
-            toolName !== 'siyuan_rename_document'
-        ) {
+        const isUpdate = toolName === 'siyuan_update_block' || toolName === 'update_block';
+        const isInsert = toolName === 'siyuan_insert_block' || toolName === 'insert_block';
+        const isDelete = toolName === 'siyuan_delete_block' || toolName === 'delete_block';
+        const isRename = toolName === 'siyuan_rename_document' || toolName === 'rename_document' || toolName === 'rename_doc';
+
+        if (!isUpdate && !isInsert && !isDelete && !isRename) {
             return null;
         }
 
@@ -11173,14 +11179,15 @@ ask_user_question 参数说明：
             let operationType: ToolChangeContext['operationType'];
             let targetBlockId = '';
 
-            if (toolName === 'siyuan_update_block') {
+            if (isUpdate) {
                 operationType = 'update';
                 targetBlockId = args.id || '';
-            } else if (toolName === 'siyuan_insert_block') {
+            } else if (isInsert) {
                 operationType = 'insert';
                 targetBlockId =
-                    args.nextID || args.previousID || args.parentID || args.appendParentID || '';
-            } else if (toolName === 'siyuan_rename_document') {
+                    args.nextID || args.previousID || args.parentID || args.appendParentID ||
+                    args.nextId || args.previousId || args.parentId || args.appendParentId || '';
+            } else if (isRename) {
                 operationType = 'rename';
                 targetBlockId = args.id || '';
             } else {
@@ -12125,11 +12132,15 @@ ask_user_question 参数说明：
             const skills = await loadAllSkills();
             if (skills && skills.length > 0) {
                 hasSkills = true;
-                let skillsPrompt =
-                    '\n\n=== 自定义 Skill ===\n你拥有以下自定义 Skill。当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档：\n';
+                let skillsPrompt = '\n\n<available_skills>\n';
                 for (const skill of skills) {
-                    skillsPrompt += `- **${skill.id}** (${skill.name}): ${skill.description}\n`;
+                    skillsPrompt += '  <skill>\n';
+                    skillsPrompt += `    <name>${skill.id}</name>\n`;
+                    skillsPrompt += `    <description>${skill.description}</description>\n`;
+                    skillsPrompt += '  </skill>\n';
                 }
+                skillsPrompt += '</available_skills>\n\n';
+                skillsPrompt += '当用户要求的任务符合某个 Skill 的描述时，你**必须**调用 `read_skill(skillId: "...")` 工具读取该 Skill 的完整工作流文档。';
                 baseSystemPrompt += skillsPrompt;
             }
         } catch (error) {
@@ -12145,12 +12156,6 @@ ask_user_question 参数说明：
                 baseSystemPrompt = AGENT_TOOL_USAGE_INSTRUCTION;
             }
             hasToolInstruction = true;
-
-            // 如果启用了 ask_user_question 工具，追加 question card 使用说明
-            const currentSelectedTools = chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-            if (currentSelectedTools.some(t => t.name === 'ask_user_question')) {
-                baseSystemPrompt += '\n\n' + QUESTION_CARD_INSTRUCTION;
-            }
         }
 
         // 添加最终的系统提示词
@@ -13301,6 +13306,11 @@ ask_user_question 参数说明：
                                     {/if}
                                 {/if}
                             {/each}
+
+                            <TodoCardList
+                                className="ai-message__standalone-todos"
+                                contents={getMessageTodoContents(message, group.messages)}
+                            />
                         {:else}
                             <!-- 兼容旧数据：显示工具调用前的思考过程 -->
                             {#if message.role === 'assistant' && (message.thinkingBeforeToolCalls || (message.thinking && !message.tool_calls)) && !(message.multiModelResponses && message.multiModelResponses.length > 0)}
@@ -13470,6 +13480,11 @@ ask_user_question 参数说明：
                                     {/each}
                                 </div>
                             {/if}
+
+                            <TodoCardList
+                                className="ai-message__standalone-todos"
+                                contents={getMessageTodoContents(message, group.messages)}
+                            />
 
                             <!-- 兼容旧数据：显示工具调用后的思考过程 -->
                             {#if message.role === 'assistant' && message.thinkingAfterToolCalls && !(message.multiModelResponses && message.multiModelResponses.length > 0)}
@@ -13859,7 +13874,8 @@ ask_user_question 参数说明：
                                                                                             class="ai-message__tool-call-code-wrapper"
                                                                                         >
                                                                                             <pre
-                                                                                                class="ai-message__tool-call-code"><code>{toolCall.result}</code></pre>
+                                                                                                class="ai-message__tool-call-code"
+                                                                                            ><code>{toolCall.result}</code></pre>
                                                                                         </div>
                                                                                     </div>
                                                                                 {/if}
@@ -13957,6 +13973,11 @@ ask_user_question 参数说明：
                                                             {/if}
                                                         </div>
                                                     {/if}
+
+                                                    <TodoCardList
+                                                        className="ai-message__standalone-todos"
+                                                        contents={getMultiModelTodoContents(response.toolCalls)}
+                                                    />
 
                                                     <div
                                                         class="ai-sidebar__multi-model-card-content b3-typography"
@@ -14328,7 +14349,8 @@ ask_user_question 参数说明：
                                                                                                 class="ai-message__tool-call-code-wrapper"
                                                                                             >
                                                                                                 <pre
-                                                                                                    class="ai-message__tool-call-code"><code>{toolCall.result}</code></pre>
+                                                                                                    class="ai-message__tool-call-code"
+                                                                                                ><code>{toolCall.result}</code></pre>
                                                                                             </div>
                                                                                         </div>
                                                                                     {/if}
@@ -14428,6 +14450,11 @@ ask_user_question 参数说明：
                                                                 {/if}
                                                             </div>
                                                         {/if}
+
+                                                        <TodoCardList
+                                                            className="ai-message__standalone-todos"
+                                                            contents={getMultiModelTodoContents(response.toolCalls)}
+                                                        />
 
                                                         <div
                                                             class="ai-message__multi-model-tab-panel-content b3-typography"
@@ -14799,6 +14826,32 @@ ask_user_question 参数说明：
                         {/if}
                     </div>
                 {/if}
+
+                {#each answeredQuestionCards as answered (answered.card.cardId)}
+                    <div
+                        class="ai-message__content b3-typography"
+                        style={messageFontSize ? `font-size: ${messageFontSize}px;` : ''}
+                    >
+                        <div class="agent-chat__question-card agent-chat__question-card--answered">
+                            {#each answered.card.questions as question (question.id)}
+                                {@const ans = answered.answers[question.id]}
+                                <div class="agent-chat__question-item">
+                                    <div class="agent-chat__question-title">{question.title}</div>
+                                    {#if question.description}
+                                        <div class="agent-chat__question-description">{question.description}</div>
+                                    {/if}
+                                    <div class="agent-chat__question-answered-value">
+                                        {#if Array.isArray(ans)}
+                                            {ans.join(', ')}
+                                        {:else}
+                                            {ans || ''}
+                                        {/if}
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/each}
 
                 {#if pendingQuestionCard}
                     <div
@@ -15274,6 +15327,11 @@ ask_user_question 参数说明：
                                         </div>
                                     {/if}
 
+                                    <TodoCardList
+                                        className="ai-message__standalone-todos"
+                                        contents={getMultiModelTodoContents(response.toolCalls)}
+                                    />
+
                                     <div
                                         class="ai-sidebar__multi-model-card-content b3-typography"
                                         style={messageFontSize
@@ -15659,6 +15717,11 @@ ask_user_question 参数说明：
                                             {/if}
                                         </div>
                                     {/if}
+
+                                    <TodoCardList
+                                        className="ai-message__standalone-todos"
+                                        contents={getMultiModelTodoContents(response.toolCalls)}
+                                    />
 
                                     <div
                                         class="ai-sidebar__multi-model-tab-panel-content b3-typography"
@@ -17809,6 +17872,38 @@ ask_user_question 参数说明：
         display: flex;
         justify-content: flex-end;
         margin-top: 12px;
+    }
+
+    /* 已提交的问题卡片 — 只读展示 */
+    .agent-chat__question-card--answered {
+        opacity: 0.85;
+        pointer-events: none;
+    }
+
+    .agent-chat__question-answered-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+        padding: 3px 10px;
+        border-radius: 12px;
+        background: var(--b3-theme-primary-lighter, color-mix(in srgb, var(--b3-theme-primary) 15%, transparent));
+        color: var(--b3-theme-primary);
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .agent-chat__question-answered-value::before {
+        content: '✓';
+        font-size: 11px;
+    }
+
+    :global(.ai-message__standalone-todos) {
+        margin-top: 8px;
+    }
+
+    :global(.ai-message--assistant .ai-message__standalone-todos) {
+        max-width: 90%;
     }
 
     .ai-sidebar__input-container {

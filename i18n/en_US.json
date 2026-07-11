@@ -596,7 +596,12 @@
         "category": {
             "web": "Web Tools",
             "siyuan": "SiYuan Notes",
-            "other": "Other"
+            "siyuan_mcp_parent": "SiYuan MCP Built-in Tools",
+            "siyuan_note": "Notes",
+            "siyuan_repo": "Repo / Sync / File",
+            "siyuan_agent": "Agent / External",
+            "other": "Other",
+            "plugin": "SiYuan Plugin Tools"
         },
         "selector": {
             "title": "Tool Selection",
@@ -615,7 +620,8 @@
             "name": "Fetch Web Content"
         },
         "web_fetch": {
-            "name": "Fetch Web Content"
+            "name": "Fetch Web Content",
+            "description": "Fetch web page content and convert to markdown. Actions: fetch(url, use_webview=false)."
         },
         "siyuan_sql_query": {
             "name": "SQL Query"
@@ -667,7 +673,127 @@
         "result": "Tool Result",
         "waitingApproval": "Waiting for Approval",
         "approve": "Approve",
-        "reject": "Reject"
+        "reject": "Reject",
+        "inbox": {
+            "name": "Inbox Management",
+            "description": "Inbox management (cloud-clipped web pages, messages, and audio/video/file attachments; requires subscription). Actions: list(page=1), get(id), convert(ids, notebook, path=/, remove_after=true) — converts one or more shorthands into local documents under the target notebook, deleting the cloud originals on success."
+        },
+        "sync": {
+            "name": "Data Sync",
+            "description": "Data sync operations. Actions: perform() (full upload+download), upload(), download(), status()."
+        },
+        "system": {
+            "name": "System Info",
+            "description": "System info. Actions: version(), current_time(), workspace()."
+        },
+        "template": {
+            "name": "Template Management",
+            "description": "Template management. Actions: search(keyword?), get(path), remove(path), render(path, id), save_as(id, name, overwrite?), create(name, content, overwrite?)."
+        },
+        "export": {
+            "name": "Export Operations",
+            "description": "Export operations. Actions: md(id), html(id), preview(id), docx(id, output path), sy(id) -> .sy.zip, md-zip(id), data() -> full workspace backup."
+        },
+        "ref": {
+            "name": "Reference and Links",
+            "description": "Reference/backlink operations. Actions: backlinks(id, keyword?, sort?), mentions(id, keyword?, sort?), refresh(id)."
+        },
+        "repo": {
+            "name": "Repository Management",
+            "description": "Cloud repository endpoint management. Actions: list(), get(id), remove(id), push()."
+        },
+        "skill": {
+            "name": "Skill Management",
+            "description": "Knowledge base / skill management. Actions: list(), get(id), remove(id), save(id, name, content)."
+        },
+        "workspace": {
+            "name": "Workspace Management",
+            "description": "Workspace management. Actions: list(), get_current()."
+        },
+        "document": {
+            "name": "Document Operations",
+            "description": "Document lifecycle operations. Actions: create(), remove(), rename(), move(), get_tree(), list()."
+        },
+        "history": {
+            "name": "History Management",
+            "description": "Document version history management. Actions: list(), revert(), compare()."
+        },
+        "question": {
+            "name": "User Question Dialog",
+            "description": "Prompt user for questions/confirmation. Actions: ask(questions, submit_button_text)."
+        },
+        "block": {
+            "name": "Block Operations",
+            "description": "Siyuan block level operations. Actions: get(id), insert(id, content, parentId?), append(id, content), update(id, content), remove(id), get_kramdown(id)."
+        },
+        "attr": {
+            "name": "Custom Attributes",
+            "description": "Block custom attribute operations. Actions: get(id), set(id, attrs), batch_get(ids)."
+        },
+        "import": {
+            "name": "Import Operations",
+            "description": "Import operations (absolute local paths). Actions: md(notebook, path, targetPath?), sy(notebook, path, targetPath?), data(path)."
+        },
+        "outline": {
+            "name": "Document Outline",
+            "description": "Document outline (heading tree). Action: get(id)."
+        },
+        "unzip": {
+            "name": "Unzip Operations",
+            "description": "Extract a zip archive within the workspace (workspace-relative paths)."
+        },
+        "bookmark": {
+            "name": "Bookmark Management",
+            "description": "Bookmark management. Actions: list(), labels(), remove(label), rename(old, new)."
+        },
+        "file": {
+            "name": "File Operations",
+            "description": "Workspace file operations (paths relative to workspace; debugging/log reading only — never use for workspace data). Actions: list(path, limit), read(path, offset, limit), write(path, data), delete(path), rename(old, new), copy(src, dst), grep(pattern, path), find(path), stat(path)."
+        },
+        "http_request": {
+            "name": "HTTP Request",
+            "description": "Send custom HTTP requests. Actions: request(url, method, headers, body)."
+        },
+        "notebook": {
+            "name": "Notebook Management",
+            "description": "Notebook management and configuration. Actions: list(), create(name), get_conf(id), set_conf(id, conf), remove(id), status(id)."
+        },
+        "asset": {
+            "name": "Asset Management",
+            "description": "Asset file operations. Actions: upload(), get(), remove()."
+        },
+        "dailynote": {
+            "name": "Daily Note Operations",
+            "description": "Daily note management. Actions: get(notebook, date?), create(notebook, date?)."
+        },
+        "database": {
+            "name": "Attribute View (Database)",
+            "description": "Attribute View (Database) operations. Actions: list_keys(avId), render(avId), append_detached(avId, values), add_blocks(avId, blockIds), set_block_attr(avId, blockId, key, value), add_key(avId, key), remove_key(avId, key), remove_blocks(avId, blockIds)."
+        },
+        "sql": {
+            "name": "SQL Query",
+            "description": "Query Siyuan database directly via SQL. Actions: query(sql), refresh()."
+        },
+        "tag": {
+            "name": "Tag Management",
+            "description": "Tag management. Actions: list(), remove(tag), rename(old, new)."
+        },
+        "web_search": {
+            "name": "Web Search",
+            "description": "Search the web using search engines. Actions: search(query)."
+        },
+        "frontend": {
+            "name": "Frontend Interaction",
+            "description": "Frontend UI interactions. Actions: notify(message, type)."
+        },
+        "search": {
+            "name": "Content Search",
+            "description": "Full text search in notebooks. Actions: query(k), embed(k)."
+        },
+        "todo_write": {
+            "name": "Task Write",
+            "description": "Write tasks/todos. Actions: write(task)."
+        }
     },
     "multiModel": {
         "title": "Multi-Model Chat",

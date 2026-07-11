@@ -49,6 +49,7 @@ import { parseWebPageToMarkdown, fetchWithWebView } from '../utils/webParser';
 import { settingsStore } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
+import { i18n } from '../utils/i18n';
 
 /**
  * 获取当前激活的编辑器 Protyle 实例
@@ -65,52 +66,17 @@ function getProtyle() {
  */
 export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     siyuan: {
-        tools: [
-            'siyuan_sql_query',
-            'siyuan_get_block_content',
-            'siyuan_get_block_attrs',
-            'siyuan_set_block_attrs',
-            'siyuan_insert_block',
-            'siyuan_update_block',
-            'siyuan_delete_block',
-            'siyuan_create_document',
-            'siyuan_create_child_document',
-            'siyuan_get_doc_tree',
-            'siyuan_list_notebooks',
-            'siyuan_create_notebook',
-            'siyuan_rename_document',
-            'siyuan_move_documents',
-            'siyuan_send_notification',
-            'siyuan_get_current_time',
-            'siyuan_fetch_sync_post',
-        ],
+        tools: [],
     },
-    database: {
-        tools: [
-            'siyuan_search_database',
-            'siyuan_get_database_columns',
-            'siyuan_render_database',
-            'siyuan_add_database_rows',
-            'siyuan_add_database_blocks',
-            'siyuan_set_database_cell',
-            'siyuan_batch_set_database_cells',
-            'siyuan_get_block_databases',
-            'siyuan_convert_blockid_to_itemid',
-            'siyuan_convert_itemid_to_blockid',
-            'siyuan_add_database_column',
-            'siyuan_remove_database_column',
-            'siyuan_remove_database_rows',
-        ],
+    plugin: {
+        tools: [],
     },
     other: {
         tools: [
-            'web_fetch',
             'soul',
             'run_js',
             'run_python',
             'run_command',
-            'create_skill',
-            'ask_user_question',
         ],
     },
 };
@@ -120,18 +86,13 @@ export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
  */
 export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     siyuan: {
-        tools: [
-            'siyuan_sql_query',
-            'siyuan_get_block_content',
-            'siyuan_get_block_attrs',
-            'siyuan_get_doc_tree',
-            'siyuan_list_notebooks',
-            'siyuan_get_current_time',
-        ],
+        tools: [],
+    },
+    plugin: {
+        tools: [],
     },
     other: {
         tools: [
-            'web_fetch',
             'soul',
             'run_js',
             'run_command',
@@ -231,7 +192,7 @@ function registerBuiltinToolSkillDescriptions() {
 registerBuiltinToolSkillDescriptions();
 
 function getBuiltinToolSkillDescription(toolName: string): string {
-    return TOOL_FULL_DESCRIPTIONS[toolName] || `工具 "${toolName}" 的说明文档缺失。`;
+    return TOOL_FULL_DESCRIPTIONS[toolName] || TOOL_FULL_DESCRIPTIONS[`siyuan_${toolName}`] || `工具 "${toolName}" 的说明文档缺失。`;
 }
 
 function isSafeBuiltinToolSkillName(toolName: string): boolean {
@@ -243,8 +204,12 @@ async function readBuiltinToolSkillDescription(toolName: string): Promise<string
         return null;
     }
 
-    const skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
-    const blob = await getFileBlob(skillPath);
+    let skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
+    let blob = await getFileBlob(skillPath);
+    if (!blob) {
+        skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/siyuan_${toolName}.md`;
+        blob = await getFileBlob(skillPath);
+    }
     if (!blob) {
         return null;
     }
@@ -458,62 +423,9 @@ export function createGetSiyuanSkillsTool(allowedToolNames?: string[]): Tool {
     };
 }
 
-export const AVAILABLE_TOOLS: Tool[] = [
+export let AVAILABLE_TOOLS: Tool[] = [
     // 工具详细描述查询工具 - 隐藏工具，不在 UI 中显示
     createGetSiyuanSkillsTool(),
-
-    // 自定义 Skill 读取工具 - 隐藏工具，不在 UI 中显示
-    createTool(
-        'read_skill',
-        getBuiltinToolSkillDescription('read_skill'),
-        {
-            type: 'object',
-            properties: {
-                skillId: {
-                    type: 'string',
-                    description: '要读取的 Skill 的标识符或其子文件的相对路径（如 "my-skill" 或 "my-skill/references/guide.md"）',
-                },
-            },
-            required: ['skillId'],
-        }
-    ),
-
-    // 自定义 Skill 创建/更新工具
-    createTool(
-        'create_skill',
-        getBuiltinToolSkillDescription('create_skill'),
-        {
-            type: 'object',
-            properties: {
-                skillId: {
-                    type: 'string',
-                    description: 'Skill 标识符，会保存到 data/storage/ai/agent/skills/{skillId}/skill.md。不能包含路径分隔符或文件名非法字符。',
-                },
-                content: {
-                    type: 'string',
-                    description: '完整的 skill.md Markdown 内容。建议包含 YAML Frontmatter；缺失时会使用 name/description 自动补全。',
-                },
-                name: {
-                    type: 'string',
-                    description: '可选。content 缺少 YAML Frontmatter 时写入 Frontmatter 的 Skill 名称。',
-                },
-                description: {
-                    type: 'string',
-                    description: '可选。content 缺少 YAML Frontmatter 时写入 Frontmatter 的 Skill 描述。',
-                },
-                blockIds: {
-                    type: 'array',
-                    description: '可选。思源块 ID 列表。提供后会写入或更新 siyuan-plugin-copilot:skill-blocks 标记，使 Skill 内容从这些块展开。',
-                    items: {
-                        type: 'string',
-                        description: '思源块 ID',
-                    },
-                },
-            },
-            required: ['skillId', 'content'],
-        }
-    ),
-
     // 运行本地命令工具
     createTool(
         'run_command',
@@ -527,644 +439,6 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 },
             },
             required: ['command'],
-        }
-    ),
-
-    // SQL查询工具
-    createTool(
-        'siyuan_sql_query',
-        getBuiltinToolSkillDescription('siyuan_sql_query'),
-        {
-            type: 'object',
-            properties: {
-                sql: {
-                    type: 'string',
-                    description: 'SQL查询语句，必须是有效的SQLite语法',
-                },
-            },
-            required: ['sql'],
-        }
-    ),
-    // 更新块工具
-    createTool(
-        'siyuan_update_block',
-        getBuiltinToolSkillDescription('siyuan_update_block'),
-        {
-            type: 'object',
-            properties: {
-                dataType: {
-                    type: 'string',
-                    description: '数据类型，通常使用 "markdown"',
-                    enum: ['markdown', 'dom'],
-                },
-                data: {
-                    type: 'string',
-                    description: '新的块内容，使用Markdown格式。如果更新的是文档块（type="d"），不需要在内容中使用一级标题（# 标题）作为文档标题，思源笔记有文档名称字段来存储文档标题。',
-                },
-                id: {
-                    type: 'string',
-                    description: '要更新的块ID',
-                },
-            },
-            required: ['dataType', 'data', 'id'],
-        }
-    ),
-    // 插入块工具
-    createTool(
-        'siyuan_insert_block',
-        getBuiltinToolSkillDescription('siyuan_insert_block'),
-        {
-            type: 'object',
-            properties: {
-                dataType: {
-                    type: 'string',
-                    description: '数据类型，通常使用 "markdown"',
-                    enum: ['markdown', 'dom'],
-                },
-                data: {
-                    type: 'string',
-                    description: '要插入的内容，使用Markdown格式，可以一次性插入多个块，无需一个个插入',
-                },
-                parentID: {
-                    type: 'string',
-                    description: '父块ID，将新块作为前置子块插入（可选）',
-                },
-                appendParentID: {
-                    type: 'string',
-                    description: '父块ID，将新块作为后置子块追加到父块最后（可选）',
-                },
-                previousID: {
-                    type: 'string',
-                    description: '前一个块的ID，将新块插入到该块之后（可选）',
-                },
-                nextID: {
-                    type: 'string',
-                    description: '后一个块的ID，将新块插入到该指定块之前（可选）',
-                },
-            },
-            required: ['dataType', 'data'],
-        }
-    ),
-
-
-
-    // 获取块内容工具
-    createTool(
-        'siyuan_get_block_content',
-        getBuiltinToolSkillDescription('siyuan_get_block_content'),
-        {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: '要获取内容的块ID',
-                },
-                format: {
-                    type: 'string',
-                    description: '返回格式：markdown（纯文本）或 kramdown（包含ID信息）',
-                    enum: ['markdown', 'kramdown'],
-                },
-                command: {
-                    type: 'string',
-                    description: '可选。文本处理命令，支持 length、grep、replace、head 及管道组合。详见工具描述。',
-                },
-            },
-            required: ['id', 'format'],
-        }
-    ),
-
-    // 创建文档工具
-    createTool(
-        'siyuan_create_document',
-        getBuiltinToolSkillDescription('siyuan_create_document'),
-        {
-            type: 'object',
-            properties: {
-                notebook: {
-                    type: 'string',
-                    description: '笔记本ID。如果用户未指定，则创建在默认笔记本,不要自行选择。',
-                },
-                path: {
-                    type: 'string',
-                    description: '文档保存的目录路径（不含文档标题/文件名）。必须以 "/" 开头。如果未指定，则使用默认目录路径。',
-                },
-                title: {
-                    type: 'string',
-                    description: '文档标题（即文档名称/文件名）。如果未指定，将使用默认的时间戳文件名。',
-                },
-                markdown: {
-                    type: 'string',
-                    description: '文档内容，使用Markdown格式。思源笔记会自动把 title 作为文档的标题，因此不需要在 Markdown 内容中再使用一级标题（# 标题）作为笔记标题。',
-                },
-            },
-            required: ['markdown'],
-        }
-    ),
-
-    // 创建子文档工具
-    createTool(
-        'siyuan_create_child_document',
-        getBuiltinToolSkillDescription('siyuan_create_child_document'),
-        {
-            type: 'object',
-            properties: {
-                parentId: {
-                    type: 'string',
-                    description: '父文档ID，子文档将创建在此文档下',
-                },
-                title: {
-                    type: 'string',
-                    description: '子文档标题（不含路径，仅文档名）',
-                },
-                markdown: {
-                    type: 'string',
-                    description: '文档内容，使用Markdown格式',
-                },
-            },
-            required: ['parentId', 'title', 'markdown'],
-        }
-    ),
-
-    // 列出笔记本工具
-    createTool(
-        'siyuan_list_notebooks',
-        getBuiltinToolSkillDescription('siyuan_list_notebooks'),
-        {
-            type: 'object',
-            properties: {},
-            required: [],
-        }
-    ),
-
-    // 获取文档树工具
-    createTool(
-        'siyuan_get_doc_tree',
-        getBuiltinToolSkillDescription('siyuan_get_doc_tree'),
-        {
-            type: 'object',
-            properties: {
-                notebook: {
-                    type: 'string',
-                    description: '笔记本ID',
-                },
-                path: {
-                    type: 'string',
-                    description: "起始路径，默认 '/'",
-                },
-                sortMode: {
-                    type: 'number',
-                    description: '可选的排序模式，若不提供将由笔记本或全局配置决定',
-                },
-            },
-            required: ['notebook'],
-        }
-    ),
-
-    // 创建笔记本工具
-    createTool(
-        'siyuan_create_notebook',
-        getBuiltinToolSkillDescription('siyuan_create_notebook'),
-        {
-            type: 'object',
-            properties: {
-                name: {
-                    type: 'string',
-                    description: '笔记本名称',
-                },
-            },
-            required: ['name'],
-        }
-    ),
-
-    // 重命名文档工具
-    createTool(
-        'siyuan_rename_document',
-        getBuiltinToolSkillDescription('siyuan_rename_document'),
-        {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: '文档ID',
-                },
-                title: {
-                    type: 'string',
-                    description: '新的文档标题',
-                },
-            },
-            required: ['id', 'title'],
-        }
-    ),
-
-    // 移动文档工具
-    createTool(
-        'siyuan_move_documents',
-        getBuiltinToolSkillDescription('siyuan_move_documents'),
-        {
-            type: 'object',
-            properties: {
-                fromIDs: {
-                    type: 'array',
-                    description: '源文档ID数组，可以是一个或多个文档ID',
-                    items: {
-                        type: 'string',
-                    },
-                },
-                toID: {
-                    type: 'string',
-                    description: '目标父文档ID或笔记本ID',
-                },
-            },
-            required: ['fromIDs', 'toID'],
-        }
-    ),
-    // 获取块属性工具
-    createTool(
-        'siyuan_get_block_attrs',
-        getBuiltinToolSkillDescription('siyuan_get_block_attrs'),
-        {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: '要获取属性的块ID',
-                },
-            },
-            required: ['id'],
-        }
-    ),
-
-    // 设置块属性工具
-    createTool(
-        'siyuan_set_block_attrs',
-        getBuiltinToolSkillDescription('siyuan_set_block_attrs'),
-        {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: '要设置属性的块ID',
-                },
-                attrs: {
-                    type: 'object',
-                    description: '属性对象，键为属性名，值为字符串',
-                },
-            },
-            required: ['id', 'attrs'],
-        }
-    ),
-
-    // ==================== 数据库属性视图工具 ====================
-
-    // 搜索数据库
-    createTool(
-        'siyuan_search_database',
-        getBuiltinToolSkillDescription('siyuan_search_database'),
-        {
-            type: 'object',
-            properties: {
-                keyword: {
-                    type: 'string',
-                    description: '搜索关键词',
-                },
-                avID: {
-                    type: 'string',
-                    description: '数据库ID（可选，用于精确搜索）',
-                },
-            },
-            required: ['keyword'],
-        }
-    ),
-
-    // 获取数据库列信息
-    createTool(
-        'siyuan_get_database_columns',
-        getBuiltinToolSkillDescription('siyuan_get_database_columns'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-            },
-            required: ['avID'],
-        }
-    ),
-
-    // 渲染/获取数据库内容
-    createTool(
-        'siyuan_render_database',
-        getBuiltinToolSkillDescription('siyuan_render_database'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID或块ID',
-                },
-                viewID: {
-                    type: 'string',
-                    description: '视图ID',
-                },
-                pageSize: {
-                    type: 'number',
-                    description: '每页数量，默认9999999',
-                },
-                page: {
-                    type: 'number',
-                    description: '页码，默认1',
-                },
-                createIfNotExist: {
-                    type: 'boolean',
-                    description: '如果不存在是否创建，默认true',
-                },
-            },
-            required: ['avID', 'viewID'],
-        }
-    ),
-
-    // 添加数据库行（非绑定行）
-    createTool(
-        'siyuan_add_database_rows',
-        getBuiltinToolSkillDescription('siyuan_add_database_rows'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                blocksValues: {
-                    type: 'array',
-                    description: '二维数组，每个元素是一行的数据，每行是一个数组，包含该行的单元格值对象',
-                    items: {
-                        type: 'array',
-                        description: '一行的数据数组',
-                        items: {
-                            type: 'object',
-                            description: '单元格值对象，根据列类型设置值，如 { "keyID": "列ID", "text": { "content": "文本内容" } }',
-                        },
-                    },
-                },
-            },
-            required: ['avID', 'blocksValues'],
-        }
-    ),
-
-    // 添加绑定块到数据库
-    createTool(
-        'siyuan_add_database_blocks',
-        getBuiltinToolSkillDescription('siyuan_add_database_blocks'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                blockIDs: {
-                    type: 'array',
-                    description: '要绑定的块ID数组',
-                    items: {
-                        type: 'string',
-                    },
-                },
-                itemIDs: {
-                    type: 'array',
-                    description: 'ItemID数组（可选，与blockIDs一一对应）',
-                    items: {
-                        type: 'string',
-                    },
-                },
-            },
-            required: ['avID', 'blockIDs'],
-        }
-    ),
-
-    // 设置数据库单元格值
-    createTool(
-        'siyuan_set_database_cell',
-        getBuiltinToolSkillDescription('siyuan_set_database_cell'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                keyID: {
-                    type: 'string',
-                    description: '列ID',
-                },
-                itemID: {
-                    type: 'string',
-                    description: '行ID/ItemID',
-                },
-                value: {
-                    type: 'object',
-                    description: '属性值对象',
-                },
-            },
-            required: ['avID', 'keyID', 'itemID', 'value'],
-        }
-    ),
-
-    // 批量设置数据库单元格
-    createTool(
-        'siyuan_batch_set_database_cells',
-        getBuiltinToolSkillDescription('siyuan_batch_set_database_cells'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                values: {
-                    type: 'array',
-                    description: '属性值数组，每个元素包含 keyID、itemID 和 value',
-                    items: {
-                        type: 'object',
-                        description: '单元格值对象，如 { "keyID": "列ID", "itemID": "行ID/ItemID", "value": { "text": { "content": "文本" } } }',
-                        properties: {
-                            keyID: {
-                                type: 'string',
-                                description: '列ID',
-                            },
-                            itemID: {
-                                type: 'string',
-                                description: '行ID/ItemID',
-                            },
-                            value: {
-                                type: 'object',
-                                description: '属性值对象',
-                            },
-                        },
-                        required: ['keyID', 'itemID', 'value'],
-                    },
-                },
-            },
-            required: ['avID', 'values'],
-        }
-    ),
-
-    // 获取块所在的数据库
-    createTool(
-        'siyuan_get_block_databases',
-        getBuiltinToolSkillDescription('siyuan_get_block_databases'),
-        {
-            type: 'object',
-            properties: {
-                blockID: {
-                    type: 'string',
-                    description: '块ID',
-                },
-            },
-            required: ['blockID'],
-        }
-    ),
-
-    // 块ID转ItemID
-    createTool(
-        'siyuan_convert_blockid_to_itemid',
-        getBuiltinToolSkillDescription('siyuan_convert_blockid_to_itemid'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                blockIDs: {
-                    type: 'array',
-                    description: '块ID数组',
-                    items: {
-                        type: 'string',
-                    },
-                },
-            },
-            required: ['avID', 'blockIDs'],
-        }
-    ),
-
-    // ItemID转块ID
-    createTool(
-        'siyuan_convert_itemid_to_blockid',
-        getBuiltinToolSkillDescription('siyuan_convert_itemid_to_blockid'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                itemIDs: {
-                    type: 'array',
-                    description: 'ItemID数组',
-                    items: {
-                        type: 'string',
-                    },
-                },
-            },
-            required: ['avID', 'itemIDs'],
-        }
-    ),
-
-    // 添加数据库列
-    createTool(
-        'siyuan_add_database_column',
-        getBuiltinToolSkillDescription('siyuan_add_database_column'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                keyName: {
-                    type: 'string',
-                    description: '列名称',
-                },
-                keyType: {
-                    type: 'string',
-                    description: '列类型',
-                    enum: ['text', 'number', 'select', 'mSelect', 'block', 'date', 'url', 'email', 'phone'],
-                },
-                previousKeyID: {
-                    type: 'string',
-                    description: '前一列ID（用于指定新列的位置）',
-                },
-                keyIcon: {
-                    type: 'string',
-                    description: '列图标（可选，unicode字符）',
-                },
-            },
-            required: ['avID', 'keyName', 'keyType', 'previousKeyID'],
-        }
-    ),
-
-    // 删除数据库列
-    createTool(
-        'siyuan_remove_database_column',
-        getBuiltinToolSkillDescription('siyuan_remove_database_column'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                keyID: {
-                    type: 'string',
-                    description: '要删除的列ID',
-                },
-            },
-            required: ['avID', 'keyID'],
-        }
-    ),
-
-    // 删除数据库行
-    createTool(
-        'siyuan_remove_database_rows',
-        getBuiltinToolSkillDescription('siyuan_remove_database_rows'),
-        {
-            type: 'object',
-            properties: {
-                avID: {
-                    type: 'string',
-                    description: '数据库ID',
-                },
-                srcIDs: {
-                    type: 'array',
-                    description: '要删除的行ID数组',
-                    items: {
-                        type: 'string',
-                    },
-                },
-            },
-            required: ['avID', 'srcIDs'],
-        }
-    ),
-
-    // 网页内容获取工具
-    createTool(
-        'web_fetch',
-        getBuiltinToolSkillDescription('web_fetch'),
-        {
-            type: 'object',
-            properties: {
-                url: {
-                    type: 'string',
-                    description: '要获取的网页 URL，必须是完整的 http:// 或 https:// 链接',
-                },
-                useWebView: {
-                    type: 'boolean',
-                    description: '是否使用 WebView 模式加载页面。默认为 false（普通模式）。对于需要登录、动态加载或有反爬虫机制的网站，建议设为 true',
-                    default: false,
-                },
-            },
-            required: ['url'],
         }
     ),
 
@@ -1206,24 +480,6 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 },
             },
             required: ['operation'],
-        }
-    ),
-
-    // 获取当前时间工具
-    createTool(
-        'siyuan_get_current_time',
-        getBuiltinToolSkillDescription('siyuan_get_current_time'),
-        {
-            type: 'object',
-            properties: {
-                format: {
-                    type: 'string',
-                    description: '返回格式：local(默认)、iso、date、time、timestamp',
-                    enum: ['iso', 'local', 'date', 'time', 'timestamp'],
-                    default: 'local',
-                },
-            },
-            required: [],
         }
     ),
 
@@ -1276,147 +532,6 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 },
             },
             required: ['code'],
-        }
-    ),
-
-    // 系统通知工具
-    createTool(
-        'siyuan_send_notification',
-        getBuiltinToolSkillDescription('siyuan_send_notification'),
-        {
-            type: 'object',
-            properties: {
-                title: {
-                    type: 'string',
-                    description: '通知标题（必填）',
-                },
-                body: {
-                    type: 'string',
-                    description: '通知内容（可选，默认为空）',
-                },
-                delay: {
-                    type: 'string',
-                    description: '延迟时间：数字字符串表示秒数（如 "300" 表示5分钟后），ISO 8601 格式字符串表示具体时间。本地时间格式 "2026-03-12T11:50:00"，UTC 时间格式 "2026-03-12T11:50:00Z"，立即发送可不传或传 "0"',
-                },
-                timeoutType: {
-                    type: 'string',
-                    description: '超时类型："default"（默认）或 "never"（不自动消失）',
-                    enum: ['default', 'never'],
-                    default: 'default',
-                },
-            },
-            required: ['title'],
-        }
-    ),
-
-    // 删除块工具
-    createTool(
-        'siyuan_delete_block',
-        getBuiltinToolSkillDescription('siyuan_delete_block'),
-        {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: '要删除的块ID',
-                },
-            },
-            required: ['id'],
-        }
-    ),
-
-    // 向用户弹出 question card 并收集答案
-    createTool(
-        'ask_user_question',
-        getBuiltinToolSkillDescription('ask_user_question'),
-        {
-            type: 'object',
-            properties: {
-                questions: {
-                    type: 'array',
-                    description: '要问用户的问题列表。每个问题包含 id、type、title、description、options、required、placeholder。',
-                    items: {
-                        type: 'object',
-                        description: '单个问题',
-                        properties: {
-                            id: {
-                                type: 'string',
-                                description: '问题唯一标识，提交答案时作为 key',
-                            },
-                            type: {
-                                type: 'string',
-                                description: '问题类型：single(单选)、multiple(多选)、text(文本输入)',
-                                enum: ['single', 'multiple', 'text'],
-                            },
-                            title: {
-                                type: 'string',
-                                description: '问题标题',
-                            },
-                            description: {
-                                type: 'string',
-                                description: '可选的补充说明',
-                            },
-                            options: {
-                                type: 'array',
-                                description: '单选/多选时的选项列表；text 类型可省略',
-                                items: {
-                                    type: 'object',
-                                    description: '单个选项',
-                                    properties: {
-                                        label: {
-                                            type: 'string',
-                                            description: '选项显示文本',
-                                        },
-                                        value: {
-                                            type: 'string',
-                                            description: '选项值；省略时使用 label 作为值',
-                                        },
-                                        description: {
-                                            type: 'string',
-                                            description: '选项的额外说明',
-                                        },
-                                    },
-                                    required: ['label'],
-                                },
-                            },
-                            required: {
-                                type: 'boolean',
-                                description: '是否必填',
-                            },
-                            placeholder: {
-                                type: 'string',
-                                description: '文本输入框的占位提示',
-                            },
-                        },
-                        required: ['id', 'type', 'title'],
-                    },
-                },
-                submitButtonText: {
-                    type: 'string',
-                    description: '提交按钮文本，默认为“提交”',
-                },
-            },
-            required: ['questions'],
-        }
-    ),
-
-    // 通用思源API调用工具
-    createTool(
-        'siyuan_fetch_sync_post',
-        getBuiltinToolSkillDescription('siyuan_fetch_sync_post'),
-        {
-            type: 'object',
-            properties: {
-                api: {
-                    type: 'string',
-                    description: 'API 路径，如 "/api/block/getChildBlocks" 或 "block/getChildBlocks"',
-                },
-                data: {
-                    type: 'object',
-                    description: '请求数据对象，根据具体 API 的要求构造',
-                },
-            },
-            required: ['api'],
         }
     ),
 ];
@@ -3315,21 +2430,7 @@ export async function executeToolCall(
         const args = JSON.parse(argsStr);
 
         switch (name) {
-            case 'ask_user_question': {
-                if (!Array.isArray(args.questions) || args.questions.length === 0) {
-                    return 'ask_user_question 调用失败：questions 必须是包含至少一个问题的数组';
-                }
-                if (!callbacks?.onAskQuestion) {
-                    return 'ask_user_question 调用失败：当前环境不支持 question card 交互';
-                }
-                const answers = await callbacks.onAskQuestion({
-                    questions: args.questions,
-                    submitButtonText: typeof args.submitButtonText === 'string'
-                        ? args.submitButtonText
-                        : undefined,
-                });
-                return JSON.stringify(answers, null, 2);
-            }
+
 
             case 'soul':
                 const soulResult = await soul(args);
@@ -3541,8 +2642,79 @@ export async function executeToolCall(
             case 'run_command':
                 return await run_command(args.command);
 
+            case 'question': {
+                // 思源内置 question 工具：需在 agent 循环中拦截，展示 QuestionCard UI
+                if (!callbacks?.onAskQuestion) {
+                    return 'question tool: onAskQuestion callback not registered';
+                }
+                // 将思源 question schema 映射到插件的 QuestionItem[]
+                // 思源 schema: { questions: [{ header, question, options:[{label,description}], multiple?, custom? }] }
+                const siyuanQuestions: Array<{
+                    header: string;
+                    question: string;
+                    options: Array<{ label: string; description?: string }>;
+                    multiple?: boolean;
+                    custom?: boolean;
+                }> = Array.isArray(args.questions) ? args.questions : [];
+
+                const mappedQuestions: QuestionItem[] = siyuanQuestions.map((q, idx) => ({
+                    id: `q_${idx}`,
+                    type: q.multiple ? 'multiple' : 'single',
+                    title: q.question,
+                    description: q.header,
+                    required: true,
+                    options: (q.options || []).map(opt => ({
+                        label: opt.label,
+                        value: opt.label,
+                        description: opt.description,
+                    })),
+                }));
+
+                const answers = await callbacks.onAskQuestion({ questions: mappedQuestions });
+
+                // 将答案整理为字符串返回给 AI
+                const parts: string[] = [];
+                for (const q of mappedQuestions) {
+                    const ans = answers[q.id];
+                    if (ans === undefined || ans === null || ans === '') continue;
+                    const label = q.description ? `${q.description}: ` : '';
+                    const value = Array.isArray(ans) ? ans.join(', ') : ans;
+                    parts.push(`${label}${value}`);
+                }
+                return parts.length > 0 ? parts.join('\n') : 'User provided no answer.';
+            }
+
+            case 'todo_write': {
+                // 思源内置 todo_write 工具：MCP handler 需要 _sessionID，插件无法注入，必须本地拦截处理
+                // 输入 schema: { todos: [{ content: string, status: "pending"|"in_progress"|"completed"|"cancelled" }] }
+                const rawTodos: Array<{ content?: string; status?: string }> =
+                    Array.isArray(args.todos) ? args.todos : [];
+
+                if (rawTodos.length === 0) {
+                    return 'Todo list is empty.';
+                }
+
+                const validStatuses = new Set(['pending', 'in_progress', 'completed', 'cancelled']);
+                const lines: string[] = ['Todo List', ''];
+                for (const item of rawTodos) {
+                    const content = String(item.content ?? '').trim();
+                    if (!content) continue;
+                    const status = validStatuses.has(item.status ?? '') ? item.status : 'pending';
+                    let marker: string;
+                    switch (status) {
+                        case 'completed':  marker = '[x]'; break;
+                        case 'in_progress': marker = '[/]'; break;
+                        case 'cancelled':  marker = '[-]'; break;
+                        default:           marker = '[ ]'; break;
+                    }
+                    lines.push(`- ${marker} ${content}`);
+                }
+                return lines.join('\n');
+            }
+
             default:
-                throw new Error(`未知的工具: ${name}`);
+                // 所有其他工具路由至思源 MCP 执行
+                return await callSiyuanMcpTool(name, args);
         }
     } catch (error) {
         console.error(`Execute tool ${name} error:`, error);
@@ -4095,5 +3267,196 @@ export async function run_command(command: string): Promise<string> {
     } catch (e) {
         console.error('[Terminal] Failed to execute command:', e);
         return `错误：执行命令失败。${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
+// ==================== 思源内部 MCP 工具集成 ====================
+
+let mcpSessionId = null;
+
+async function getMcpSessionId() {
+    if (mcpSessionId) return mcpSessionId;
+
+    const initRes = await fetch("/mcp", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": "2024-11-05",
+        },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+                protocolVersion: "2024-11-05",
+                capabilities: {},
+                clientInfo: { name: "siyuan-plugin-copilot", version: "1.0.0" },
+            },
+        }),
+    });
+
+    if (!initRes.ok) {
+        throw new Error("Failed to initialize MCP: " + initRes.statusText);
+    }
+
+    const sessionId = initRes.headers.get("Mcp-Session-Id");
+    if (!sessionId) {
+        throw new Error("No Mcp-Session-Id header returned");
+    }
+
+    await fetch("/mcp", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": "2024-11-05",
+            "Mcp-Session-Id": sessionId,
+        },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "notifications/initialized",
+        }),
+    });
+
+    mcpSessionId = sessionId;
+    return mcpSessionId;
+}
+
+export async function listSiyuanMcpTools() {
+    const sessionId = await getMcpSessionId();
+
+    const toolsRes = await fetch("/mcp", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": "2024-11-05",
+            "Mcp-Session-Id": sessionId,
+        },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/list",
+            params: {},
+        }),
+    });
+
+    if (!toolsRes.ok) {
+        throw new Error("Failed to list MCP tools: " + toolsRes.statusText);
+    }
+
+    const toolsData = await toolsRes.json();
+    return toolsData.result?.tools || [];
+}
+
+export async function callSiyuanMcpTool(name, args) {
+    let sessionId = await getMcpSessionId();
+
+    const sendCall = async (sessId) => {
+        return await fetch("/mcp", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "MCP-Protocol-Version": "2024-11-05",
+                "Mcp-Session-Id": sessId,
+            },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: Math.floor(Math.random() * 100000),
+                method: "tools/call",
+                params: {
+                    name,
+                    arguments: args,
+                },
+            }),
+        });
+    };
+
+    let res = await sendCall(sessionId);
+    if (res.status === 404 || res.status === 401 || res.status === 403) {
+        mcpSessionId = null;
+        sessionId = await getMcpSessionId();
+        res = await sendCall(sessionId);
+    }
+
+    if (!res.ok) {
+        throw new Error("MCP tool call failed with status: " + res.statusText);
+    }
+
+    const data = await res.json();
+    if (data.error) {
+        throw new Error(data.error.message || JSON.stringify(data.error));
+    }
+
+    if (data.result && Array.isArray(data.result.content)) {
+        return data.result.content
+            .map((item) => {
+                if (item.type === 'text') {
+                    return item.text;
+                }
+                return JSON.stringify(item);
+            })
+            .join('\n');
+    }
+    return JSON.stringify(data.result || '');
+}
+
+export async function initializeMcpTools() {
+    try {
+        const mcpToolsList = await listSiyuanMcpTools();
+        console.log("Loaded Siyuan MCP tools:", mcpToolsList.map((t) => t.name));
+        
+        // Keep only base non-MCP tools
+        const baseTools = AVAILABLE_TOOLS.filter(t => {
+            const name = t.function.name;
+            return name === 'get_siyuan_skills' || 
+                   name === 'soul' || 
+                   name === 'run_js' ||
+                   name === 'run_python' ||
+                   name === 'run_command';
+        });
+
+        // Map MCP tools to Tool interface
+        const mappedMcpTools = mcpToolsList.map((mcpTool) => {
+            const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
+            
+            // Translate the description dynamically if there is a translation
+            const descKey = `tools.${mcpTool.name}.description`;
+            const translatedDesc = i18n(descKey);
+            const description = (translatedDesc !== descKey) ? translatedDesc : (mcpTool.description || '');
+
+            const tool = {
+                type: 'function',
+                function: {
+                    name: mcpTool.name,
+                    description: description,
+                    parameters: parameters
+                }
+            };
+            
+            // Register full description in TOOL_FULL_DESCRIPTIONS
+            if (!TOOL_FULL_DESCRIPTIONS[mcpTool.name]) {
+                TOOL_FULL_DESCRIPTIONS[mcpTool.name] = description;
+            }
+
+            return tool;
+        });
+
+        // Clear and update AVAILABLE_TOOLS
+        AVAILABLE_TOOLS.length = 0;
+        AVAILABLE_TOOLS.push(...baseTools, ...mappedMcpTools);
+
+        // Update TOOL_CATEGORIES and QA_TOOL_CATEGORIES
+        // Group plugin tools and siyuan tools
+        const pluginToolNames = mcpToolsList.filter(t => t.name.startsWith("plugin__")).map(t => t.name);
+        const siyuanToolNames = mcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
+
+        TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
+        TOOL_CATEGORIES.plugin.tools = pluginToolNames;
+        
+        QA_TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
+        QA_TOOL_CATEGORIES.plugin.tools = pluginToolNames;
+        
+        console.log("Successfully initialized Siyuan MCP tools!");
+    } catch (error) {
+        console.error("Failed to initialize Siyuan MCP tools:", error);
     }
 }

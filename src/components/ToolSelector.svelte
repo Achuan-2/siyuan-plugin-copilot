@@ -36,13 +36,64 @@
         dispatch('close');
     }
     // 按类别组织工具
+    // 按类别组织工具并对思源 MCP 工具进行细分与排序
     $: categorizedTools = (() => {
         const result: Record<string, Tool[]> = {};
         for (const [category, config] of Object.entries(categories)) {
-            // 按照 config.tools 中定义的顺序映射工具
-            result[category] = config.tools
+            const mappedTools = config.tools
                 .map(toolName => AVAILABLE_TOOLS.find(tool => tool.function.name === toolName))
                 .filter(tool => tool !== undefined) as Tool[];
+
+            if (category === 'siyuan') {
+                // 定义三个子分类的工具名称列表以及排序
+                const noteToolOrder = [
+                    'block', 'document', 'outline', 'search', 'sql', 'ref', 'history', 'notebook', 'bookmark', 'tag', 'dailynote', 'inbox', 'attr', 'database', 'template'
+                ];
+                const repoSyncFileToolOrder = [
+                    'repo', 'sync', 'import', 'export', 'asset', 'unzip', 'file'
+                ];
+                const agentExternalToolOrder = [
+                    'frontend', 'question', 'todo_write', 'skill', 'http_request', 'web_fetch', 'web_search', 'system', 'workspace'
+                ];
+
+                const noteTools: Tool[] = [];
+                const repoSyncFileTools: Tool[] = [];
+                const agentExternalTools: Tool[] = [];
+                const remainingTools: Tool[] = [];
+
+                for (const tool of mappedTools) {
+                    const toolName = tool.function.name;
+                    if (noteToolOrder.includes(toolName)) {
+                        noteTools.push(tool);
+                    } else if (repoSyncFileToolOrder.includes(toolName)) {
+                        repoSyncFileTools.push(tool);
+                    } else if (agentExternalToolOrder.includes(toolName)) {
+                        agentExternalTools.push(tool);
+                    } else {
+                        remainingTools.push(tool);
+                    }
+                }
+
+                // 排序辅助函数
+                const sortByOrder = (toolsList: Tool[], order: string[]) => {
+                    return toolsList.sort((a, b) => {
+                        const idxA = order.indexOf(a.function.name);
+                        const idxB = order.indexOf(b.function.name);
+                        return idxA - idxB;
+                    });
+                };
+
+                sortByOrder(noteTools, noteToolOrder);
+                sortByOrder(repoSyncFileTools, repoSyncFileToolOrder);
+                sortByOrder(agentExternalTools, agentExternalToolOrder);
+
+                if (noteTools.length > 0) result['siyuan_note'] = noteTools;
+                if (repoSyncFileTools.length > 0) result['siyuan_repo'] = repoSyncFileTools;
+                if (agentExternalTools.length > 0) result['siyuan_agent'] = agentExternalTools;
+                if (remainingTools.length > 0) result['siyuan'] = remainingTools;
+            } else {
+                result[category] = mappedTools;
+            }
         }
         return result;
     })();
@@ -147,9 +198,16 @@
         return name === key ? toolName : name;
     }
 
+    // 获取工具的完整描述
+    function getToolFullDescription(tool: Tool): string {
+        const key = `tools.${tool.function.name}.description`;
+        const localDesc = i18n(key);
+        return localDesc !== key ? localDesc : tool.function.description;
+    }
+
     // 获取工具的简短描述
     function getToolShortDescription(tool: Tool): string {
-        const description = tool.function.description;
+        const description = getToolFullDescription(tool);
         const firstLine = description.split('\n')[0];
         return firstLine || description.substring(0, 50) + '...';
     }
@@ -206,6 +264,64 @@
         // 通知父组件更新
         dispatch('update', localSelectedTools);
     }
+
+    // 展开/折叠类别
+    let collapsedCategories: Set<string> = new Set();
+    function toggleCategoryCollapse(category: string) {
+        if (collapsedCategories.has(category)) {
+            collapsedCategories.delete(category);
+        } else {
+            collapsedCategories.add(category);
+        }
+        collapsedCategories = collapsedCategories;
+    }
+
+    // 思源 MCP 工具父分类逻辑
+    function isSiyuanCategory(category: string): boolean {
+        return ['siyuan', 'siyuan_note', 'siyuan_repo', 'siyuan_agent'].includes(category);
+    }
+
+    $: hasSiyuanTools = Object.entries(categorizedTools).some(([cat, tList]) => tList.length > 0 && isSiyuanCategory(cat));
+
+    $: allSiyuanMcpTools = Object.entries(categorizedTools)
+        .filter(([cat, _]) => isSiyuanCategory(cat))
+        .map(([_, tList]) => tList)
+        .flat();
+
+    function isMcpParentFullySelected(): boolean {
+        if (allSiyuanMcpTools.length === 0) return false;
+        return allSiyuanMcpTools.every(tool => selectedSet.has(tool.function.name));
+    }
+
+    function isMcpParentPartiallySelected(): boolean {
+        if (allSiyuanMcpTools.length === 0) return false;
+        const selectedCount = allSiyuanMcpTools.filter(tool => selectedSet.has(tool.function.name)).length;
+        return selectedCount > 0 && selectedCount < allSiyuanMcpTools.length;
+    }
+
+    function toggleMcpParent() {
+        const allSelected = isMcpParentFullySelected();
+        const mcpToolNames = new Set(allSiyuanMcpTools.map(t => t.function.name));
+
+        if (allSelected) {
+            localSelectedTools = localSelectedTools.filter(t => !mcpToolNames.has(t.name));
+        } else {
+            const nonMcpTools = localSelectedTools.filter(t => !mcpToolNames.has(t.name));
+            const newMcpSelections = allSiyuanMcpTools.map(tool => ({
+                name: tool.function.name,
+                autoApprove: toolAutoApproveMap.get(tool.function.name) ?? false,
+            }));
+            localSelectedTools = [...nonMcpTools, ...newMcpSelections];
+        }
+
+        selectedTools = [...localSelectedTools];
+        dispatch('update', localSelectedTools);
+    }
+
+    let mcpParentCollapsed = false;
+    function toggleMcpParentCollapse() {
+        mcpParentCollapsed = !mcpParentCollapsed;
+    }
 </script>
 
 <div class="tool-selector__overlay" on:click={close}></div>
@@ -230,10 +346,173 @@
             <span>{i18n('tools.selector.info')}</span>
         </div>
 
-        {#each Object.entries(categorizedTools) as [category, tools] (category)}
+        {#if hasSiyuanTools}
+            <div class="mcp-parent-category">
+                <div class="mcp-parent-category__header">
+                    <div
+                        class="mcp-parent-category__title-container"
+                        on:click={toggleMcpParentCollapse}
+                        style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;"
+                    >
+                        <svg
+                            class="svg mcp-parent-category__arrow"
+                            class:mcp-parent-category__arrow--rotated={!mcpParentCollapsed}
+                            style="width: 12px; height: 12px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
+                        >
+                            <use xlink:href="#iconRight"></use>
+                        </svg>
+                        <h3 class="mcp-parent-category__title" style="margin: 0; font-size: 15px; font-weight: 600; color: var(--b3-theme-primary);">{i18n('tools.category.siyuan_mcp_parent')}</h3>
+                    </div>
+                    <button
+                        class="b3-button b3-button--text mcp-parent-category__select-btn"
+                        class:mcp-parent-category__select-btn--partial={isMcpParentPartiallySelected()}
+                        on:click={toggleMcpParent}
+                        style="font-size: 12px; padding: 2px 8px; min-width: unset; height: auto; line-height: 1.5;"
+                    >
+                        {isMcpParentFullySelected()
+                            ? i18n('tools.selector.deselectAll')
+                            : i18n('tools.selector.selectAll')}
+                    </button>
+                </div>
+
+                {#if !mcpParentCollapsed}
+                    <div class="mcp-parent-category__content">
+                        {#each Object.entries(categorizedTools).filter(([cat, tList]) => tList.length > 0 && isSiyuanCategory(cat)) as [category, tools] (category)}
+                            <div class="tool-category">
+                                <div class="tool-category__header">
+                                    <div
+                                        class="tool-category__title-container"
+                                        on:click={() => toggleCategoryCollapse(category)}
+                                        style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;"
+                                    >
+                                        <svg
+                                            class="svg tool-category__arrow"
+                                            class:tool-category__arrow--rotated={!collapsedCategories.has(category)}
+                                            style="width: 10px; height: 10px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
+                                        >
+                                            <use xlink:href="#iconRight"></use>
+                                        </svg>
+                                        <h4 class="tool-category__title" style="margin: 0;">{i18n(`tools.category.${category}`)}</h4>
+                                    </div>
+                                    <button
+                                        class="b3-button b3-button--text tool-category__select-btn"
+                                        class:tool-category__select-btn--partial={isCategoryPartiallySelected(
+                                            tools
+                                        )}
+                                        on:click={() => toggleCategory(tools)}
+                                    >
+                                        {isCategoryFullySelected(tools)
+                                            ? i18n('tools.selector.deselectAll')
+                                            : i18n('tools.selector.selectAll')}
+                                    </button>
+                                </div>
+                                {#if !collapsedCategories.has(category)}
+                                    <div class="tool-list">
+                                        {#each tools as tool (tool.function.name)}
+                                            {@const toolName = tool.function.name}
+                                            {@const isExpanded = expandedTools.has(toolName)}
+
+                                            <div
+                                                class="tool-item"
+                                                class:tool-item--selected={selectedSet.has(toolName)}
+                                            >
+                                                <div class="tool-item__header">
+                                                    <label class="tool-item__checkbox">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedSet.has(toolName)}
+                                                            on:change={() => toggleTool(toolName)}
+                                                        />
+                                                        <span class="tool-item__name">
+                                                            {getToolDisplayName(toolName)}
+                                                        </span>
+                                                    </label>
+                                                    <div class="tool-item__header-right">
+                                                        <label
+                                                            class="tool-item__auto-approve"
+                                                            title={i18n('tools.autoApprove.tooltip')}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                class="b3-switch"
+                                                                checked={toolAutoApproveMap.get(toolName) || false}
+                                                                on:change={() => toggleToolAutoApprove(toolName)}
+                                                            />
+                                                            <span class="tool-item__auto-approve-text">
+                                                                {i18n('tools.autoApprove.label')}
+                                                            </span>
+                                                        </label>
+                                                        <button
+                                                            class="tool-item__expand b3-button b3-button--text"
+                                                            on:click={() => toggleExpand(toolName)}
+                                                            title={isExpanded
+                                                                ? i18n('common.collapse')
+                                                                : i18n('common.expand')}
+                                                        >
+                                                            <svg
+                                                                class="svg"
+                                                                class:tool-item__expand--rotated={isExpanded}
+                                                            >
+                                                                <use xlink:href="#iconRight"></use>
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="tool-item__description">
+                                                    {getToolShortDescription(tool)}
+                                                </div>
+
+                                                {#if isExpanded}
+                                                    <div class="tool-item__details">
+                                                        <pre class="tool-item__full-description">{getToolFullDescription(tool)}</pre>
+
+                                                        <div class="tool-item__parameters">
+                                                            <strong>{i18n('tools.selector.parameters')}:</strong>
+                                                            <ul>
+                                                                {#each Object.entries(tool.function.parameters.properties) as [paramName, param]}
+                                                                    <li>
+                                                                        <code>{paramName}</code>
+                                                                        {#if tool.function.parameters.required.includes(paramName)}
+                                                                            <span class="tool-item__required">
+                                                                                ({i18n('common.required')})
+                                                                            </span>
+                                                                        {/if}
+                                                                        : {param.description}
+                                                                    </li>
+                                                                {/each}
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {/if}
+
+        {#each Object.entries(categorizedTools).filter(([cat, tList]) => tList.length > 0 && !isSiyuanCategory(cat)) as [category, tools] (category)}
             <div class="tool-category">
                 <div class="tool-category__header">
-                    <h4 class="tool-category__title">{i18n(`tools.category.${category}`)}</h4>
+                    <div
+                        class="tool-category__title-container"
+                        on:click={() => toggleCategoryCollapse(category)}
+                        style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;"
+                    >
+                        <svg
+                            class="svg tool-category__arrow"
+                            class:tool-category__arrow--rotated={!collapsedCategories.has(category)}
+                            style="width: 10px; height: 10px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
+                        >
+                            <use xlink:href="#iconRight"></use>
+                        </svg>
+                        <h4 class="tool-category__title" style="margin: 0;">{i18n(`tools.category.${category}`)}</h4>
+                    </div>
                     <button
                         class="b3-button b3-button--text tool-category__select-btn"
                         class:tool-category__select-btn--partial={isCategoryPartiallySelected(
@@ -246,88 +525,89 @@
                             : i18n('tools.selector.selectAll')}
                     </button>
                 </div>
-                <div class="tool-list">
-                    {#each tools as tool (tool.function.name)}
-                        {@const toolName = tool.function.name}
-                        {@const isExpanded = expandedTools.has(toolName)}
+                {#if !collapsedCategories.has(category)}
+                    <div class="tool-list">
+                        {#each tools as tool (tool.function.name)}
+                            {@const toolName = tool.function.name}
+                            {@const isExpanded = expandedTools.has(toolName)}
 
-                        <div
-                            class="tool-item"
-                            class:tool-item--selected={selectedSet.has(toolName)}
-                        >
-                            <div class="tool-item__header">
-                                <label class="tool-item__checkbox">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedSet.has(toolName)}
-                                        on:change={() => toggleTool(toolName)}
-                                    />
-                                    <span class="tool-item__name">
-                                        {getToolDisplayName(toolName)}
-                                    </span>
-                                </label>
-                                <div class="tool-item__header-right">
-                                    <label
-                                        class="tool-item__auto-approve"
-                                        title={i18n('tools.autoApprove.tooltip')}
-                                    >
+                            <div
+                                class="tool-item"
+                                class:tool-item--selected={selectedSet.has(toolName)}
+                            >
+                                <div class="tool-item__header">
+                                    <label class="tool-item__checkbox">
                                         <input
                                             type="checkbox"
-                                            class="b3-switch"
-                                            checked={toolAutoApproveMap.get(toolName) || false}
-                                            on:change={() => toggleToolAutoApprove(toolName)}
+                                            checked={selectedSet.has(toolName)}
+                                            on:change={() => toggleTool(toolName)}
                                         />
-                                        <span class="tool-item__auto-approve-text">
-                                            {i18n('tools.autoApprove.label')}
+                                        <span class="tool-item__name">
+                                            {getToolDisplayName(toolName)}
                                         </span>
                                     </label>
-                                    <button
-                                        class="tool-item__expand b3-button b3-button--text"
-                                        on:click={() => toggleExpand(toolName)}
-                                        title={isExpanded
-                                            ? i18n('common.collapse')
-                                            : i18n('common.expand')}
-                                    >
-                                        <svg
-                                            class="svg"
-                                            class:tool-item__expand--rotated={isExpanded}
+                                    <div class="tool-item__header-right">
+                                        <label
+                                            class="tool-item__auto-approve"
+                                            title={i18n('tools.autoApprove.tooltip')}
                                         >
-                                            <use xlink:href="#iconRight"></use>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="tool-item__description">
-                                {getToolShortDescription(tool)}
-                            </div>
-
-                            {#if isExpanded}
-                                <div class="tool-item__details">
-                                    <pre class="tool-item__full-description">{tool.function
-                                            .description}</pre>
-
-                                    <div class="tool-item__parameters">
-                                        <strong>{i18n('tools.selector.parameters')}:</strong>
-                                        <ul>
-                                            {#each Object.entries(tool.function.parameters.properties) as [paramName, param]}
-                                                <li>
-                                                    <code>{paramName}</code>
-                                                    {#if tool.function.parameters.required.includes(paramName)}
-                                                        <span class="tool-item__required">
-                                                            ({i18n('common.required')})
-                                                        </span>
-                                                    {/if}
-                                                    : {param.description}
-                                                </li>
-                                            {/each}
-                                        </ul>
+                                            <input
+                                                type="checkbox"
+                                                class="b3-switch"
+                                                checked={toolAutoApproveMap.get(toolName) || false}
+                                                on:change={() => toggleToolAutoApprove(toolName)}
+                                            />
+                                            <span class="tool-item__auto-approve-text">
+                                                {i18n('tools.autoApprove.label')}
+                                            </span>
+                                        </label>
+                                        <button
+                                            class="tool-item__expand b3-button b3-button--text"
+                                            on:click={() => toggleExpand(toolName)}
+                                            title={isExpanded
+                                                ? i18n('common.collapse')
+                                                : i18n('common.expand')}
+                                        >
+                                            <svg
+                                                class="svg"
+                                                class:tool-item__expand--rotated={isExpanded}
+                                            >
+                                                <use xlink:href="#iconRight"></use>
+                                            </svg>
+                                        </button>
                                     </div>
                                 </div>
-                            {/if}
-                        </div>
-                    {/each}
-                </div>
+
+                                <div class="tool-item__description">
+                                    {getToolShortDescription(tool)}
+                                </div>
+
+                                {#if isExpanded}
+                                    <div class="tool-item__details">
+                                        <pre class="tool-item__full-description">{getToolFullDescription(tool)}</pre>
+
+                                        <div class="tool-item__parameters">
+                                            <strong>{i18n('tools.selector.parameters')}:</strong>
+                                            <ul>
+                                                {#each Object.entries(tool.function.parameters.properties) as [paramName, param]}
+                                                    <li>
+                                                        <code>{paramName}</code>
+                                                        {#if tool.function.parameters.required.includes(paramName)}
+                                                            <span class="tool-item__required">
+                                                                ({i18n('common.required')})
+                                                            </span>
+                                                        {/if}
+                                                        : {param.description}
+                                                    </li>
+                                                {/each}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         {/each}
     </div>
@@ -448,6 +728,37 @@
         }
     }
 
+    .mcp-parent-category {
+        margin-bottom: 24px;
+
+        &__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--b3-theme-surface-lighter);
+            padding-bottom: 10px;
+        }
+
+        &__arrow {
+            transition: transform 0.2s;
+            &--rotated {
+                transform: rotate(90deg);
+            }
+        }
+
+        &__content {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-left: 8px;
+
+            .tool-category {
+                margin-bottom: 0;
+            }
+        }
+    }
+
     .tool-category {
         margin-bottom: 24px;
 
@@ -460,6 +771,13 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 12px;
+        }
+
+        &__arrow {
+            transition: transform 0.2s;
+            &--rotated {
+                transform: rotate(90deg);
+            }
         }
 
         &__title {

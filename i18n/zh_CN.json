@@ -599,8 +599,13 @@
         "category": {
             "web": "网页工具",
             "siyuan": "思源笔记常规工具",
+            "siyuan_mcp_parent": "思源MCP内置工具",
+            "siyuan_note": "笔记",
+            "siyuan_repo": "仓库 / 同步 / 文件",
+            "siyuan_agent": "Agent / 外部接入",
             "database": "数据库",
-            "other": "其他"
+            "other": "其他",
+            "plugin": "思源插件工具"
         },
         "selector": {
             "title": "工具选择",
@@ -619,7 +624,8 @@
             "name": "获取网页内容"
         },
         "web_fetch": {
-            "name": "获取网页内容"
+            "name": "抓取网页",
+            "description": "获取网页内容并转换为 Markdown。操作：fetch(url, use_webview=false)"
         },
         "siyuan_sql_query": {
             "name": "SQL查询"
@@ -686,7 +692,127 @@
         "result": "工具结果",
         "waitingApproval": "等待批准",
         "approve": "批准",
-        "reject": "拒绝"
+        "reject": "拒绝",
+        "inbox": {
+            "name": "收集箱管理",
+            "description": "管理收集箱内容（剪藏的网页、消息及音视频/文件附件，需要订阅）。支持操作：list(列出), get(读取), convert(转换为本地文档), remove_after(处理后删除)"
+        },
+        "sync": {
+            "name": "数据同步",
+            "description": "数据同步操作。支持操作：perform(完整上传+下载同步), upload(上传), download(下载), status(获取同步状态)"
+        },
+        "system": {
+            "name": "系统信息",
+            "description": "获取系统及环境信息。支持操作：version(版本), current_time(当前时间), workspace(工作空间路径)"
+        },
+        "template": {
+            "name": "模板管理",
+            "description": "模板管理与应用。支持操作：search(搜索), get(获取内容), remove(删除), render(渲染模板), save_as(另存为模板), create(创建模板)"
+        },
+        "export": {
+            "name": "导出操作",
+            "description": "导出为 Markdown, HTML, 预览, Word 格式 (.docx), 导出 .sy.zip 备份或完整工作空间备份"
+        },
+        "ref": {
+            "name": "引用与链接",
+            "description": "引用和双向链接操作。支持操作：backlinks(获取反链), mentions(获取提及), refresh(刷新链接关系)"
+        },
+        "repo": {
+            "name": "仓库管理",
+            "description": "云端端点仓库管理。操作：list(列出), get(获取描述), remove(删除), push(推送数据)"
+        },
+        "skill": {
+            "name": "技能库",
+            "description": "知识/技能库管理。操作：list(列出), get(读取技能内容), remove(删除), save(保存/更新技能)"
+        },
+        "workspace": {
+            "name": "工作空间",
+            "description": "工作空间管理。操作：list(列出工作空间), get_current(获取当前工作空间信息)"
+        },
+        "document": {
+            "name": "文档操作",
+            "description": "文档生命周期操作。操作：create(创建), remove(删除), rename(重命名), move(移动), get_tree(获取文档树结构), list(列出文档)"
+        },
+        "history": {
+            "name": "历史记录",
+            "description": "文档历史版本管理。操作：list(列出版本历史), revert(恢复历史版本), compare(对比版本差异)"
+        },
+        "question": {
+            "name": "提问助手",
+            "description": "向用户发起选择或输入确认。操作：ask(questions, submit_button_text)"
+        },
+        "block": {
+            "name": "块级操作",
+            "description": "思源块的操作。操作：get(获取块内容/属性), insert(插入块), append(追加内容), update(修改内容), remove(删除块), get_kramdown(获取 Kramdown 原文)"
+        },
+        "attr": {
+            "name": "属性管理",
+            "description": "思源块的自定义属性操作。操作：get(获取属性), set(设置属性), batch_get(批量获取属性)"
+        },
+        "import": {
+            "name": "导入操作",
+            "description": "导入外部数据。操作：md(导入 Markdown), sy(导入 .sy 压缩包), data(导入完整数据备份)"
+        },
+        "outline": {
+            "name": "文档标题大纲",
+            "description": "获取文档的标题大纲树。操作：get(获取文档ID对应的大纲)"
+        },
+        "unzip": {
+            "name": "解压操作",
+            "description": "在工作空间内解压 zip 归档包。操作：extract(zip_path, dest_dir)"
+        },
+        "bookmark": {
+            "name": "书签管理",
+            "description": "书签和标记管理。操作：list(列出书签), labels(获取标签列表), remove(删除书签), rename(重命名书签)"
+        },
+        "file": {
+            "name": "文件系统",
+            "description": "工作空间内底层文件操作（用于日志、调试等，勿直接修改笔记本文件数据）。操作：list(列出目录), read(读取文件内容), write(写入文件), delete(删除), rename(重命名), copy(复制), grep(搜索文本), find(查找文件), stat(文件属性)"
+        },
+        "http_request": {
+            "name": "HTTP网络请求",
+            "description": "发送自定义 HTTP 请求。操作：request(url, method='GET', headers, body)"
+        },
+        "notebook": {
+            "name": "笔记本管理",
+            "description": "笔记本的管理和配置。操作：list(列出笔记本), create(创建笔记本), get_conf(获取配置), set_conf(修改配置), remove(删除笔记本), status(获取笔记本同步状态)"
+        },
+        "asset": {
+            "name": "资源文件管理",
+            "description": "思源笔记资源文件操作。操作：upload(上传资源), get(获取资源文件信息), remove(删除资源)"
+        },
+        "dailynote": {
+            "name": "日记操作",
+            "description": "日记（Daily Note）管理。操作：get(获取今日或指定日期的日记文档ID), create(创建指定日期日记)"
+        },
+        "database": {
+            "name": "属性视图/数据库",
+            "description": "思源属性视图/数据库（Attribute View）管理。操作：list_keys(列出属性视图字段), render(渲染属性视图), append_detached(追加分离块值), add_blocks(添加关联块), set_block_attr(avId, blockId, key, value), add_key(添加字段), remove_key(删除字段), remove_blocks(avId, blockIds)"
+        },
+        "sql": {
+            "name": "SQL查询",
+            "description": "使用 SQL 语句直接查询思源数据库。操作：query(sql语句), refresh(刷新 SQL 索引)"
+        },
+        "tag": {
+            "name": "标签管理",
+            "description": "标签管理。操作：list(列出标签), remove(删除标签), rename(重命名标签)"
+        },
+        "web_search": {
+            "name": "网页搜索",
+            "description": "使用搜索引擎进行网页搜索。操作：search(query)"
+        },
+        "frontend": {
+            "name": "前端交互",
+            "description": "向思源笔记前端发送弹窗通知。操作：notify(message, type='info')"
+        },
+        "search": {
+            "name": "内容搜索",
+            "description": "思源笔记全文搜索和语义模糊搜索。操作：query(全文搜索), embed(语义模糊搜索)"
+        },
+        "todo_write": {
+            "name": "任务写入",
+            "description": "写入待办任务。操作：write(task)"
+        }
     },
     "multiModel": {
         "title": "多模型对话",

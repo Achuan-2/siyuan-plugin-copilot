@@ -32,6 +32,7 @@ import { getModelCapabilities } from "./utils/modelCapabilities";
 import { matchHotKey, getCustomHotKey } from "./utils/hotkey";
 import { ChangelogUtils } from "./utils/changelogNotify";
 export const SETTINGS_FILE = "settings.json";
+import { initializeMcpTools } from "./tools";
 const WEBVIEW_HISTORY_FILE = "webview-history.json";
 const WEBAPP_ICON_DIR = "/data/storage/petal/siyuan-plugin-copilot/webappIcon";
 const MAX_HISTORY_COUNT = 200;
@@ -1654,6 +1655,13 @@ export default class PluginSample extends Plugin {
 
         // 加载设置
         await this.loadSettings();
+
+        // 初始化思源内部 MCP 工具
+        try {
+            await initializeMcpTools();
+        } catch (mcpError) {
+            console.error("Failed to initialize Siyuan MCP tools:", mcpError);
+        }
 
         this.addIcons(`
     <symbol id="iconCopilot" viewBox="0 0 1024 1024">
