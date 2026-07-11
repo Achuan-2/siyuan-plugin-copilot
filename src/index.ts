@@ -483,6 +483,18 @@ export default class PluginSample extends Plugin {
     }
 
     /**
+     * 收起指定小程序的 dock（如果它被思源从持久化布局中恢复为展开状态）
+     * 用于避免启动时自动打开小程序侧栏
+     */
+    collapseWebAppDockIfActive(appId: string) {
+        const type2 = this.name + `webapp-dock-${appId}`;
+        const dockBtn = document.querySelector(`span.dock__item[data-type="${type2}"]`) as HTMLElement;
+        if (dockBtn?.classList.contains("dock__item--active")) {
+            dockBtn.click();
+        }
+    }
+
+    /**
      * 根据当前 webApps 列表同步 dock 注册状态：
      * - 已勾选"注册到侧栏"的注册 dock
      * - 未勾选或已被删除的移除 dock
@@ -1768,6 +1780,8 @@ export default class PluginSample extends Plugin {
 
                     if (app.showInSidebar) {
                         this.registerWebAppDock(app);
+                        // 避免思源从持久化布局恢复时自动展开小程序侧栏
+                        this.collapseWebAppDockIfActive(app.id);
                     }
                 }
             }
