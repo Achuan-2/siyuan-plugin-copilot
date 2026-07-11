@@ -206,6 +206,39 @@ async function readBuiltinToolSkillDescription(toolName: string): Promise<string
 }
 
 /**
+ * 插件工具名称解析
+ * 格式: plugin__{plugin_name}__{sub_tool}
+ * 插件目录名中的下划线替换为连字符（与思源插件目录命名一致）
+ */
+const PLUGIN_TOOL_NAME_RE = /^plugin__([a-zA-Z0-9_]+)__([a-zA-Z0-9_]+)$/;
+
+function parsePluginToolName(toolName: string): { pluginDirName: string; subTool: string } | null {
+    const match = toolName.match(PLUGIN_TOOL_NAME_RE);
+    if (!match) {
+        return null;
+    }
+    return {
+        pluginDirName: match[1].replace(/_/g, '-'),
+        subTool: match[2],
+    };
+}
+
+async function readPluginToolSkillDescription(toolName: string): Promise<string | null> {
+    const parsed = parsePluginToolName(toolName);
+    if (!parsed) {
+        return null;
+    }
+
+    const skillPath = `/data/plugins/${parsed.pluginDirName}/skills/${parsed.subTool}/SKILL.md`;
+    const blob = await getFileBlob(skillPath);
+    if (!blob) {
+        return null;
+    }
+
+    return (await blob.text()).trim();
+}
+
+/**
  * 获取工具的简短描述（用于工具列表展示）
  * 从完整描述中提取第一行非空内容
  */
@@ -325,6 +358,7 @@ export async function getSiyuanSkills(
 
     const description =
         await readBuiltinToolSkillDescription(normalizedToolName) ||
+        await readPluginToolSkillDescription(normalizedToolName) ||
         TOOL_FULL_DESCRIPTIONS[normalizedToolName];
     if (!description) {
         const availableTools = allowedToolNameSet
@@ -354,7 +388,10 @@ function buildGetSiyuanSkillsEnum(allowedToolNames?: string[]): string[] {
     }
 
     const allowedSet = new Set(allowedToolNames);
-    return GET_SIYUAN_SKILLS_ALL_TOOL_NAMES.filter(name => allowedSet.has(name));
+    const builtInNames = GET_SIYUAN_SKILLS_ALL_TOOL_NAMES.filter(name => allowedSet.has(name));
+    // 允许查询当前会话已启用的插件工具详细说明
+    const pluginToolNames = allowedToolNames.filter(name => PLUGIN_TOOL_NAME_RE.test(name));
+    return [...builtInNames, ...pluginToolNames];
 }
 
 /**
@@ -2385,7 +2422,7 @@ export async function initializeMcpTools() {
         );
 
         // Map MCP tools to Tool interface
-        const mappedMcpTools = filteredMcpToolsList.map((mcpTool) => {
+        const mappedMcpTools: Tool[] = filteredMcpToolsList.map((mcpTool): Tool => {
             const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
 
             // Translate the description dynamically if there is a translation
@@ -2393,7 +2430,7 @@ export async function initializeMcpTools() {
             const translatedDesc = i18n(descKey);
             const description = (translatedDesc !== descKey) ? translatedDesc : (mcpTool.description || '');
 
-            const tool = {
+            const tool: Tool = {
                 type: 'function',
                 function: {
                     name: mcpTool.name,
@@ -2410,9 +2447,20 @@ export async function initializeMcpTools() {
             return tool;
         });
 
+        // 重建 get_siyuan_skills 工具，使其可选值包含所有已加载的工具
+        const allAvailableToolNames = [
+            ...baseTools.map(t => t.function.name).filter(n => n !== 'get_siyuan_skills'),
+            ...mappedMcpTools.map(t => t.function.name)
+        ];
+        const getSiyuanSkillsTool = createGetSiyuanSkillsTool(allAvailableToolNames);
+
         // Clear and update AVAILABLE_TOOLS
         AVAILABLE_TOOLS.length = 0;
-        AVAILABLE_TOOLS.push(...baseTools, ...mappedMcpTools);
+        AVAILABLE_TOOLS.push(
+            getSiyuanSkillsTool,
+            ...baseTools.filter(t => t.function.name !== 'get_siyuan_skills'),
+            ...mappedMcpTools
+        );
 
         // Update TOOL_CATEGORIES and QA_TOOL_CATEGORIES
         // Group plugin tools, task note management plugin tools and siyuan tools

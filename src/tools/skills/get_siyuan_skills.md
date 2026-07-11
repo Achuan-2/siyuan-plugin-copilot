@@ -10,4 +10,4 @@
 4. 根据文档正确调用目标工具
 
 ## 参数
-- toolName: 要查询的工具名称，如 "siyuan_sql_query" 等
+- toolName: 要查询的工具名称，如 "siyuan_sql_query"、"plugin__siyuan_plugin_task_note_management__task" 等
