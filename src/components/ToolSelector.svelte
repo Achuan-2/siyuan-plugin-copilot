@@ -146,13 +146,27 @@
         }
     }
 
-    // 用户可选择的工具列表（基于当前分类配置，排除系统工具 get_siyuan_skills）
-    $: userSelectableTools = Object.values(categorizedTools)
-        .flat()
-        .filter(tool => tool.function.name !== 'get_siyuan_skills');
+    // 用户可选择的工具列表（基于当前分类配置，排除系统工具 get_siyuan_skills，并去重）
+    $: userSelectableTools = (() => {
+        const seen = new Set<string>();
+        const tools: Tool[] = [];
+        for (const tool of Object.values(categorizedTools).flat()) {
+            const name = tool.function.name;
+            if (name !== 'get_siyuan_skills' && !seen.has(name)) {
+                seen.add(name);
+                tools.push(tool);
+            }
+        }
+        return tools;
+    })();
 
-    // 用户选中的工具数量（排除系统工具）
-    $: userSelectedCount = localSelectedTools.filter(t => t.name !== 'get_siyuan_skills').length;
+    // 当前可选工具的 name 集合，用于过滤可能已失效的已选工具
+    $: selectableToolNames = new Set(userSelectableTools.map(tool => tool.function.name));
+
+    // 用户选中的工具数量：只统计当前仍可选的工具，并按 name 去重
+    $: userSelectedCount = new Set(
+        localSelectedTools.filter(t => selectableToolNames.has(t.name)).map(t => t.name)
+    ).size;
 
     // 全选/取消全选
     function toggleAll() {

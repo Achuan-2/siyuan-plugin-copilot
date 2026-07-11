@@ -319,6 +319,8 @@
             "enableModelSelection": "启用模型选择",
             "enableMultiModel": "多模型模式",
             "modelSelectionHint": "启用后，应用预设时会自动切换到选择的模型",
+            "enableToolSelection": "启用工具选择",
+            "toolSelectionHint": "启用后，应用预设时会自动切换到选择的工具",
             "chatMode": "聊天模式",
             "chatModeHint": "选择聊天模式，只有问答模式支持多模型",
             "onlyAskMode": "仅问答模式可用",
@@ -833,16 +835,16 @@
             "description": "写入待办任务。操作：write(task)"
         },
         "plugin__siyuan_plugin_task_note_management__task": {
-            "name": "任务管理"
+            "name": "【任务笔记管理插件】任务管理"
         },
         "plugin__siyuan_plugin_task_note_management__project": {
-            "name": "项目管理"
+            "name": "【任务笔记管理插件】项目管理"
         },
         "plugin__siyuan_plugin_task_note_management__habit": {
-            "name": "习惯管理"
+            "name": "【任务笔记管理插件】习惯管理"
         },
         "plugin__siyuan_plugin_task_note_management__stats": {
-            "name": "数据统计"
+            "name": "【任务笔记管理插件】数据统计"
         }
     },
     "multiModel": {

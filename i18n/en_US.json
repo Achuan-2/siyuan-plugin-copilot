@@ -318,6 +318,8 @@
             "enableModelSelection": "Enable Model Selection",
             "enableMultiModel": "Multi-Model Mode",
             "modelSelectionHint": "When enabled, applying preset will automatically switch to selected model(s)",
+            "enableToolSelection": "Enable Tool Selection",
+            "toolSelectionHint": "When enabled, applying preset will automatically switch to selected tools",
             "chatMode": "Chat Mode",
             "chatModeHint": "Select chat mode, only Ask mode supports multi-model",
             "onlyAskMode": "Only available in Ask mode",

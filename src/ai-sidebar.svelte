@@ -966,6 +966,9 @@
         }>,
         enableMultiModel: false,
         chatMode: 'ask' as 'ask' | 'agent' | 'draw',
+        toolSelectionEnabled: false,
+        selectedTools: [] as ToolConfig[],
+        toolAutoApproveSettings: {} as Record<string, boolean>,
     };
 
     // 对话模式
@@ -2001,13 +2004,17 @@
     let selectedToolsAsk: ToolConfig[] = []; // 问答模式选中的工具配置列表
     let toolAutoApproveSettings: Record<string, boolean> = {}; // 所有工具的 autoApprove 配置（包括未选中的）
     let toolAutoApproveSettingsAsk: Record<string, boolean> = {}; // 问答模式所有工具的 autoApprove 配置
-    // 用户选择的工具数量（排除系统隐藏工具 get_siyuan_skills）
+    // 用户选择的工具数量：排除系统隐藏工具、排除已失效工具、按名称去重
+    // 注意：AVAILABLE_TOOLS 是模块级可变数组，直接在表达式内读取，避免单独响应式声明导致 stale
     $: userToolCount =
         chatMode === 'draw'
             ? 0
-            : (chatMode === 'ask' ? selectedToolsAsk || [] : selectedTools || []).filter(
-                  t => !HIDDEN_SYSTEM_TOOL_NAMES.has(t.name)
-              ).length;
+            : new Set(
+                  (chatMode === 'ask' ? selectedToolsAsk || [] : selectedTools || [])
+                      .filter(t => !HIDDEN_SYSTEM_TOOL_NAMES.has(t.name))
+                      .filter(t => AVAILABLE_TOOLS.some(tool => tool.function.name === t.name))
+                      .map(t => t.name)
+              ).size;
 
     $: providersForModelSelector =
         chatMode === 'draw' ? filterProvidersByImageGeneration(providers) : providers;
@@ -2031,6 +2038,20 @@
         // 同步到临时设置以便在预设按钮中正确显示
         if (tempModelSettings.chatMode !== chatMode) {
             tempModelSettings.chatMode = chatMode;
+        }
+        // 未启用预设工具选择时，同步当前聊天模式的工具配置到临时设置
+        if (!tempModelSettings.toolSelectionEnabled) {
+            tempModelSettings = {
+                ...tempModelSettings,
+                selectedTools:
+                    chatMode === 'ask'
+                        ? [...(selectedToolsAsk || [])]
+                        : [...(selectedTools || [])],
+                toolAutoApproveSettings:
+                    chatMode === 'ask'
+                        ? { ...(toolAutoApproveSettingsAsk || {}) }
+                        : { ...(toolAutoApproveSettings || {}) },
+            };
         }
         if (settings.lastUsedChatMode !== chatMode) {
             settings.lastUsedChatMode = chatMode;
@@ -2248,8 +2269,17 @@
         // 加载 Agent 模式的工具配置
         await loadToolsConfig();
 
-
-
+        // 同步当前工具配置到临时模型设置，供预设面板读取初始状态
+        tempModelSettings = {
+            ...tempModelSettings,
+            toolSelectionEnabled: false,
+            selectedTools:
+                chatMode === 'ask' ? [...(selectedToolsAsk || [])] : [...(selectedTools || [])],
+            toolAutoApproveSettings:
+                chatMode === 'ask'
+                    ? { ...(toolAutoApproveSettingsAsk || {}) }
+                    : { ...(toolAutoApproveSettings || {}) },
+        };
         // 加载翻译历史和设置
         await loadTranslateHistoryList();
         translateProvider = settings.translateProvider || currentProvider || '';
@@ -3103,6 +3133,9 @@
             }>;
             enableMultiModel?: boolean;
             chatMode?: 'ask' | 'agent' | 'draw';
+            toolSelectionEnabled?: boolean;
+            selectedTools?: ToolConfig[];
+            toolAutoApproveSettings?: Record<string, boolean>;
         }>
     ) {
         const newSettings = event.detail;
@@ -3117,6 +3150,9 @@
             selectedModels: newSettings.selectedModels || [],
             enableMultiModel: newSettings.enableMultiModel ?? false,
             chatMode: newSettings.chatMode ?? 'ask',
+            toolSelectionEnabled: newSettings.toolSelectionEnabled ?? false,
+            selectedTools: newSettings.selectedTools || [],
+            toolAutoApproveSettings: newSettings.toolAutoApproveSettings || {},
         };
 
         // 应用聊天模式
@@ -3167,6 +3203,21 @@
             // 清空已保存的多模型选择，避免状态残留
             settings.selectedMultiModels = [];
             selectedMultiModels = [];
+        }
+
+        // 如果启用了工具选择，根据聊天模式应用到对应的工具配置
+        if (newSettings.toolSelectionEnabled) {
+            const tools = newSettings.selectedTools || [];
+            const autoApprove = newSettings.toolAutoApproveSettings || {};
+            if (chatMode === 'ask') {
+                selectedToolsAsk = [...tools];
+                toolAutoApproveSettingsAsk = { ...autoApprove };
+            } else if (chatMode === 'agent') {
+                selectedTools = [...tools];
+                toolAutoApproveSettings = { ...autoApprove };
+            }
+            // 触发工具配置保存
+            tick().then(() => saveToolsConfig());
         }
     }
 

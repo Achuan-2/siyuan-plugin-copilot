@@ -4,6 +4,8 @@
     import { exportMdContent, pushErrMsg, pushMsg, openBlock } from '@/api';
     import { confirm, Constants, getActiveEditor } from 'siyuan';
     import MultiModelSelector from './MultiModelSelector.svelte';
+    import ToolSelector, { type ToolConfig } from './ToolSelector.svelte';
+    import { TOOL_CATEGORIES, QA_TOOL_CATEGORIES } from '../tools';
     import type { ThinkingEffort } from '../ai-chat';
 
     export let providers: Record<string, any> = {};
@@ -30,6 +32,9 @@
         }>,
         enableMultiModel: false,
         chatMode: 'ask' as PresetChatMode,
+        toolSelectionEnabled: false,
+        selectedTools: [] as ToolConfig[],
+        toolAutoApproveSettings: {} as Record<string, boolean>,
     };
     export let plugin: any;
 
@@ -69,6 +74,10 @@
     }> = [];
     let tempEnableMultiModel = false;
     let tempChatMode: PresetChatMode = 'ask';
+    let tempToolSelectionEnabled = false;
+    let tempSelectedTools: ToolConfig[] = [];
+    let tempToolAutoApproveSettings: Record<string, boolean> = {};
+    let isToolSelectorOpen = false;
     let providersForModelSelector: Record<string, any> = {};
     let tempPromptBlocks: PromptBlock[] = [];
     let tempPromptBlockContentMap: Record<string, string> = {};
@@ -96,6 +105,9 @@
         enableMultiModel: boolean;
         chatMode: PresetChatMode;
         promptBlocks?: PromptBlock[];
+        toolSelectionEnabled?: boolean;
+        selectedTools?: ToolConfig[];
+        toolAutoApproveSettings?: Record<string, boolean>;
         createdAt: number;
     }
 
@@ -411,6 +423,9 @@
         enableMultiModel: false,
         chatMode: 'ask' as PresetChatMode,
         promptBlocks: [] as PromptBlock[],
+        toolSelectionEnabled: false,
+        selectedTools: [] as ToolConfig[],
+        toolAutoApproveSettings: {} as Record<string, boolean>,
     };
 
     function t(key: string, fallback: string): string {
@@ -448,6 +463,29 @@
             tempSelectedModels = [];
         }
         applySettings();
+    }
+
+    // 处理工具选择更新
+    function handleToolsUpdate(event: CustomEvent<ToolConfig[]>) {
+        tempSelectedTools = [...event.detail];
+        applySettings();
+    }
+
+    // 处理工具自动批准设置变更
+    function handleToolAutoApproveChange(
+        event: CustomEvent<{ toolName: string; value: boolean; settings: Record<string, boolean> }>
+    ) {
+        tempToolAutoApproveSettings = { ...event.detail.settings };
+        applySettings();
+    }
+
+    // 根据当前聊天模式选择工具分类
+    $: toolCategoriesForSelector =
+        tempChatMode === 'ask' ? QA_TOOL_CATEGORIES : TOOL_CATEGORIES;
+
+    // 获取预设中用户选中的工具数量（排除系统隐藏工具）
+    function getPresetToolCount(selectedTools?: ToolConfig[]): number {
+        return (selectedTools || []).filter(t => t.name !== 'get_siyuan_skills').length;
     }
 
     // 响应式过滤后的预设列表（支持空格分隔的 AND 搜索）
@@ -595,6 +633,9 @@
             enableMultiModel: tempEnableMultiModel,
             chatMode: tempChatMode,
             promptBlocks: tempPromptBlocks,
+            toolSelectionEnabled: tempToolSelectionEnabled,
+            selectedTools: tempSelectedTools,
+            toolAutoApproveSettings: tempToolAutoApproveSettings,
             createdAt: Date.now(),
         };
 
@@ -644,6 +685,9 @@
                 selectedModels: preset.selectedModels || [],
                 enableMultiModel: preset.enableMultiModel ?? false,
                 chatMode: normalizeChatMode(preset.chatMode),
+                toolSelectionEnabled: preset.toolSelectionEnabled ?? false,
+                selectedTools: preset.selectedTools || [],
+                toolAutoApproveSettings: preset.toolAutoApproveSettings || {},
             });
 
             pushMsg(`已应用预设: ${preset.name}`);
@@ -666,6 +710,9 @@
         tempEnableMultiModel = preset.enableMultiModel ?? false;
         tempChatMode = normalizeChatMode(preset.chatMode);
         tempPromptBlocks = normalizePromptBlocks(preset.promptBlocks);
+        tempToolSelectionEnabled = preset.toolSelectionEnabled ?? false;
+        tempSelectedTools = [...(preset.selectedTools || [])];
+        tempToolAutoApproveSettings = { ...(preset.toolAutoApproveSettings || {}) };
         await refreshTempPromptBlockContents(tempPromptBlocks);
 
         // 保存初始状态
@@ -786,6 +833,9 @@
             selectedModels: tempSelectedModels,
             enableMultiModel: tempEnableMultiModel,
             chatMode: tempChatMode,
+            toolSelectionEnabled: tempToolSelectionEnabled,
+            selectedTools: tempSelectedTools,
+            toolAutoApproveSettings: tempToolAutoApproveSettings,
         });
 
         // 注意：编辑预设时不自动保存，只有点击保存按钮才保存
@@ -835,6 +885,9 @@
             preset.enableMultiModel = tempEnableMultiModel;
             preset.chatMode = tempChatMode;
             preset.promptBlocks = tempPromptBlocks;
+            preset.toolSelectionEnabled = tempToolSelectionEnabled;
+            preset.selectedTools = tempSelectedTools;
+            preset.toolAutoApproveSettings = tempToolAutoApproveSettings;
             await savePresetsToStorage();
             // 触发响应式更新
             presets = [...presets];
@@ -857,6 +910,9 @@
         tempChatMode = normalizeChatMode(appliedSettings.chatMode);
         tempPromptBlocks = [];
         tempPromptBlockContentMap = {};
+        tempToolSelectionEnabled = appliedSettings.toolSelectionEnabled ?? false;
+        tempSelectedTools = [...(appliedSettings.selectedTools || [])];
+        tempToolAutoApproveSettings = { ...(appliedSettings.toolAutoApproveSettings || {}) };
 
         // 检查当前应用的设置是否与某个预设匹配
         const savedPresetId = await loadSelectedPresetId();
@@ -885,12 +941,21 @@
                 areModelsEqual(preset.selectedModels || [], appliedSettings.selectedModels || []) &&
                 (preset.enableMultiModel ?? false) ===
                     (appliedSettings.enableMultiModel ?? false) &&
-                normalizeChatMode(preset.chatMode) === normalizeChatMode(appliedSettings.chatMode)
+                normalizeChatMode(preset.chatMode) === normalizeChatMode(appliedSettings.chatMode) &&
+                (preset.toolSelectionEnabled ?? false) ===
+                    (appliedSettings.toolSelectionEnabled ?? false) &&
+                JSON.stringify(preset.selectedTools || []) ===
+                    JSON.stringify(appliedSettings.selectedTools || []) &&
+                JSON.stringify(preset.toolAutoApproveSettings || {}) ===
+                    JSON.stringify(appliedSettings.toolAutoApproveSettings || {})
             ) {
                 selectedPresetId = savedPresetId;
                 tempSystemPrompt = preset.systemPrompt || '';
                 tempPromptBlocks = promptBlocks;
                 tempPromptBlockContentMap = promptBlockContentMap;
+                tempToolSelectionEnabled = preset.toolSelectionEnabled ?? false;
+                tempSelectedTools = [...(preset.selectedTools || [])];
+                tempToolAutoApproveSettings = { ...(preset.toolAutoApproveSettings || {}) };
             } else {
                 selectedPresetId = '';
             }
@@ -912,6 +977,9 @@
         tempChatMode = 'ask';
         tempPromptBlocks = [];
         tempPromptBlockContentMap = {};
+        tempToolSelectionEnabled = false;
+        tempSelectedTools = [];
+        tempToolAutoApproveSettings = {};
         editingPresetId = '';
         selectedPresetId = '';
         newPresetName = ''; // 重置预设名称为空
@@ -950,6 +1018,9 @@
             enableMultiModel: tempEnableMultiModel,
             chatMode: tempChatMode,
             promptBlocks: [...tempPromptBlocks],
+            toolSelectionEnabled: tempToolSelectionEnabled,
+            selectedTools: [...tempSelectedTools],
+            toolAutoApproveSettings: { ...tempToolAutoApproveSettings },
         };
     }
 
@@ -965,6 +1036,16 @@
         if (tempChatMode !== initialState.chatMode) return true;
         if (!areModelsEqual(tempSelectedModels, initialState.selectedModels)) return true;
         if (!arePromptBlocksEqual(tempPromptBlocks, initialState.promptBlocks)) return true;
+        if (tempToolSelectionEnabled !== initialState.toolSelectionEnabled) return true;
+        if (
+            JSON.stringify(tempSelectedTools) !== JSON.stringify(initialState.selectedTools)
+        )
+            return true;
+        if (
+            JSON.stringify(tempToolAutoApproveSettings) !==
+            JSON.stringify(initialState.toolAutoApproveSettings)
+        )
+            return true;
         return false;
     }
 
@@ -1164,6 +1245,9 @@
                         selectedModels: [...(preset.selectedModels || [])],
                         enableMultiModel: preset.enableMultiModel ?? false,
                         chatMode: preset.chatMode || 'ask',
+                        toolSelectionEnabled: preset.toolSelectionEnabled ?? false,
+                        selectedTools: [...(preset.selectedTools || [])],
+                        toolAutoApproveSettings: { ...(preset.toolAutoApproveSettings || {}) },
                     });
                     selectedPresetId = savedPresetId;
                 } else {
@@ -1305,6 +1389,11 @@
                                                 {/if}
                                                 {#if preset.promptBlocks && preset.promptBlocks.length > 0}
                                                     | Prompt 块: {preset.promptBlocks.length}
+                                                {/if}
+                                                {#if preset.toolSelectionEnabled && preset.chatMode !== 'draw' && getPresetToolCount(preset.selectedTools) > 0}
+                                                    | {i18n('aiSidebar.agent.tools') || '工具'}: {getPresetToolCount(
+                                                        preset.selectedTools
+                                                    )}
                                                 {/if}
                                                 {#if preset.modelSelectionEnabled && preset.selectedModels && preset.selectedModels.length > 0}
                                                     <br />
@@ -1627,6 +1716,55 @@
                             '启用后，应用预设时会自动切换到选择的模型'}
                     </div>
                 </div>
+
+                <!-- 工具选择设置 -->
+                {#if tempChatMode !== 'draw'}
+                <div class="model-settings-item">
+                    <div class="model-settings-checkbox">
+                        <input
+                            type="checkbox"
+                            id="tool-selection-enabled"
+                            bind:checked={tempToolSelectionEnabled}
+                            on:change={applySettings}
+                            class="b3-switch"
+                        />
+                        <label for="tool-selection-enabled">
+                            {i18n('aiSidebar.modelSettings.enableToolSelection') || '启用工具选择'}
+                        </label>
+                    </div>
+
+                    {#if tempToolSelectionEnabled}
+                        <div class="model-settings-tool-selector">
+                            <button
+                                class="b3-button b3-button--text model-settings-tool-selector__trigger"
+                                on:click={() => (isToolSelectorOpen = true)}
+                            >
+                                <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
+                                <span>
+                                    {i18n('aiSidebar.agent.selectTools') || '选择工具'}
+                                    ({getPresetToolCount(tempSelectedTools)})
+                                </span>
+                            </button>
+                        </div>
+                    {/if}
+
+                    <div class="model-settings-hint">
+                        {i18n('aiSidebar.modelSettings.toolSelectionHint') ||
+                            '启用后，应用预设时会自动切换到选择的工具'}
+                    </div>
+                </div>
+
+                {#if isToolSelectorOpen}
+                    <ToolSelector
+                        selectedTools={tempSelectedTools}
+                        toolAutoApproveSettings={tempToolAutoApproveSettings}
+                        categories={toolCategoriesForSelector}
+                        on:update={handleToolsUpdate}
+                        on:autoApproveChange={handleToolAutoApproveChange}
+                        on:close={() => (isToolSelectorOpen = false)}
+                    />
+                {/if}
+                {/if}
             </div>
 
             <div class="model-settings-footer">
@@ -2029,6 +2167,21 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+    }
+
+    .model-settings-tool-selector {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .model-settings-tool-selector__trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
     }
 
     .model-settings-preset-search {
