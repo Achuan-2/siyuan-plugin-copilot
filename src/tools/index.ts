@@ -1614,6 +1614,7 @@ export async function executeToolCall(
                     title: q.question,
                     description: q.header,
                     required: true,
+                    custom: q.custom !== false, // 思源 question 工具默认允许自定义输入
                     options: (q.options || []).map(opt => ({
                         label: opt.label,
                         value: opt.label,

@@ -223,6 +223,9 @@
             ...question,
             id: normalizeQuestionOptionValue(question.id),
             required: normalizeQuestionRequired(question.required),
+            // 插件自有 ask_user_question 工具默认不开启自定义输入，避免破坏已有行为；
+            // 思源内置 question 工具在 tools/index.ts 中已显式设置为 true。
+            custom: question.custom === true,
             options: question.options?.map(option => ({
                 ...option,
                 label: normalizeQuestionOptionValue(option.label),
@@ -252,6 +255,7 @@
                 }
             }
             questionCardAnswers = initialAnswers;
+            questionCardCustomAnswers = {};
             isWaitingForQuestionAnswer = true;
             await scrollToBottom(true);
             return new Promise<QuestionCardAnswers>((resolve) => {
@@ -260,6 +264,7 @@
                     pendingQuestionResolve = null;
                     isWaitingForQuestionAnswer = false;
                     questionCardAnswers = {};
+                    questionCardCustomAnswers = {};
                     resolve(answers);
                 };
             });
@@ -274,18 +279,28 @@
         pendingQuestionResolve = null;
         isWaitingForQuestionAnswer = false;
         questionCardAnswers = {};
+        questionCardCustomAnswers = {};
         answeredQuestionCards = []; // 新消息/错误时清空历史答题记录
+        currentQuestionCardMessageIndex = null;
     }
 
     function isQuestionCardValid(
         questions: QuestionItem[],
-        answers: QuestionCardAnswers
+        answers: QuestionCardAnswers,
+        customAnswers: Record<string, string> = {}
     ): boolean {
         return questions.every(q => {
             if (!normalizeQuestionRequired(q.required)) return true;
             const value = answers[q.id];
+            const customValue = (customAnswers[q.id] || '').trim();
+            const allowCustom = q.custom !== false;
             if (q.type === 'multiple') {
-                return Array.isArray(value) && value.length > 0;
+                const hasOptions = Array.isArray(value) && value.length > 0;
+                return hasOptions || (allowCustom && customValue !== '');
+            }
+            if (q.type === 'single') {
+                const hasOption = typeof value === 'string' && value.trim() !== '';
+                return hasOption || (allowCustom && customValue !== '');
             }
             return typeof value === 'string' && value.trim() !== '';
         });
@@ -293,16 +308,49 @@
 
     function submitQuestionCard() {
         if (!pendingQuestionCard || !pendingQuestionResolve) return;
-        if (!isQuestionCardValid(pendingQuestionCard.questions, questionCardAnswers)) {
+        if (!isQuestionCardValid(pendingQuestionCard.questions, questionCardAnswers, questionCardCustomAnswers)) {
             pushErrMsg('请填写所有必填项');
             return;
         }
-        // 提交前先把当前卡片和答案快照保存到历史，确保 UI 保留
-        answeredQuestionCards = [
-            ...answeredQuestionCards,
-            { card: { ...pendingQuestionCard }, answers: { ...questionCardAnswers } },
-        ];
-        pendingQuestionResolve({ ...questionCardAnswers });
+        // 合并选项答案与自定义输入答案
+        const finalAnswers: QuestionCardAnswers = {};
+        for (const q of pendingQuestionCard.questions) {
+            const customValue = (questionCardCustomAnswers[q.id] || '').trim();
+            const allowCustom = q.custom !== false;
+            if (q.type === 'multiple') {
+                const arr = Array.isArray(questionCardAnswers[q.id])
+                    ? [...(questionCardAnswers[q.id] as string[])]
+                    : [];
+                if (allowCustom && customValue) {
+                    arr.push(customValue);
+                }
+                finalAnswers[q.id] = arr;
+            } else if (q.type === 'single') {
+                if (allowCustom && customValue) {
+                    finalAnswers[q.id] = customValue;
+                } else {
+                    finalAnswers[q.id] = (questionCardAnswers[q.id] as string) || '';
+                }
+            } else {
+                finalAnswers[q.id] = (questionCardAnswers[q.id] as string) || '';
+            }
+        }
+        // 提交前先把当前卡片和答案快照保存
+        const answeredCard = { card: { ...pendingQuestionCard }, answers: { ...finalAnswers } };
+        // 如果已关联到 assistant 消息（Agent 模式），直接持久化到消息里，避免流式区域重复渲染
+        if (currentQuestionCardMessageIndex !== null && messages[currentQuestionCardMessageIndex]) {
+            const msg = messages[currentQuestionCardMessageIndex];
+            msg.questionCards = [...(msg.questionCards || []), answeredCard];
+            messages = [...messages];
+        } else {
+            // 否则仅保留在流式区域（例如多模型重试等边缘场景）
+            answeredQuestionCards = [...answeredQuestionCards, answeredCard];
+        }
+        pendingQuestionResolve({ ...finalAnswers });
+    }
+
+    function updateCustomAnswer(questionId: string, value: string) {
+        questionCardCustomAnswers = { ...questionCardCustomAnswers, [questionId]: value };
     }
 
     function toggleMultipleAnswer(questionId: string, value: string, checked: boolean) {
@@ -2123,7 +2171,9 @@
     let pendingQuestionResolve: ((answers: QuestionCardAnswers) => void) | null = null; // 提交答案后 resolve
     let isWaitingForQuestionAnswer = false; // 是否在等待用户回答问题卡片
     let questionCardAnswers: QuestionCardAnswers = {}; // 当前卡片各问题的临时答案
+    let questionCardCustomAnswers: Record<string, string> = {}; // 当前卡片各问题的自定义输入答案
     let answeredQuestionCards: Array<{ card: QuestionCardData; answers: QuestionCardAnswers }> = []; // 已提交的问题卡片历史
+    let currentQuestionCardMessageIndex: number | null = null; // 当前 question card 所属 assistant 消息索引
 
     // 保存到笔记相关
     let isSaveToNoteDialogOpen = false; // 保存到笔记对话框是否打开
@@ -6871,6 +6921,7 @@
 
                                     messages = [...messages, assistantMessage];
                                     firstToolCallMessageIndex = messages.length - 1;
+                                    currentQuestionCardMessageIndex = firstToolCallMessageIndex;
                                 } else {
                                     // 如果不是第一次，更新现有消息的tool_calls（合并工具调用）
                                     const existingMessage = messages[firstToolCallMessageIndex];
@@ -6896,6 +6947,7 @@
                                     }
 
                                     messages = [...messages];
+                                    currentQuestionCardMessageIndex = firstToolCallMessageIndex;
                                 }
 
                                 // 自动折叠当前思考过程
@@ -7213,6 +7265,7 @@
                                     abortController = null;
                                     hasUnsavedChanges = true;
 
+                                    clearQuestionCardState();
                                     await saveCurrentSession(true);
 
                                     // 通知完成（即使没有工具调用）
@@ -7376,6 +7429,7 @@
                             abortController = null;
                             hasUnsavedChanges = true;
 
+                            clearQuestionCardState();
                             // AI 回复完成后，自动保存当前会话
                             await saveCurrentSession(true);
 
@@ -12326,6 +12380,7 @@
 
                                     messages = [...messages, assistantMessage];
                                     firstToolCallMessageIndex = messages.length - 1;
+                                    currentQuestionCardMessageIndex = firstToolCallMessageIndex;
                                 } else {
                                     // 如果不是第一次，更新现有消息的tool_calls（合并工具调用）
                                     const existingMessage = messages[firstToolCallMessageIndex];
@@ -12368,6 +12423,7 @@
                                     }
 
                                     messages = [...messages];
+                                    currentQuestionCardMessageIndex = firstToolCallMessageIndex;
                                 }
 
                                 // 自动折叠当前思考过程
@@ -12686,6 +12742,7 @@
                                     abortController = null;
                                     hasUnsavedChanges = true;
 
+                                    clearQuestionCardState();
                                     await saveCurrentSession(true);
 
                                     // 通知完成（即使没有工具调用）
@@ -12841,6 +12898,7 @@
                             abortController = null;
                             hasUnsavedChanges = true;
 
+                            clearQuestionCardState();
                             // AI 回复完成后，自动保存当前会话
                             await saveCurrentSession(true);
                         },
@@ -13549,6 +13607,35 @@
                                     {/if}
                                 </div>
                             {/if}
+                        {/if}
+
+                        <!-- 显示已回答的 question card（保留在对话中） -->
+                        {#if message.role === 'assistant' && message.questionCards && message.questionCards.length > 0}
+                            {#each message.questionCards as answered (answered.card.cardId)}
+                                <div
+                                    class="ai-message__content b3-typography"
+                                    style={messageFontSize ? `font-size: ${messageFontSize}px;` : ''}
+                                >
+                                    <div class="agent-chat__question-card agent-chat__question-card--answered">
+                                        {#each answered.card.questions as question (question.id)}
+                                            {@const ans = answered.answers[question.id]}
+                                            <div class="agent-chat__question-item">
+                                                <div class="agent-chat__question-title">{question.title}</div>
+                                                {#if question.description}
+                                                    <div class="agent-chat__question-description">{question.description}</div>
+                                                {/if}
+                                                <div class="agent-chat__question-answered-value">
+                                                    {#if Array.isArray(ans)}
+                                                        {ans.join(', ')}
+                                                    {:else}
+                                                        {ans || ''}
+                                                    {/if}
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/each}
                         {/if}
 
                         <!-- 显示多模型响应（历史消息） - 仅在用户已选择答案后显示 -->
@@ -14920,6 +15007,16 @@
                                                     {/if}
                                                 </label>
                                             {/each}
+                                            {#if question.custom !== false}
+                                                <input
+                                                    class="b3-text-field agent-chat__question-custom"
+                                                    type="text"
+                                                    value={questionCardCustomAnswers[question.id] || ''}
+                                                    placeholder={question.placeholder || '自定义输入...'}
+                                                    on:input={(e) =>
+                                                        updateCustomAnswer(question.id, e.currentTarget.value)}
+                                                />
+                                            {/if}
                                         </div>
                                     {:else if question.type === 'multiple'}
                                         <div class="agent-chat__question-options">
@@ -14951,6 +15048,16 @@
                                                     {/if}
                                                 </label>
                                             {/each}
+                                            {#if question.custom !== false}
+                                                <input
+                                                    class="b3-text-field agent-chat__question-custom"
+                                                    type="text"
+                                                    value={questionCardCustomAnswers[question.id] || ''}
+                                                    placeholder={question.placeholder || '自定义输入...'}
+                                                    on:input={(e) =>
+                                                        updateCustomAnswer(question.id, e.currentTarget.value)}
+                                                />
+                                            {/if}
                                         </div>
                                     {:else}
                                         <input
@@ -14969,7 +15076,8 @@
                                     on:click={submitQuestionCard}
                                     disabled={!isQuestionCardValid(
                                         pendingQuestionCard.questions,
-                                        questionCardAnswers
+                                        questionCardAnswers,
+                                        questionCardCustomAnswers
                                     )}
                                 >
                                     {pendingQuestionCard.submitButtonText || '提交'}
@@ -17902,6 +18010,10 @@
         display: flex;
         justify-content: flex-end;
         margin-top: 12px;
+    }
+
+    .agent-chat__question-custom {
+        margin-top: 4px;
     }
 
     /* 已提交的问题卡片 — 只读展示 */

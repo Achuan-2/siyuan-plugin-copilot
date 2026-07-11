@@ -104,6 +104,7 @@ export interface Message {
     generatedImages?: GeneratedImageData[]; // 生成的图片数据（用于多轮生图）
     drawImageSelectionRequired?: boolean; // 画图模式多图结果是否需要用户选择
     drawSelectedImageIndex?: number; // 画图模式多图结果中用户选中的图片索引
+    questionCards?: Array<{ card: QuestionCardData; answers: QuestionCardAnswers }>; // 已回答的 question card（保留在对话中）
 }
 
 // 生成的图片数据接口（用于Gemini多轮生图）
@@ -136,6 +137,7 @@ export interface QuestionItem {
     options?: QuestionOption[];
     required?: boolean;
     placeholder?: string;
+    custom?: boolean; // 是否允许自定义输入（思源 question 工具默认 true）
 }
 
 export interface QuestionCardData {
