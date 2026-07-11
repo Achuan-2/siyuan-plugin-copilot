@@ -611,7 +611,8 @@
             "siyuan_repo": "Repo / Sync / File",
             "siyuan_agent": "Agent / External",
             "other": "Other",
-            "plugin": "SiYuan Plugin Tools"
+            "plugin": "SiYuan Plugin Tools",
+            "plugin_task_note_management": "Task Note Management"
         },
         "selector": {
             "title": "Tool Selection",
@@ -677,6 +678,14 @@
         },
         "run_python": {
             "name": "Run Python"
+        },
+        "read_skill": {
+            "name": "Read Custom Skill",
+            "description": "Read the full workflow document of a specified custom Skill under data/storage/ai/agent/skills. Supports reading sub-file paths."
+        },
+        "create_skill": {
+            "name": "Create/Update Skill",
+            "description": "Create or update the skill.md content of a custom Skill in Agent mode."
         },
         "calling": "Calling Tool",
         "called": "Tool Called",
@@ -803,6 +812,18 @@
         "todo_write": {
             "name": "Task Write",
             "description": "Write tasks/todos. Actions: write(task)."
+        },
+        "plugin__siyuan_plugin_task_note_management__task": {
+            "name": "Task Management"
+        },
+        "plugin__siyuan_plugin_task_note_management__project": {
+            "name": "Project Management"
+        },
+        "plugin__siyuan_plugin_task_note_management__habit": {
+            "name": "Habit Management"
+        },
+        "plugin__siyuan_plugin_task_note_management__stats": {
+            "name": "Statistics"
         }
     },
     "multiModel": {
@@ -821,6 +842,7 @@
         "moveDown": "Move Down",
         "remove": "Remove",
         "noModels": "No available models",
+        "noSelectedModels": "Click a model on the right to add it",
         "responses": "Model Responses",
         "selectAnswer": "Select This Answer",
         "answerSelected": "Selected",

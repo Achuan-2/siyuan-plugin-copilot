@@ -116,6 +116,9 @@
         return settings.aiSystemPromptAsk || '';
     }
 
+    const HIDDEN_SYSTEM_TOOL_NAMES = new Set([
+        'get_siyuan_skills',
+    ]);
     const SYSTEM_TOOL_NAMES = new Set([
         'get_siyuan_skills',
         'read_skill',
@@ -180,19 +183,22 @@
         );
         const filteredToolDefs = selectedToolDefs.filter(
             tool =>
-                !SYSTEM_TOOL_NAMES.has(tool.function.name) &&
+                !HIDDEN_SYSTEM_TOOL_NAMES.has(tool.function.name) &&
                 (chatMode === 'agent' || !AGENT_ONLY_TOOL_NAMES.has(tool.function.name))
         );
         const extraTools = [];
+        const addedToolNames = new Set(filteredToolDefs.map(getToolDefinitionName));
 
         // 当存在自定义 Skill 时，自动附加 read_skill 工具
-        if (hasSkills) {
+        if (hasSkills && !addedToolNames.has('read_skill')) {
             extraTools.push(createReadSkillTool());
+            addedToolNames.add('read_skill');
         }
 
         // Agent 模式自动附加 create_skill 工具
-        if (chatMode === 'agent') {
+        if (chatMode === 'agent' && !addedToolNames.has('create_skill')) {
             extraTools.push(createCreateSkillTool());
+            addedToolNames.add('create_skill');
         }
 
         if (filteredToolDefs.length > 0) {
@@ -1995,12 +2001,12 @@
     let selectedToolsAsk: ToolConfig[] = []; // 问答模式选中的工具配置列表
     let toolAutoApproveSettings: Record<string, boolean> = {}; // 所有工具的 autoApprove 配置（包括未选中的）
     let toolAutoApproveSettingsAsk: Record<string, boolean> = {}; // 问答模式所有工具的 autoApprove 配置
-    // 用户选择的工具数量（排除系统工具）
+    // 用户选择的工具数量（排除系统隐藏工具 get_siyuan_skills）
     $: userToolCount =
         chatMode === 'draw'
             ? 0
             : (chatMode === 'ask' ? selectedToolsAsk || [] : selectedTools || []).filter(
-                  t => !SYSTEM_TOOL_NAMES.has(t.name)
+                  t => !HIDDEN_SYSTEM_TOOL_NAMES.has(t.name)
               ).length;
 
     $: providersForModelSelector =

@@ -615,7 +615,8 @@
             "siyuan_agent": "Agent / 外部接入",
             "database": "数据库",
             "other": "其他",
-            "plugin": "思源插件工具"
+            "plugin": "思源插件工具",
+            "plugin_task_note_management": "任务笔记管理工具"
         },
         "selector": {
             "title": "工具选择",
@@ -693,6 +694,14 @@
         },
         "run_python": {
             "name": "运行 Python"
+        },
+        "read_skill": {
+            "name": "读取自定义 Skill",
+            "description": "读取 data/storage/ai/agent/skills 下指定自定义 Skill 的完整工作流文档。支持读取子文件路径。"
+        },
+        "create_skill": {
+            "name": "创建/更新 Skill",
+            "description": "在 Agent 模式中创建或更新自定义 Skill 的 skill.md 内容。"
         },
         "siyuan_create_child_document": {
             "name": "创建子文档"
@@ -822,6 +831,18 @@
         "todo_write": {
             "name": "任务写入",
             "description": "写入待办任务。操作：write(task)"
+        },
+        "plugin__siyuan_plugin_task_note_management__task": {
+            "name": "任务管理"
+        },
+        "plugin__siyuan_plugin_task_note_management__project": {
+            "name": "项目管理"
+        },
+        "plugin__siyuan_plugin_task_note_management__habit": {
+            "name": "习惯管理"
+        },
+        "plugin__siyuan_plugin_task_note_management__stats": {
+            "name": "数据统计"
         }
     },
     "multiModel": {
@@ -840,6 +861,7 @@
         "moveDown": "下移",
         "remove": "移除",
         "noModels": "暂无可用模型",
+        "noSelectedModels": "点击右侧模型添加到已选",
         "responses": "模型回答",
         "selectAnswer": "选择此答案",
         "answerSelected": "已选择",

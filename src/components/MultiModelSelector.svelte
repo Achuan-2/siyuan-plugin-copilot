@@ -651,7 +651,11 @@
     </button>
 
     {#if isOpen}
-        <div class="multi-model-selector__dropdown" bind:this={dropdownEl}>
+        <div
+            class="multi-model-selector__dropdown"
+            class:multi-model-selector__dropdown--multi={enableMultiModel}
+            bind:this={dropdownEl}
+        >
             <div class="multi-model-selector__header">
                 <div class="multi-model-selector__title">
                     {enableMultiModel
@@ -680,256 +684,277 @@
                 </div>
             </div>
 
-            {#if enableMultiModel}
-                <div class="multi-model-selector__count-header">
-                    <div class="multi-model-selector__count">
-                        {#if selectedModels.length > 0}
-                            {i18n('multiModel.selected')}: {selectedModels.length} ({selectedModelNames})
-                        {:else}
-                            {i18n('multiModel.selected')}: {selectedModels.length}
-                        {/if}
-                    </div>
-                </div>
-
-                {#if selectedModels.length > 0}
-                    <div class="multi-model-selector__selected-header">
-                        <div class="multi-model-selector__selected-title">
-                            {i18n('multiModel.selectedModels')}
+            <div class="multi-model-selector__body">
+                {#if enableMultiModel}
+                    <div class="multi-model-selector__selected-panel">
+                        <div class="multi-model-selector__count-header">
+                            <div class="multi-model-selector__count">
+                                {#if selectedModels.length > 0}
+                                    {i18n('multiModel.selected')}: {selectedModels.length} ({selectedModelNames})
+                                {:else}
+                                    {i18n('multiModel.selected')}: {selectedModels.length}
+                                {/if}
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="multi-model-selector__selected-models">
-                        {#each selectedModels as model, index}
-                            <!-- Drop indicator before this item -->
-                            {#if dropIndicatorIndex === index}
-                                <div
-                                    class="multi-model-selector__drop-indicator multi-model-selector__drop-indicator--active"
-                                ></div>
-                            {/if}
-
-                            <div
-                                class="multi-model-selector__selected-model"
-                                draggable="true"
-                                role="button"
-                                tabindex="0"
-                                on:dragstart={e => handleDragStart(e, index)}
-                                on:dragover={e => handleDragOver(e, index)}
-                                on:dragenter={e => handleDragEnter(e, index)}
-                                on:dragleave={handleDragLeave}
-                                on:drop={e => handleDrop(e, index)}
-                                on:dragend={handleDragEnd}
-                            >
-                                <div class="multi-model-selector__selected-model-content">
-                                    <div class="multi-model-selector__drag-handle">
-                                        <svg class="multi-model-selector__drag-icon">
-                                            <use xlink:href="#iconDrag"></use>
-                                        </svg>
-                                    </div>
-                                    <div class="multi-model-selector__selected-model-info">
-                                        <span class="multi-model-selector__selected-model-name">
-                                            {getModelName(
-                                                model.provider,
-                                                model.modelId
-                                            )}{getModelCapabilitiesEmoji(
-                                                model.provider,
-                                                model.modelId
-                                            )}
-                                        </span>
-                                        <span class="multi-model-selector__selected-model-provider">
-                                            {getProviderDisplayName(model.provider)}
-                                        </span>
-                                    </div>
-                                    <div
-                                        class="multi-model-selector__selected-model-thinking"
-                                        role="group"
-                                        on:mousedown|stopPropagation
-                                        on:click|stopPropagation
-                                        on:keydown={() => {}}
-                                    >
-                                        {#if getModelCapabilities(model.provider, model.modelId)?.thinking}
-                                            <label
-                                                class="multi-model-selector__thinking-toggle"
-                                                title="思考模式"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    class="b3-switch"
-                                                    checked={model.thinkingEnabled || false}
-                                                    on:change={() =>
-                                                        toggleModelInstanceThinking(index)}
-                                                />
-                                                <span class="multi-model-selector__thinking-label">
-                                                    思考
-                                                </span>
-                                            </label>
-                                            {#if model.thinkingEnabled}
-                                                <select
-                                                    class="b3-select multi-model-selector__thinking-effort"
-                                                    value={model.thinkingEffort || 'low'}
-                                                    on:change={e =>
-                                                        handleThinkingEffortChange(index, e)}
-                                                    on:click|stopPropagation
-                                                    title="思考程度"
-                                                >
-                                                    <option value="low">低</option>
-                                                    {#if !isGemini3Model(model.modelId)}
-                                                        <option value="medium">中</option>
-                                                    {/if}
-                                                    <option value="high">高</option>
-                                                    {#if !isGemini3Model(model.modelId)}
-                                                        <option value="auto">自动</option>
-                                                    {/if}
-                                                </select>
-                                            {/if}
-                                        {/if}
-                                    </div>
-                                    <div class="multi-model-selector__selected-model-actions">
-                                        <button
-                                            class="multi-model-selector__move-btn"
-                                            disabled={index === 0}
-                                            on:click|stopPropagation={() => moveModelUp(index)}
-                                            title={i18n('multiModel.moveUp')}
-                                        >
-                                            <svg class="multi-model-selector__move-icon">
-                                                <use xlink:href="#iconUp"></use>
-                                            </svg>
-                                        </button>
-                                        <button
-                                            class="multi-model-selector__move-btn"
-                                            disabled={index === selectedModels.length - 1}
-                                            on:click|stopPropagation={() => moveModelDown(index)}
-                                            title={i18n('multiModel.moveDown')}
-                                        >
-                                            <svg class="multi-model-selector__move-icon">
-                                                <use xlink:href="#iconDown"></use>
-                                            </svg>
-                                        </button>
-                                        <button
-                                            class="multi-model-selector__remove-btn"
-                                            on:click|stopPropagation={() => removeModel(index)}
-                                            title={i18n('multiModel.remove')}
-                                        >
-                                            <svg class="multi-model-selector__remove-icon">
-                                                <use xlink:href="#iconClose"></use>
-                                            </svg>
-                                        </button>
-                                    </div>
+                        {#if selectedModels.length > 0}
+                            <div class="multi-model-selector__selected-header">
+                                <div class="multi-model-selector__selected-title">
+                                    {i18n('multiModel.selectedModels')}
                                 </div>
                             </div>
-                        {/each}
 
-                        <!-- Drop indicator after the last item -->
-                        {#if dropIndicatorIndex === selectedModels.length}
-                            <div
-                                class="multi-model-selector__drop-indicator multi-model-selector__drop-indicator--active"
-                            ></div>
-                        {/if}
-                    </div>
-                {/if}
-            {/if}
+                            <div class="multi-model-selector__selected-models">
+                                {#each selectedModels as model, index}
+                                    <!-- Drop indicator before this item -->
+                                    {#if dropIndicatorIndex === index}
+                                        <div
+                                            class="multi-model-selector__drop-indicator multi-model-selector__drop-indicator--active"
+                                        ></div>
+                                    {/if}
 
-            <div class="multi-model-selector__tree">
-                <!-- 模型搜索框 -->
-                <div class="multi-model-selector__search">
-                    <input
-                        type="text"
-                        class="b3-text-field"
-                        placeholder={i18n('multiModel.searchModels') || '搜索模型'}
-                        bind:value={modelSearchQuery}
-                        spellcheck="false"
-                    />
-                </div>
-
-                {#if modelSearchQuery.trim() && filteredProviders.length === 0}
-                    <div class="multi-model-selector__no-results">
-                        {i18n('multiModel.noResults') || '无匹配结果'}
-                    </div>
-                {/if}
-
-                {#each filteredProviders as provider}
-                    <div class="multi-model-selector__provider">
-                        <div
-                            class="multi-model-selector__provider-header"
-                            role="button"
-                            tabindex="0"
-                            on:click={() => toggleProvider(provider.id)}
-                            on:keydown={e => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    toggleProvider(provider.id);
-                                }
-                            }}
-                        >
-                            <svg
-                                class="multi-model-selector__expand-icon"
-                                class:multi-model-selector__expand-icon--expanded={expandedProviders.has(
-                                    provider.id
-                                )}
-                            >
-                                <use xlink:href="#iconRight"></use>
-                            </svg>
-                            <span>{provider.name}</span>
-                            <span class="multi-model-selector__provider-count">
-                                ({provider.config.models.length})
-                            </span>
-                        </div>
-                        {#if expandedProviders.has(provider.id)}
-                            <div class="multi-model-selector__models">
-                                {#each provider.config.models as model}
                                     <div
-                                        class="multi-model-selector__model"
+                                        class="multi-model-selector__selected-model"
+                                        draggable="true"
                                         role="button"
                                         tabindex="0"
-                                        class:multi-model-selector__model--active={!enableMultiModel &&
-                                            currentProvider === provider.id &&
-                                            currentModelId === model.id}
-                                        on:click={() => addModel(provider.id, model.id)}
-                                        on:keydown={() => {}}
+                                        on:dragstart={e => handleDragStart(e, index)}
+                                        on:dragover={e => handleDragOver(e, index)}
+                                        on:dragenter={e => handleDragEnter(e, index)}
+                                        on:dragleave={handleDragLeave}
+                                        on:drop={e => handleDrop(e, index)}
+                                        on:dragend={handleDragEnd}
                                     >
-                                        {#if enableMultiModel}
-                                            <div class="multi-model-selector__add-button">
-                                                <svg class="multi-model-selector__add-icon">
-                                                    <use xlink:href="#iconAdd"></use>
-                                                </svg>
-                                            </div>
-                                        {/if}
-                                        <div class="multi-model-selector__model-info">
-                                            <div class="multi-model-selector__model-name-container">
-                                                {#if enableMultiModel && (selectedModelCountMap[`${provider.id}:${model.id}`] || 0) > 0}
-                                                    <span
-                                                        class="multi-model-selector__model-count-badge"
-                                                        role="button"
-                                                        tabindex="0"
-                                                        title="点击减少选择次数"
-                                                        on:click={e =>
-                                                            decreaseModelSelection(
-                                                                provider.id,
-                                                                model.id,
-                                                                e
-                                                            )}
-                                                        on:keydown={() => {}}
-                                                    >
-                                                        {selectedModelCountMap[`${provider.id}:${model.id}`]}
+                                        <div class="multi-model-selector__selected-model-content">
+                                            <div class="multi-model-selector__selected-model-top">
+                                                <div class="multi-model-selector__drag-handle">
+                                                    <svg class="multi-model-selector__drag-icon">
+                                                        <use xlink:href="#iconDrag"></use>
+                                                    </svg>
+                                                </div>
+                                                <div class="multi-model-selector__selected-model-name-wrap">
+                                                    <span class="multi-model-selector__selected-model-name">
+                                                        {getModelName(
+                                                            model.provider,
+                                                            model.modelId
+                                                        )}{getModelCapabilitiesEmoji(
+                                                            model.provider,
+                                                            model.modelId
+                                                        )}
                                                     </span>
-                                                {/if}
-                                                <span class="multi-model-selector__model-name">
-                                                    {model.name}{getModelCapabilitiesEmoji(
-                                                        provider.id,
-                                                        model.id
-                                                    )}
+                                                </div>
+                                            </div>
+                                            <div class="multi-model-selector__selected-model-bottom">
+                                                <span class="multi-model-selector__selected-model-provider">
+                                                    {getProviderDisplayName(model.provider)}
                                                 </span>
                                             </div>
-                                            <span class="multi-model-selector__model-params">
-                                                T: {model.temperature} | Max: {model.maxTokens}
-                                            </span>
+                                            <div class="multi-model-selector__selected-model-thinking-row">
+                                                <div
+                                                    class="multi-model-selector__selected-model-thinking"
+                                                    role="group"
+                                                    on:mousedown|stopPropagation
+                                                    on:click|stopPropagation
+                                                    on:keydown={() => {}}
+                                                >
+                                                    {#if getModelCapabilities(model.provider, model.modelId)?.thinking}
+                                                        <label
+                                                            class="multi-model-selector__thinking-toggle"
+                                                            title="思考模式"
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                class="b3-switch"
+                                                                checked={model.thinkingEnabled || false}
+                                                                on:change={() =>
+                                                                    toggleModelInstanceThinking(index)}
+                                                            />
+                                                            <span class="multi-model-selector__thinking-label">
+                                                                思考
+                                                            </span>
+                                                        </label>
+                                                        {#if model.thinkingEnabled}
+                                                            <select
+                                                                class="b3-select multi-model-selector__thinking-effort"
+                                                                value={model.thinkingEffort || 'low'}
+                                                                on:change={e =>
+                                                                    handleThinkingEffortChange(index, e)}
+                                                                on:click|stopPropagation
+                                                                title="思考程度"
+                                                            >
+                                                                <option value="low">低</option>
+                                                                {#if !isGemini3Model(model.modelId)}
+                                                                    <option value="medium">中</option>
+                                                                {/if}
+                                                                <option value="high">高</option>
+                                                                {#if !isGemini3Model(model.modelId)}
+                                                                    <option value="auto">自动</option>
+                                                                {/if}
+                                                            </select>
+                                                        {/if}
+                                                    {/if}
+                                                </div>
+                                            </div>
+                                            <div class="multi-model-selector__selected-model-actions-row">
+                                                <div class="multi-model-selector__selected-model-actions">
+                                                    <button
+                                                        class="multi-model-selector__move-btn"
+                                                        disabled={index === 0}
+                                                        on:click|stopPropagation={() => moveModelUp(index)}
+                                                        title={i18n('multiModel.moveUp')}
+                                                    >
+                                                        <svg class="multi-model-selector__move-icon">
+                                                            <use xlink:href="#iconUp"></use>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        class="multi-model-selector__move-btn"
+                                                        disabled={index === selectedModels.length - 1}
+                                                        on:click|stopPropagation={() => moveModelDown(index)}
+                                                        title={i18n('multiModel.moveDown')}
+                                                    >
+                                                        <svg class="multi-model-selector__move-icon">
+                                                            <use xlink:href="#iconDown"></use>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        class="multi-model-selector__remove-btn"
+                                                        on:click|stopPropagation={() => removeModel(index)}
+                                                        title={i18n('multiModel.remove')}
+                                                    >
+                                                        <svg class="multi-model-selector__remove-icon">
+                                                            <use xlink:href="#iconClose"></use>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 {/each}
+
+                                <!-- Drop indicator after the last item -->
+                                {#if dropIndicatorIndex === selectedModels.length}
+                                    <div
+                                        class="multi-model-selector__drop-indicator multi-model-selector__drop-indicator--active"
+                                    ></div>
+                                {/if}
+                            </div>
+                        {:else}
+                            <div class="multi-model-selector__selected-empty">
+                                {i18n('multiModel.noSelectedModels') || '点击右侧模型添加到已选'}
                             </div>
                         {/if}
                     </div>
-                {/each}
-                <!-- 移除空状态显示，当没有模型时不显示任何内容 -->
+                {/if}
+
+                <div
+                    class="multi-model-selector__tree-panel"
+                    class:multi-model-selector__tree-panel--full={!enableMultiModel}
+                >
+                    <div class="multi-model-selector__tree">
+                        <!-- 模型搜索框 -->
+                        <div class="multi-model-selector__search">
+                            <input
+                                type="text"
+                                class="b3-text-field"
+                                placeholder={i18n('multiModel.searchModels') || '搜索模型'}
+                                bind:value={modelSearchQuery}
+                                spellcheck="false"
+                            />
+                        </div>
+
+                        {#if modelSearchQuery.trim() && filteredProviders.length === 0}
+                            <div class="multi-model-selector__no-results">
+                                {i18n('multiModel.noResults') || '无匹配结果'}
+                            </div>
+                        {/if}
+
+                        {#each filteredProviders as provider}
+                            <div class="multi-model-selector__provider">
+                                <div
+                                    class="multi-model-selector__provider-header"
+                                    role="button"
+                                    tabindex="0"
+                                    on:click={() => toggleProvider(provider.id)}
+                                    on:keydown={e => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            toggleProvider(provider.id);
+                                        }
+                                    }}
+                                >
+                                    <svg
+                                        class="multi-model-selector__expand-icon"
+                                        class:multi-model-selector__expand-icon--expanded={expandedProviders.has(
+                                            provider.id
+                                        )}
+                                    >
+                                        <use xlink:href="#iconRight"></use>
+                                    </svg>
+                                    <span>{provider.name}</span>
+                                    <span class="multi-model-selector__provider-count">
+                                        ({provider.config.models.length})
+                                    </span>
+                                </div>
+                                {#if expandedProviders.has(provider.id)}
+                                    <div class="multi-model-selector__models">
+                                        {#each provider.config.models as model}
+                                            <div
+                                                class="multi-model-selector__model"
+                                                role="button"
+                                                tabindex="0"
+                                                class:multi-model-selector__model--active={!enableMultiModel &&
+                                                    currentProvider === provider.id &&
+                                                    currentModelId === model.id}
+                                                on:click={() => addModel(provider.id, model.id)}
+                                                on:keydown={() => {}}
+                                            >
+                                                {#if enableMultiModel}
+                                                    <div class="multi-model-selector__add-button">
+                                                        <svg class="multi-model-selector__add-icon">
+                                                            <use xlink:href="#iconAdd"></use>
+                                                        </svg>
+                                                    </div>
+                                                {/if}
+                                                <div class="multi-model-selector__model-info">
+                                                    <div class="multi-model-selector__model-name-container">
+                                                        {#if enableMultiModel && (selectedModelCountMap[`${provider.id}:${model.id}`] || 0) > 0}
+                                                            <span
+                                                                class="multi-model-selector__model-count-badge"
+                                                                role="button"
+                                                                tabindex="0"
+                                                                title="点击减少选择次数"
+                                                                on:click={e =>
+                                                                    decreaseModelSelection(
+                                                                        provider.id,
+                                                                        model.id,
+                                                                        e
+                                                                    )}
+                                                                on:keydown={() => {}}
+                                                            >
+                                                                {selectedModelCountMap[`${provider.id}:${model.id}`]}
+                                                            </span>
+                                                        {/if}
+                                                        <span class="multi-model-selector__model-name">
+                                                            {model.name}{getModelCapabilitiesEmoji(
+                                                                provider.id,
+                                                                model.id
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <span class="multi-model-selector__model-params">
+                                                        T: {model.temperature} | Max: {model.maxTokens}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                        <!-- 移除空状态显示，当没有模型时不显示任何内容 -->
+                    </div>
+                </div>
             </div>
         </div>
     {/if}
@@ -967,13 +992,21 @@
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-shadow: var(--b3-dialog-shadow);
-        min-width: 320px;
-        max-width: calc(min(450px, 90vw));
+        width: 320px;
+        max-width: calc(min(450px, 92vw));
         /* 无固定 max-height，交由脚本或内联样式控制，基础上限制为视口 */
         overflow: hidden;
         z-index: 1000;
         display: flex;
         flex-direction: column;
+
+        &--multi {
+            /* 多模型模式下电脑端使用更宽的左右布局 */
+            @media (min-width: 768px) {
+                width: 640px;
+                max-width: calc(min(640px, 92vw));
+            }
+        }
     }
 
     .multi-model-selector__header {
@@ -983,6 +1016,60 @@
         justify-content: space-between;
         align-items: center;
         background: var(--b3-theme-surface);
+        flex-shrink: 0;
+    }
+
+    .multi-model-selector__body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+        min-height: 0;
+
+        @media (min-width: 768px) {
+            flex-direction: row;
+        }
+    }
+
+    .multi-model-selector__selected-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+        max-height: 45%;
+        border-bottom: 1px solid var(--b3-border-color);
+
+        @media (min-width: 768px) {
+            width: 260px;
+            flex-shrink: 0;
+            max-height: none;
+            border-bottom: none;
+            border-right: 1px solid var(--b3-border-color);
+        }
+    }
+
+    .multi-model-selector__tree-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+        min-width: 0;
+
+        &--full {
+            width: 100%;
+        }
+    }
+
+    .multi-model-selector__selected-empty {
+        padding: 24px 16px;
+        text-align: center;
+        color: var(--b3-theme-on-surface-light);
+        font-size: 12px;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .multi-model-selector__title {
@@ -1011,6 +1098,7 @@
     .multi-model-selector__count-header {
         padding: 8px 16px;
         border-bottom: 1px solid var(--b3-border-color);
+        flex-shrink: 0;
     }
 
     .multi-model-selector__count {
@@ -1022,6 +1110,7 @@
     .multi-model-selector__selected-header {
         padding: 8px 16px;
         border-bottom: 1px solid var(--b3-border-color);
+        flex-shrink: 0;
     }
 
     .multi-model-selector__selected-title {
@@ -1032,8 +1121,9 @@
     }
 
     .multi-model-selector__selected-models {
-        max-height: 200px;
+        flex: 1;
         overflow-y: auto;
+        min-height: 0;
     }
 
     .multi-model-selector__drop-indicator {
@@ -1069,16 +1159,22 @@
 
     .multi-model-selector__selected-model-content {
         display: flex;
-        align-items: center;
-        gap: 8px;
+        flex-direction: column;
+        gap: 6px;
         padding: 8px 12px;
-        min-width: 0; /* 允许内容收缩 */
+    }
+
+    .multi-model-selector__selected-model-top {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
     }
 
     .multi-model-selector__drag-handle {
         flex-shrink: 0;
         cursor: grab;
         color: var(--b3-theme-on-surface-light);
+        padding-top: 2px;
 
         &:active {
             cursor: grabbing;
@@ -1090,17 +1186,36 @@
         height: 14px;
     }
 
-    .multi-model-selector__selected-model-info {
+    .multi-model-selector__selected-model-name-wrap {
         flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
+        min-width: 0;
     }
 
     .multi-model-selector__selected-model-name {
         font-size: 13px;
         font-weight: 500;
         color: var(--b3-theme-on-background);
+        word-break: break-all;
+    }
+
+    .multi-model-selector__selected-model-bottom,
+    .multi-model-selector__selected-model-thinking-row,
+    .multi-model-selector__selected-model-actions-row {
+        display: flex;
+        align-items: center;
+        padding-left: 22px;
+    }
+
+    .multi-model-selector__selected-model-bottom {
+        gap: 8px;
+    }
+
+    .multi-model-selector__selected-model-thinking-row {
+        gap: 8px;
+    }
+
+    .multi-model-selector__selected-model-actions-row {
+        justify-content: flex-end;
     }
 
     .multi-model-selector__selected-model-provider {
@@ -1148,8 +1263,8 @@
     .multi-model-selector__tree {
         padding: 8px;
         overflow-y: auto;
-        max-height: 500px;
         flex: 1;
+        min-height: 0;
     }
 
     .multi-model-selector__search {

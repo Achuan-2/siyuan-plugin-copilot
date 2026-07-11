@@ -43,11 +43,16 @@ export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     siyuan: {
         tools: [],
     },
+    plugin_task_note_management: {
+        tools: [],
+    },
     plugin: {
         tools: [],
     },
     other: {
         tools: [
+            'read_skill',
+            'create_skill',
             'soul',
             'run_js',
             'run_python',
@@ -66,11 +71,16 @@ export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     plugin: {
         tools: [],
     },
+    plugin_task_note_management: {
+        tools: [],
+    },
     other: {
         tools: [
             'soul',
             'run_js',
             'run_command',
+            'read_skill',
+            'create_skill',
         ],
     },
 };
@@ -276,7 +286,7 @@ export function buildToolDescriptionsPrompt(
  * 获取工具的详细描述文档
  * AI 应该先调用此工具获取目标工具的详细使用说明，然后再调用实际工具
  */
-const TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES = new Set(['get_siyuan_skills', 'read_skill']);
+const TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES = new Set(['get_siyuan_skills']);
 
 function normalizeAllowedToolNames(allowedToolNames?: Iterable<string>): Set<string> | undefined {
     if (!allowedToolNames) {
@@ -334,6 +344,7 @@ const GET_SIYUAN_SKILLS_ALL_TOOL_NAMES = [
     'run_js',
     'run_python',
     'run_command',
+    'read_skill',
     'create_skill',
 ] as const;
 
@@ -381,7 +392,7 @@ export function createReadSkillTool(): Tool {
         type: 'function',
         function: {
             name: 'read_skill',
-            description: READ_SKILL_TOOL_DESCRIPTION,
+            description: extractShortDescription(READ_SKILL_TOOL_DESCRIPTION),
             parameters: {
                 type: 'object',
                 properties: {
@@ -405,7 +416,7 @@ export function createCreateSkillTool(): Tool {
         type: 'function',
         function: {
             name: 'create_skill',
-            description: CREATE_SKILL_TOOL_DESCRIPTION,
+            description: extractShortDescription(CREATE_SKILL_TOOL_DESCRIPTION),
             parameters: {
                 type: 'object',
                 properties: {
@@ -441,11 +452,11 @@ export function createCreateSkillTool(): Tool {
 }
 
 export let AVAILABLE_TOOLS: Tool[] = [
-    // 工具详细描述查询工具 - 隐藏工具，不在 UI 中显示
+    // 工具详细描述查询工具 - 系统隐藏工具，不在 UI 中显示
     createGetSiyuanSkillsTool(),
-    // Skill 读取工具 - 隐藏工具，不在 UI 中显示
+    // Skill 读取工具 - 用户可在工具选择器中启用
     createReadSkillTool(),
-    // Skill 创建/更新工具 - 隐藏工具，仅在 Agent 模式下自动启用
+    // Skill 创建/更新工具 - 用户可在工具选择器中启用
     createCreateSkillTool(),
     // 运行本地命令工具
     createTool(
@@ -2404,15 +2415,36 @@ export async function initializeMcpTools() {
         AVAILABLE_TOOLS.push(...baseTools, ...mappedMcpTools);
 
         // Update TOOL_CATEGORIES and QA_TOOL_CATEGORIES
-        // Group plugin tools and siyuan tools
-        const pluginToolNames = filteredMcpToolsList.filter(t => t.name.startsWith("plugin__")).map(t => t.name);
+        // Group plugin tools, task note management plugin tools and siyuan tools
+        const TASK_NOTE_MANAGEMENT_PREFIX = 'plugin__siyuan_plugin_task_note_management__';
+        const TASK_NOTE_MANAGEMENT_ORDER = ['task', 'project', 'habit', 'stats'];
+
+        const taskNoteManagementToolNames = filteredMcpToolsList
+            .filter(t => t.name.startsWith(TASK_NOTE_MANAGEMENT_PREFIX))
+            .map(t => t.name)
+            .sort((a, b) => {
+                const suffixA = a.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
+                const suffixB = b.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
+                const idxA = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixA);
+                const idxB = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixB);
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+            });
+
+        const pluginToolNames = filteredMcpToolsList.filter(
+            t => t.name.startsWith("plugin__") && !t.name.startsWith(TASK_NOTE_MANAGEMENT_PREFIX)
+        ).map(t => t.name);
         const siyuanToolNames = filteredMcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
 
         TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
         TOOL_CATEGORIES.plugin.tools = pluginToolNames;
+        TOOL_CATEGORIES.plugin_task_note_management.tools = taskNoteManagementToolNames;
 
         QA_TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
         QA_TOOL_CATEGORIES.plugin.tools = pluginToolNames;
+        QA_TOOL_CATEGORIES.plugin_task_note_management.tools = taskNoteManagementToolNames;
 
         console.log("Successfully initialized Siyuan MCP tools!");
     } catch (error) {
