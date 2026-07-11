@@ -835,16 +835,16 @@
             "description": "写入待办任务。操作：write(task)"
         },
         "plugin__siyuan_plugin_task_note_management__task": {
-            "name": "【任务笔记管理插件】任务管理"
+            "name": "【任务笔记管理插件】任务管理工具"
         },
         "plugin__siyuan_plugin_task_note_management__project": {
-            "name": "【任务笔记管理插件】项目管理"
+            "name": "【任务笔记管理插件】项目管理工具"
         },
         "plugin__siyuan_plugin_task_note_management__habit": {
-            "name": "【任务笔记管理插件】习惯管理"
+            "name": "【任务笔记管理插件】习惯管理工具"
         },
         "plugin__siyuan_plugin_task_note_management__stats": {
-            "name": "【任务笔记管理插件】数据统计"
+            "name": "【任务笔记管理插件】数据统计工具"
         }
     },
     "multiModel": {
