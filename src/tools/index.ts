@@ -184,7 +184,7 @@ function registerBuiltinToolSkillDescriptions() {
 registerBuiltinToolSkillDescriptions();
 
 function getBuiltinToolSkillDescription(toolName: string): string {
-    return TOOL_FULL_DESCRIPTIONS[toolName] || TOOL_FULL_DESCRIPTIONS[`siyuan_${toolName}`] || `工具 "${toolName}" 的说明文档缺失。`;
+    return TOOL_FULL_DESCRIPTIONS[toolName] || `工具 "${toolName}" 的说明文档缺失。`;
 }
 
 function isSafeBuiltinToolSkillName(toolName: string): boolean {
