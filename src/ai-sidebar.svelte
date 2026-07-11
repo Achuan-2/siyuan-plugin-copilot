@@ -488,7 +488,7 @@
                 return '\n';
             }
             case 'contextDocument': {
-                return `@${node.attrs.title}`;
+                return `@<${node.attrs.title}>`;
             }
             case 'contextImage': {
                 return `[图片: ${node.attrs.name}]`;
@@ -573,7 +573,7 @@
         },
 
         renderText({ node }) {
-            return `@${node.attrs.title}`;
+            return `@<${node.attrs.title}>`;
         },
 
         addProseMirrorPlugins() {
