@@ -828,7 +828,7 @@
         },
         "search": {
             "name": "内容搜索",
-            "description": "思源笔记全文搜索和语义模糊搜索。操作：query(全文搜索), embed(语义模糊搜索)"
+            "description": "思源笔记全文搜索、语义搜索以及资源文件内容搜索。操作：fulltext(全文搜索), semantic(语义搜索), asset(资源内容搜索), getasset(获取资源文件全文)"
         },
         "todo_write": {
             "name": "任务写入",

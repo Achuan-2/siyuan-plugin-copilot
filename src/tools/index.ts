@@ -196,8 +196,20 @@ async function readBuiltinToolSkillDescription(toolName: string): Promise<string
         return null;
     }
 
-    const skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
-    const blob = await getFileBlob(skillPath);
+    // First try the new siyuan-specific skill directories
+    const siyuanSkillPathLower = `${BUILTIN_TOOL_SKILLS_DIR}/siyuan/${toolName}/skill.md`;
+    let blob = await getFileBlob(siyuanSkillPathLower);
+    if (!blob) {
+        const siyuanSkillPathUpper = `${BUILTIN_TOOL_SKILLS_DIR}/siyuan/${toolName}/SKILL.md`;
+        blob = await getFileBlob(siyuanSkillPathUpper);
+    }
+    
+    // Fallback to top-level markdown file
+    if (!blob) {
+        const skillPath = `${BUILTIN_TOOL_SKILLS_DIR}/${toolName}.md`;
+        blob = await getFileBlob(skillPath);
+    }
+
     if (!blob) {
         return null;
     }
@@ -319,7 +331,7 @@ export function buildToolDescriptionsPrompt(
  * 获取工具的详细描述文档
  * AI 应该先调用此工具获取目标工具的详细使用说明，然后再调用实际工具
  */
-const TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES = new Set(['get_siyuan_skills']);
+const TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES = new Set(['get_siyuan_skills', 'skill']);
 
 function normalizeAllowedToolNames(allowedToolNames?: Iterable<string>): Set<string> | undefined {
     if (!allowedToolNames) {
@@ -338,6 +350,24 @@ function formatEnabledToolNames(allowedToolNames: Set<string>): string {
         name => !TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES.has(name)
     );
     return enabledToolNames.length > 0 ? enabledToolNames.join(', ') : '无';
+}
+
+function stripYamlFrontmatter(content: string): string {
+    content = content.trim();
+    if (content.startsWith('---')) {
+        const lines = content.split('\n');
+        let closeIdx = -1;
+        for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim() === '---') {
+                closeIdx = i;
+                break;
+            }
+        }
+        if (closeIdx !== -1) {
+            return lines.slice(closeIdx + 1).join('\n').trim();
+        }
+    }
+    return content;
 }
 
 export async function getSiyuanSkills(
@@ -366,7 +396,7 @@ export async function getSiyuanSkills(
             : Object.keys(TOOL_FULL_DESCRIPTIONS).join(', ');
         return `未找到工具 "${toolName}" 的详细描述。可用工具: ${availableTools}`;
     }
-    return description;
+    return stripYamlFrontmatter(description);
 }
 
 const GET_SIYUAN_SKILLS_TOOL_DESCRIPTION = getBuiltinToolSkillDescription('get_siyuan_skills');
@@ -382,16 +412,22 @@ const GET_SIYUAN_SKILLS_ALL_TOOL_NAMES = [
     'create_skill',
 ] as const;
 
+const SIYUAN_MCP_TOOL_NAMES = [
+    'asset', 'attr', 'block', 'bookmark', 'dailynote', 'database', 'document',
+    'export', 'file', 'frontend', 'history', 'http_request', 'import', 'inbox',
+    'notebook', 'outline', 'question', 'ref', 'repo', 'search', 'sql', 'sync',
+    'system', 'tag', 'template', 'todo_write', 'unzip', 'web_fetch', 'web_search',
+    'workspace'
+];
+
 function buildGetSiyuanSkillsEnum(allowedToolNames?: string[]): string[] {
     if (!allowedToolNames) {
-        return [...GET_SIYUAN_SKILLS_ALL_TOOL_NAMES];
+        return [...GET_SIYUAN_SKILLS_ALL_TOOL_NAMES, ...SIYUAN_MCP_TOOL_NAMES];
     }
 
-    const allowedSet = new Set(allowedToolNames);
-    const builtInNames = GET_SIYUAN_SKILLS_ALL_TOOL_NAMES.filter(name => allowedSet.has(name));
-    // 允许查询当前会话已启用的插件工具详细说明
-    const pluginToolNames = allowedToolNames.filter(name => PLUGIN_TOOL_NAME_RE.test(name));
-    return [...builtInNames, ...pluginToolNames];
+    return allowedToolNames.filter(
+        name => !TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES.has(name)
+    );
 }
 
 /**

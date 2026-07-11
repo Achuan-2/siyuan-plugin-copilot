@@ -809,7 +809,7 @@
         },
         "search": {
             "name": "Content Search",
-            "description": "Full text search in notebooks. Actions: query(k), embed(k)."
+            "description": "Full-text search, semantic search, and asset content search in notebooks. Actions: fulltext(query), semantic(query), asset(query), getasset(path)."
         },
         "todo_write": {
             "name": "Task Write",
