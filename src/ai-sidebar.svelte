@@ -135,10 +135,12 @@
     ]);
 
     function shouldAutoExecuteMultiModelTool(
-        toolName: string,
-        toolConfig?: { autoApprove?: boolean }
+        toolName: string
     ): boolean {
-        return MULTI_MODEL_AUTO_EXECUTE_TOOLS.has(toolName) || !!toolConfig?.autoApprove;
+        return MULTI_MODEL_AUTO_EXECUTE_TOOLS.has(toolName) || 
+               ((chatMode === 'ask') 
+                   ? !!toolAutoApproveSettingsAsk[toolName] 
+                   : !!toolAutoApproveSettings[toolName]);
     }
 
     function getToolDefinitionName(tool: any): string {
@@ -1710,12 +1712,8 @@
                                 // 检查是否自动批准
                                 const currentSelectedTools =
                                     chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-                                const toolConfig = currentSelectedTools.find(
-                                    t => t.name === tc.function.name
-                                );
                                 const autoApprove = shouldAutoExecuteMultiModelTool(
-                                    tc.function.name,
-                                    toolConfig
+                                    tc.function.name
                                 );
                                 const isEnabledTool = allowedExecutableToolNames.has(
                                     tc.function.name
@@ -3195,7 +3193,10 @@
             chatMode: newSettings.chatMode ?? 'ask',
             toolSelectionEnabled: newSettings.toolSelectionEnabled ?? false,
             selectedTools: newSettings.selectedTools || [],
-            toolAutoApproveSettings: newSettings.toolAutoApproveSettings || {},
+            toolAutoApproveSettings:
+                (newSettings.chatMode ?? chatMode) === 'ask'
+                    ? { ...(toolAutoApproveSettingsAsk || {}) }
+                    : { ...(toolAutoApproveSettings || {}) },
         };
 
         // 应用聊天模式
@@ -3277,13 +3278,16 @@
         // 如果启用了工具选择，根据聊天模式应用到对应的工具配置
         if (newSettings.toolSelectionEnabled) {
             const tools = newSettings.selectedTools || [];
-            const autoApprove = newSettings.toolAutoApproveSettings || {};
             if (chatMode === 'ask') {
                 selectedToolsAsk = [...tools];
-                toolAutoApproveSettingsAsk = { ...autoApprove };
+                if (newSettings.toolAutoApproveSettings !== undefined) {
+                    toolAutoApproveSettingsAsk = { ...newSettings.toolAutoApproveSettings };
+                }
             } else if (chatMode === 'agent') {
                 selectedTools = [...tools];
-                toolAutoApproveSettings = { ...autoApprove };
+                if (newSettings.toolAutoApproveSettings !== undefined) {
+                    toolAutoApproveSettings = { ...newSettings.toolAutoApproveSettings };
+                }
             }
             // 触发工具配置保存
             tick().then(() => saveToolsConfig());
@@ -16469,6 +16473,8 @@
                 {currentProvider}
                 {currentModelId}
                 appliedSettings={tempModelSettings}
+                globalToolAutoApproveSettings={toolAutoApproveSettings}
+                globalToolAutoApproveSettingsAsk={toolAutoApproveSettingsAsk}
                 on:apply={handleApplyModelSettings}
                 {plugin}
             />

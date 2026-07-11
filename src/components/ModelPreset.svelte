@@ -36,6 +36,8 @@
         selectedTools: [] as ToolConfig[],
         toolAutoApproveSettings: {} as Record<string, boolean>,
     };
+    export let globalToolAutoApproveSettings: Record<string, boolean> = {};
+    export let globalToolAutoApproveSettingsAsk: Record<string, boolean> = {};
     export let plugin: any;
 
     const dispatch = createEventDispatcher();
@@ -635,7 +637,6 @@
             promptBlocks: tempPromptBlocks,
             toolSelectionEnabled: tempToolSelectionEnabled,
             selectedTools: tempSelectedTools,
-            toolAutoApproveSettings: tempToolAutoApproveSettings,
             createdAt: Date.now(),
         };
 
@@ -687,7 +688,6 @@
                 chatMode: normalizeChatMode(preset.chatMode),
                 toolSelectionEnabled: preset.toolSelectionEnabled ?? false,
                 selectedTools: preset.selectedTools || [],
-                toolAutoApproveSettings: preset.toolAutoApproveSettings || {},
             });
 
             pushMsg(`已应用预设: ${preset.name}`);
@@ -712,7 +712,11 @@
         tempPromptBlocks = normalizePromptBlocks(preset.promptBlocks);
         tempToolSelectionEnabled = preset.toolSelectionEnabled ?? false;
         tempSelectedTools = [...(preset.selectedTools || [])];
-        tempToolAutoApproveSettings = { ...(preset.toolAutoApproveSettings || {}) };
+        tempToolAutoApproveSettings = {
+            ...(tempChatMode === 'ask'
+                ? globalToolAutoApproveSettingsAsk
+                : globalToolAutoApproveSettings)
+        };
         await refreshTempPromptBlockContents(tempPromptBlocks);
 
         // 保存初始状态
@@ -887,7 +891,7 @@
             preset.promptBlocks = tempPromptBlocks;
             preset.toolSelectionEnabled = tempToolSelectionEnabled;
             preset.selectedTools = tempSelectedTools;
-            preset.toolAutoApproveSettings = tempToolAutoApproveSettings;
+            delete preset.toolAutoApproveSettings;
             await savePresetsToStorage();
             // 触发响应式更新
             presets = [...presets];
@@ -912,7 +916,11 @@
         tempPromptBlockContentMap = {};
         tempToolSelectionEnabled = appliedSettings.toolSelectionEnabled ?? false;
         tempSelectedTools = [...(appliedSettings.selectedTools || [])];
-        tempToolAutoApproveSettings = { ...(appliedSettings.toolAutoApproveSettings || {}) };
+        tempToolAutoApproveSettings = {
+            ...(tempChatMode === 'ask'
+                ? globalToolAutoApproveSettingsAsk
+                : globalToolAutoApproveSettings)
+        };
 
         // 检查当前应用的设置是否与某个预设匹配
         const savedPresetId = await loadSelectedPresetId();
@@ -945,9 +953,7 @@
                 (preset.toolSelectionEnabled ?? false) ===
                     (appliedSettings.toolSelectionEnabled ?? false) &&
                 JSON.stringify(preset.selectedTools || []) ===
-                    JSON.stringify(appliedSettings.selectedTools || []) &&
-                JSON.stringify(preset.toolAutoApproveSettings || {}) ===
-                    JSON.stringify(appliedSettings.toolAutoApproveSettings || {})
+                    JSON.stringify(appliedSettings.selectedTools || [])
             ) {
                 selectedPresetId = savedPresetId;
                 tempSystemPrompt = preset.systemPrompt || '';
@@ -955,7 +961,11 @@
                 tempPromptBlockContentMap = promptBlockContentMap;
                 tempToolSelectionEnabled = preset.toolSelectionEnabled ?? false;
                 tempSelectedTools = [...(preset.selectedTools || [])];
-                tempToolAutoApproveSettings = { ...(preset.toolAutoApproveSettings || {}) };
+                tempToolAutoApproveSettings = {
+                    ...(tempChatMode === 'ask'
+                        ? globalToolAutoApproveSettingsAsk
+                        : globalToolAutoApproveSettings)
+                };
             } else {
                 selectedPresetId = '';
             }
@@ -979,7 +989,7 @@
         tempPromptBlockContentMap = {};
         tempToolSelectionEnabled = false;
         tempSelectedTools = [];
-        tempToolAutoApproveSettings = {};
+        tempToolAutoApproveSettings = { ...globalToolAutoApproveSettingsAsk };
         editingPresetId = '';
         selectedPresetId = '';
         newPresetName = ''; // 重置预设名称为空
@@ -1039,11 +1049,6 @@
         if (tempToolSelectionEnabled !== initialState.toolSelectionEnabled) return true;
         if (
             JSON.stringify(tempSelectedTools) !== JSON.stringify(initialState.selectedTools)
-        )
-            return true;
-        if (
-            JSON.stringify(tempToolAutoApproveSettings) !==
-            JSON.stringify(initialState.toolAutoApproveSettings)
         )
             return true;
         return false;
@@ -1247,7 +1252,6 @@
                         chatMode: preset.chatMode || 'ask',
                         toolSelectionEnabled: preset.toolSelectionEnabled ?? false,
                         selectedTools: [...(preset.selectedTools || [])],
-                        toolAutoApproveSettings: { ...(preset.toolAutoApproveSettings || {}) },
                     });
                     selectedPresetId = savedPresetId;
                 } else {
@@ -1661,6 +1665,11 @@
                             if (tempChatMode !== 'ask' && tempEnableMultiModel) {
                                 tempEnableMultiModel = false;
                             }
+                            tempToolAutoApproveSettings = {
+                                ...(tempChatMode === 'ask'
+                                    ? globalToolAutoApproveSettingsAsk
+                                    : globalToolAutoApproveSettings)
+                            };
                             applySettings();
                         }}
                     >
@@ -1976,7 +1985,7 @@
         max-height: 70vh;
         display: flex;
         flex-direction: column;
-        z-index: 1000;
+        z-index: 10;
     }
 
     .model-settings-header {
