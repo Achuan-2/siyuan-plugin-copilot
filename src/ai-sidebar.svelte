@@ -3158,6 +3158,9 @@
         } else {
             // 如果未启用模型选择，确保禁用多模型模式
             enableMultiModel = false;
+            // 清空已保存的多模型选择，避免状态残留
+            settings.selectedMultiModels = [];
+            selectedMultiModels = [];
         }
     }
 

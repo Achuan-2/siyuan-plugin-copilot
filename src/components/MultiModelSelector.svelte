@@ -457,11 +457,16 @@
         return selectedModels.map(m => getModelName(m.provider, m.modelId)).join('，');
     })();
 
-    // 获取某个模型在选择列表中的数量
-    function getModelSelectionCount(provider: string, modelId: string): number {
-        if (!enableMultiModel) return 0;
-        return selectedModels.filter(m => m.provider === provider && m.modelId === modelId).length;
-    }
+    // 已选模型数量映射（响应式，确保模型树角标随 selectedModels 实时更新）
+    $: selectedModelCountMap = (() => {
+        const counts: Record<string, number> = {};
+        if (!enableMultiModel) return counts;
+        selectedModels.forEach(m => {
+            const key = `${m.provider}:${m.modelId}`;
+            counts[key] = (counts[key] || 0) + 1;
+        });
+        return counts;
+    })();
 
     // 减少模型选择次数（移除一个实例）
     function decreaseModelSelection(provider: string, modelId: string, event: Event) {
@@ -890,7 +895,7 @@
                                         {/if}
                                         <div class="multi-model-selector__model-info">
                                             <div class="multi-model-selector__model-name-container">
-                                                {#if enableMultiModel && getModelSelectionCount(provider.id, model.id) > 0}
+                                                {#if enableMultiModel && (selectedModelCountMap[`${provider.id}:${model.id}`] || 0) > 0}
                                                     <span
                                                         class="multi-model-selector__model-count-badge"
                                                         role="button"
@@ -904,10 +909,7 @@
                                                             )}
                                                         on:keydown={() => {}}
                                                     >
-                                                        {getModelSelectionCount(
-                                                            provider.id,
-                                                            model.id
-                                                        )}
+                                                        {selectedModelCountMap[`${provider.id}:${model.id}`]}
                                                     </span>
                                                 {/if}
                                                 <span class="multi-model-selector__model-name">
