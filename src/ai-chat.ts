@@ -5,6 +5,16 @@
  */
 
 import { forwardProxyFetch } from './api';
+import {
+    type ThinkingEffort,
+    isSupportedThinkingGeminiModel,
+    isMinimaxThinkingModel,
+    buildOpenAIThinkingParams,
+    buildClaudeThinkingParams,
+    buildGeminiThinkingParams,
+    clearOpenAIThinkingParams,
+} from './thinking-effort';
+
 export interface ToolCall {
     id: string;
     type: 'function';
@@ -116,9 +126,6 @@ export interface GeneratedImageData {
     path?: string; // 插件内存储的资源路径
 }
 
-// 思考努力程度类型
-export type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto';
-
 // ==================== Question Card 类型 ====================
 
 export interface QuestionOption {
@@ -212,135 +219,6 @@ function getMiniMaxFallbackModels(providerName: string): ModelInfo[] {
         name: modelId,
         provider: providerName,
     }));
-}
-
-// 思考努力程度到比例的映射（用于计算 token 预算）
-export const EFFORT_RATIO: Record<ThinkingEffort, number> = {
-    low: 0.2,
-    medium: 0.5,
-    high: 0.8,
-    auto: 0.5  // auto 使用中等比例
-};
-
-// Claude 模型的 token 限制配置
-interface TokenLimitConfig {
-    min: number;
-    max: number;
-}
-
-const CLAUDE_TOKEN_LIMITS: Record<string, TokenLimitConfig> = {
-    'claude-3-7-sonnet': { min: 1024, max: 32768 },
-    'claude-3-5-sonnet': { min: 1024, max: 16384 },
-    'claude-sonnet-4': { min: 1024, max: 32768 },
-    'claude-opus-4': { min: 1024, max: 32768 },
-    // 默认值
-    'default': { min: 1024, max: 32768 }
-};
-
-// Gemini 支持思考模式的模型正则表达式
-// 匹配: gemini-2.5-*, gemini-3-*, gemini-flash-latest, gemini-pro-latest 等
-export const GEMINI_THINKING_MODEL_REGEX =
-    /gemini-(?:2\.5.*(?:-latest)?|3(?:\.\d+)?-(?:flash|pro)(?:-preview)?|flash-latest|pro-latest|flash-lite-latest)(?:-[\w-]+)*$/i;
-
-// Claude 模型正则表达式（所有以 claude 开头的模型都认为支持思考模式）
-export const CLAUDE_THINKING_MODEL_REGEX = /^claude/i;
-
-/**
- * 获取模型ID的基础名称（小写，去除提供商前缀）
- */
-function getLowerBaseModelName(modelId: string, separator: string = '/'): string {
-    const parts = modelId.split(separator);
-    return parts[parts.length - 1].toLowerCase();
-}
-
-/**
- * 查找 Claude 模型的 token 限制配置
- */
-function findClaudeTokenLimit(modelId: string): TokenLimitConfig {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-
-    // 按优先级匹配
-    for (const [key, config] of Object.entries(CLAUDE_TOKEN_LIMITS)) {
-        if (key !== 'default' && baseModelId.includes(key)) {
-            return config;
-        }
-    }
-
-    return CLAUDE_TOKEN_LIMITS['default'];
-}
-
-/**
- * 检测模型是否是支持思考模式的 Claude 模型
- */
-export function isSupportedThinkingClaudeModel(modelId: string): boolean {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-    return CLAUDE_THINKING_MODEL_REGEX.test(baseModelId);
-}
-
-/**
- * 检测模型是否是 Claude 模型（用于判断是否使用 Claude 原生 API）
- */
-export function isClaudeModel(modelId: string): boolean {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-    return CLAUDE_THINKING_MODEL_REGEX.test(baseModelId);
-}
-
-/**
- * 检测模型是否是支持思考模式的 Gemini 模型
- */
-export function isSupportedThinkingGeminiModel(modelId: string): boolean {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-    if (GEMINI_THINKING_MODEL_REGEX.test(baseModelId)) {
-        // 排除图片和语音模型
-        if (baseModelId.includes('image') || baseModelId.includes('tts')) {
-            return false;
-        }
-        return true;
-    }
-    return false;
-}
-
-/**
- * 检测模型是否是 Gemini 3 系列模型（支持 reasoning_effort 参数）
- */
-export function isGemini3Model(modelId: string): boolean {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-    return baseModelId.includes('gemini-3');
-}
-
-/**
- * 检测模型是否是支持思考模式的 MiniMax M2 系列模型
- */
-export function isMinimaxThinkingModel(modelId: string): boolean {
-    const baseModelId = getLowerBaseModelName(modelId, '/');
-    return /minimax-m2(?:\.\d+)?/i.test(baseModelId);
-}
-
-
-
-/**
- * 计算 Claude 模型的思考预算 token 数
- */
-export function calculateClaudeThinkingBudget(
-    modelId: string,
-    reasoningEffort: ThinkingEffort,
-    maxTokens?: number
-): number {
-    const DEFAULT_MAX_TOKENS = 8192;
-    const tokenLimit = findClaudeTokenLimit(modelId);
-    const effortRatio = EFFORT_RATIO[reasoningEffort];
-
-    // 计算基础预算
-    let budgetTokens = Math.floor(
-        (tokenLimit.max - tokenLimit.min) * effortRatio + tokenLimit.min
-    );
-
-    // 根据 maxTokens 限制调整
-    budgetTokens = Math.floor(
-        Math.max(1024, Math.min(budgetTokens, (maxTokens || DEFAULT_MAX_TOKENS) * effortRatio))
-    );
-
-    return budgetTokens;
 }
 
 interface ProviderConfig {
@@ -934,9 +812,6 @@ async function chatOpenAIFormat(
             formatted.content = newContent;
         }
 
-        // 检测是否是 DeepSeek 推理模型（deepseek-reasoner 或 deepseek-r1）
-        const isDeepSeekReasoner = /deepseek-(reasoner|r1)/i.test(options.model);
-
         // 深度思考模式下需要回传的思维链内容（如 DeepSeek reasoning_content）
         // 如果历史消息中存在 reasoning_content，无论当前是否启用 thinking 模式，都应该回传给 API
         // 否则某些严格校验的模型（如 DeepSeek, Kimi 等）在关闭 thinking 模式继续对话时会报 400 错误
@@ -1031,28 +906,10 @@ async function chatOpenAIFormat(
         delete requestBody.temperature;
     }
 
-    // 检测是否是 Minimax 模型
-    const isMinimaxThinking = isMinimaxThinkingModel(options.model);
-
-    // MiniMax 文档中的 OpenAI SDK `extra_body={"reasoning_split": true}`
-    // 会被 SDK 展平为顶层请求参数。这里我们直接 fetch JSON，因此需要手动放到顶层。
-    if (isMinimaxThinking) {
-        requestBody.reasoning_split = true;
-        if (requestBody.extra_body?.reasoning_split !== undefined) {
-            delete requestBody.extra_body.reasoning_split;
-        }
-    }
-
     // 处理思考模式：界面控制优先
     // 如果界面未启用思考模式，删除自定义参数中可能存在的思考模式设置
     if (!options.enableThinking) {
-        // 删除可能来自自定义参数的思考模式字段
-        delete requestBody.thinking;
-        delete requestBody.reasoning_effort;
-        delete requestBody.enable_thinking;
-        if (requestBody.extra_body?.google?.thinking_config) {
-            delete requestBody.extra_body.google.thinking_config;
-        }
+        clearOpenAIThinkingParams(requestBody);
 
         // Kimi 特殊处理：未启用 thinking 时需要显式设置为 disabled
         // 否则默认为 enabled，会导致 API 报错
@@ -1063,71 +920,19 @@ async function chatOpenAIFormat(
         // 如果启用思考模式，添加相关参数
         // 注意：这里在自定义参数之后设置，确保界面控制的思考模式优先级最高
         const reasoningEffort = options.reasoningEffort || 'low';
-        
-        // 通用 thinking 开关：开启思考模式时默认显式启用
-        // 某些 OpenAI 兼容接口要求该字段存在
-        requestBody.thinking = { type: 'enabled' };
+        const { body: thinkingBody = {}, extraBody: thinkingExtraBody = {} } = buildOpenAIThinkingParams(
+            options.model,
+            reasoningEffort,
+            { maxTokens: options.maxTokens, thinkingBudget: options.thinkingBudget }
+        );
 
-        // 检查是否是 Claude 模型（通过 OpenAI 兼容 API）
-        if (isSupportedThinkingClaudeModel(options.model)) {
-            // Claude 模型使用 thinking 参数
-            // https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
-            const budgetTokens = calculateClaudeThinkingBudget(
-                options.model,
-                reasoningEffort,
-                options.maxTokens
-            );
-            requestBody.thinking = {
-                type: 'enabled',
-                budget_tokens: budgetTokens
-            };
+        Object.assign(requestBody, thinkingBody);
+        if (Object.keys(thinkingExtraBody).length > 0) {
+            requestBody.extra_body = { ...requestBody.extra_body, ...thinkingExtraBody };
         }
-        // Kimi 启用 thinking 时需要设置 thinking: {type: "enabled"}
-        else if (isKimi) {
-            requestBody.thinking = { type: 'enabled' };
-        }
-        // 检查是否是通过 OpenAI 兼容 API 调用的 Gemini 模型
-        else if (isSupportedThinkingGeminiModel(options.model)) {
-            // Gemini 3 系列使用 reasoning_effort 参数
-            // https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#openai_compatibility
-            if (isGemini3Model(options.model)) {
-                // Gemini 3 只支持 low 和 high，将 medium 和 auto 映射到 low
-                let mappedEffort: 'low' | 'high' = 'low';
-                if (reasoningEffort === 'high') {
-                    mappedEffort = 'high';
-                }
-                requestBody.reasoning_effort = mappedEffort;
-            } else {
-                // Gemini 2.5 等使用 google.thinking_config
-                // 根据 reasoningEffort 计算 thinkingBudget
-                let thinkingBudget: number;
-                if (reasoningEffort === 'auto') {
-                    thinkingBudget = -1; // -1 表示动态思考
-                } else {
-                    // 根据努力程度设置预算（以 token 为单位）
-                    const budgetMap: Record<ThinkingEffort, number> = {
-                        low: 4096,
-                        medium: 16384,
-                        high: 32768,
-                        auto: -1
-                    };
-                    thinkingBudget = options.thinkingBudget ?? budgetMap[reasoningEffort];
-                }
-                requestBody.extra_body = {
-                    ...requestBody.extra_body,
-                    google: {
-                        thinking_config: {
-                            thinking_budget: thinkingBudget,
-                            include_thoughts: true
-                        }
-                    }
-                };
-            }
-        }
+
         // 通用的 stream_options（适用于 DeepSeek 等）
-        requestBody.stream_options = {
-            include_usage: true
-        };
+        requestBody.stream_options = { include_usage: true };
     }
 
     const headers: Record<string, string> = {
@@ -1439,11 +1244,15 @@ async function chatGeminiFormat(
     } else {
         // 如果启用思考模式，添加 thinkingConfig 参数
         // 这会覆盖自定义参数中的设置
-        requestBody.generationConfig.thinkingConfig = {
-            includeThoughts: true // 包含思考过程
-        };
-        // Gemini API 要求设置 includeThoughts 时不能同时设置某些参数或需要特殊预算
-        // 这里默认不设置 thinkingBudget，让模型自动决定
+        const reasoningEffort = options.reasoningEffort || 'low';
+        const { thinkingConfig } = buildGeminiThinkingParams(
+            options.model,
+            reasoningEffort,
+            { maxTokens: options.maxTokens, thinkingBudget: options.thinkingBudget }
+        );
+        if (thinkingConfig) {
+            requestBody.generationConfig.thinkingConfig = thinkingConfig;
+        }
     }
 
     // 添加工具定义 (Gemini 原生格式)
@@ -2149,15 +1958,12 @@ async function chatClaudeFormat(
     // 处理思考模式
     if (options.enableThinking) {
         const reasoningEffort = options.reasoningEffort || 'low';
-        const budgetTokens = calculateClaudeThinkingBudget(
+        const thinkingParams = buildClaudeThinkingParams(
             options.model,
             reasoningEffort,
-            options.maxTokens
+            { maxTokens: options.maxTokens }
         );
-        requestBody.thinking = {
-            type: 'enabled',
-            budget_tokens: budgetTokens
-        };
+        Object.assign(requestBody, thinkingParams);
     }
 
     const headers: Record<string, string> = {

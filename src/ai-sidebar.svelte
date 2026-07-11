@@ -8,16 +8,17 @@
         type EditOperation,
         type ToolCall,
         type ContextDocument,
-        type ThinkingEffort,
         type QuestionCardData,
         type QuestionItem,
         type QuestionCardAnswers,
-        isSupportedThinkingGeminiModel,
-        isSupportedThinkingClaudeModel,
-        isGemini3Model,
         estimateTokens,
         calculateTotalTokens,
     } from './ai-chat';
+    import {
+        type ThinkingEffort,
+        getSupportedThinkingEffortLevels,
+        THINKING_EFFORT_LABELS,
+    } from './thinking-effort';
     import type { MessageContent } from './ai-chat';
     import { getActiveEditor, openTab } from 'siyuan';
     import { WEBAPP_TAB_TYPE } from './index';
@@ -3407,25 +3408,15 @@
         return modelConfig?.capabilities?.webSearch || false;
     })();
 
-    // 是否显示思考程度选择器（只有 Gemini 和 Claude 模型在启用思考模式时才显示）
+    // 是否显示思考程度选择器
+    // 当模型支持多个 effort 档位且已启用思考模式时显示
     $: showThinkingEffortSelector = (() => {
         if (!isThinkingModeEnabled || !currentModelId) {
             return false;
         }
-        // 检查是否是支持思考程度设置的模型（Gemini 或 Claude）
-        return (
-            isSupportedThinkingGeminiModel(currentModelId) ||
-            isSupportedThinkingClaudeModel(currentModelId)
-        );
+        const supportedLevels = getSupportedThinkingEffortLevels(currentModelId);
+        return supportedLevels.length > 1;
     })();
-
-    // 当前模型是否是 Gemini 模型（用于决定是否显示"默认"选项）
-    $: isCurrentModelGemini = currentModelId
-        ? isSupportedThinkingGeminiModel(currentModelId)
-        : false;
-
-    // 当前模型是否是 Gemini 3 系列（用于限制思考程度选项）
-    $: isCurrentModelGemini3 = currentModelId ? isGemini3Model(currentModelId) : false;
 
     // 当前思考程度设置
     $: currentThinkingEffort = (() => {
@@ -16130,16 +16121,11 @@
                                     on:change={handleThinkingEffortChange}
                                     title={i18n('thinking.effort.title')}
                                 >
-                                    {#if isCurrentModelGemini}
-                                        <option value="auto">{i18n('thinking.effort.auto')}</option>
-                                    {/if}
-                                    <option value="low">{i18n('thinking.effort.low')}</option>
-                                    {#if !isCurrentModelGemini3}
-                                        <option value="medium">
-                                            {i18n('thinking.effort.medium')}
+                                    {#each getSupportedThinkingEffortLevels(currentModelId) as effort}
+                                        <option value={effort}>
+                                            {THINKING_EFFORT_LABELS[effort]}
                                         </option>
-                                    {/if}
-                                    <option value="high">{i18n('thinking.effort.high')}</option>
+                                    {/each}
                                 </select>
                             {/if}
                         </div>
@@ -16194,16 +16180,11 @@
                                     on:change={handleThinkingEffortChange}
                                     title={i18n('thinking.effort.title')}
                                 >
-                                    {#if isCurrentModelGemini}
-                                        <option value="auto">{i18n('thinking.effort.auto')}</option>
-                                    {/if}
-                                    <option value="low">{i18n('thinking.effort.low')}</option>
-                                    {#if !isCurrentModelGemini3}
-                                        <option value="medium">
-                                            {i18n('thinking.effort.medium')}
+                                    {#each getSupportedThinkingEffortLevels(currentModelId) as effort}
+                                        <option value={effort}>
+                                            {THINKING_EFFORT_LABELS[effort]}
                                         </option>
-                                    {/if}
-                                    <option value="high">{i18n('thinking.effort.high')}</option>
+                                    {/each}
                                 </select>
                             {/if}
                         </div>

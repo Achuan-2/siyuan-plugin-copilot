@@ -881,11 +881,11 @@
         "enabled": "思考模式已启用",
         "disabled": "思考模式已禁用",
         "effort": {
-            "title": "思考程度",
-            "auto": "默认",
-            "low": "低",
-            "medium": "中",
-            "high": "高"
+            "title": "Thinking Effort",
+            "auto": "auto",
+            "low": "low",
+            "medium": "medium",
+            "high": "high"
         }
     },
     "webSearch": {

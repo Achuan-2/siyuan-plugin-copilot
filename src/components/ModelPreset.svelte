@@ -6,7 +6,7 @@
     import MultiModelSelector from './MultiModelSelector.svelte';
     import ToolSelector, { type ToolConfig } from './ToolSelector.svelte';
     import { TOOL_CATEGORIES, QA_TOOL_CATEGORIES } from '../tools';
-    import type { ThinkingEffort } from '../ai-chat';
+    import type { ThinkingEffort } from '../thinking-effort';
 
     export let providers: Record<string, any> = {};
     export let currentProvider = '';

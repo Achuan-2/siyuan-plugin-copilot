@@ -1,5 +1,6 @@
 import { i18n } from "./utils/i18n";
-import type { ThinkingEffort, ChatInterfaceType } from "./ai-chat";
+import type { ChatInterfaceType } from "./ai-chat";
+import type { ThinkingEffort } from "./thinking-effort";
 import {
     DEFAULT_SYSTEM_PROMPT_ASK,
     DEFAULT_SYSTEM_PROMPT_AGENT,

@@ -1,8 +1,8 @@
 <script lang="ts">
     import { createEventDispatcher, onDestroy, onMount } from 'svelte';
     import type { ProviderConfig, CustomProviderConfig } from '../defaultSettings';
-    import type { ThinkingEffort } from '../ai-chat';
-    import { isGemini3Model } from '../ai-chat';
+    import type { ThinkingEffort } from '../thinking-effort';
+    import { getSupportedThinkingEffortLevels, THINKING_EFFORT_LABELS } from '../thinking-effort';
     import { i18n } from '../utils/i18n';
 
     export let providers: Record<string, any>;
@@ -770,7 +770,7 @@
                                                                     toggleModelInstanceThinking(index)}
                                                             />
                                                             <span class="multi-model-selector__thinking-label">
-                                                                思考
+                                                                Thinking
                                                             </span>
                                                         </label>
                                                         {#if model.thinkingEnabled}
@@ -780,16 +780,13 @@
                                                                 on:change={e =>
                                                                     handleThinkingEffortChange(index, e)}
                                                                 on:click|stopPropagation
-                                                                title="思考程度"
+                                                                title="Thinking Effort"
                                                             >
-                                                                <option value="low">低</option>
-                                                                {#if !isGemini3Model(model.modelId)}
-                                                                    <option value="medium">中</option>
-                                                                {/if}
-                                                                <option value="high">高</option>
-                                                                {#if !isGemini3Model(model.modelId)}
-                                                                    <option value="auto">自动</option>
-                                                                {/if}
+                                                                {#each getSupportedThinkingEffortLevels(model.modelId) as effort}
+                                                                    <option value={effort}>
+                                                                        {THINKING_EFFORT_LABELS[effort]}
+                                                                    </option>
+                                                                {/each}
                                                             </select>
                                                         {/if}
                                                     {/if}
