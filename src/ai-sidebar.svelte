@@ -2096,7 +2096,7 @@
     $: totalUsedTokens = totalHistoryTokens + currentInputTokens + toolsTokens;
 
     $: activeModelsContextInfo = (() => {
-        if (enableMultiModel && selectedMultiModels.length > 0) {
+        if (enableMultiModel && chatMode === 'ask' && selectedMultiModels.length > 0) {
             return selectedMultiModels.map(model => {
                 const limit = getModelContextLimit(model.modelId, model.provider);
                 const ratio = limit > 0 ? (totalUsedTokens / limit) : 0;
@@ -16198,7 +16198,7 @@
                 {#if showContextPopover && activeModelsContextInfo.length > 0}
                     <div class="ai-sidebar__context-popover" on:click|stopPropagation>
                         <div class="ai-sidebar__context-popover-title">
-                            {enableMultiModel ? i18n('aiSidebar.context.multiUsage') : i18n('aiSidebar.context.usage')}
+                            {(enableMultiModel && chatMode === 'ask') ? i18n('aiSidebar.context.multiUsage') : i18n('aiSidebar.context.usage')}
                         </div>
                         <div class="ai-sidebar__context-popover-list">
                             {#each activeModelsContextInfo as info}
