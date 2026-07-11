@@ -2402,7 +2402,6 @@ export async function callSiyuanMcpTool(name, args) {
 export async function initializeMcpTools() {
     try {
         const mcpToolsList = await listSiyuanMcpTools();
-        console.log("Loaded Siyuan MCP tools:", mcpToolsList.map((t) => t.name));
 
         // Keep only base non-MCP tools
         const baseTools = AVAILABLE_TOOLS.filter(t => {
@@ -2494,7 +2493,6 @@ export async function initializeMcpTools() {
         QA_TOOL_CATEGORIES.plugin.tools = pluginToolNames;
         QA_TOOL_CATEGORIES.plugin_task_note_management.tools = taskNoteManagementToolNames;
 
-        console.log("Successfully initialized Siyuan MCP tools!");
     } catch (error) {
         console.error("Failed to initialize Siyuan MCP tools:", error);
     }
