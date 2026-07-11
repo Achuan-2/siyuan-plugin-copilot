@@ -533,6 +533,51 @@ description: 描述这个 Skill 的功能
     let contextMenuPlatformId: string | null = null;
     let contextMenuPosition = { x: 0, y: 0 };
 
+    // 移动端模型配置面板状态
+    let isMobileLayout = false;
+    let mobileModelPanelOpen = false;
+    let platformLayoutElement: HTMLElement | null = null;
+    let platformLayoutObserver: ResizeObserver | null = null;
+    let observedLayoutElement: HTMLElement | null = null;
+
+    function updateIsMobileLayout(width: number) {
+        isMobileLayout = width <= 599;
+        if (!isMobileLayout) {
+            mobileModelPanelOpen = false;
+        }
+    }
+
+    function openMobileModelPanel() {
+        mobileModelPanelOpen = true;
+    }
+
+    function closeMobileModelPanel() {
+        mobileModelPanelOpen = false;
+    }
+
+    function syncLayoutObserver() {
+        if (platformLayoutElement === observedLayoutElement) return;
+
+        if (platformLayoutObserver) {
+            platformLayoutObserver.disconnect();
+            platformLayoutObserver = null;
+        }
+
+        observedLayoutElement = platformLayoutElement;
+
+        if (platformLayoutElement) {
+            platformLayoutObserver = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    updateIsMobileLayout(entry.contentRect.width);
+                }
+            });
+            platformLayoutObserver.observe(platformLayoutElement);
+            updateIsMobileLayout(platformLayoutElement.clientWidth);
+        }
+    }
+
+    $: syncLayoutObserver();
+
     function closePlatformContextMenu() {
         contextMenuPlatformId = null;
     }
@@ -1195,6 +1240,10 @@ description: 描述这个 Skill 的功能
     onDestroy(() => {
         document.removeEventListener('click', closePlatformContextMenu);
         window.removeEventListener('blur', closePlatformContextMenu);
+        if (platformLayoutObserver) {
+            platformLayoutObserver.disconnect();
+            platformLayoutObserver = null;
+        }
     });
 
     async function runload() {
@@ -1419,8 +1468,14 @@ description: 描述这个 Skill 的功能
             />
         {:else if focusGroup === i18n('settings.settingsGroup.platformManagement')}
             <!-- 新的侧边栏布局：左侧为平台列表/操作，右侧为平台配置主区域 -->
-            <div class="platform-management-layout">
-                <aside class="platform-sidebar">
+            <div
+                class="platform-management-layout"
+                bind:this={platformLayoutElement}
+            >
+                <aside
+                    class="platform-sidebar"
+                    class:platform-sidebar--hidden-mobile={mobileModelPanelOpen}
+                >
                     <div class="unified-platform-manager">
                         <div class="manager-header">
                             <h5>{i18n('platform.management')}</h5>
@@ -1481,27 +1536,36 @@ description: 描述这个 Skill 的功能
                                         item.index &&
                                         dragSourceIndex !== null &&
                                         dragSourceIndex < item.index}
-                                    draggable={!platformSearchQuery.trim()}
+                                    draggable={!isMobileLayout && !platformSearchQuery.trim()}
                                     on:click={() => {
                                         selectedProviderId = item.platform.id;
                                         handleProviderSelect();
+                                        openMobileModelPanel();
                                     }}
                                     on:keydown={e => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             selectedProviderId = item.platform.id;
                                             handleProviderSelect();
+                                            openMobileModelPanel();
                                         }
                                     }}
                                     on:dragstart={e =>
+                                        !isMobileLayout &&
                                         !platformSearchQuery.trim() &&
                                         handleDragStart(e, item.index, item.platform.id)}
                                     on:dragenter={() =>
-                                        !platformSearchQuery.trim() && handleDragEnter(item.index)}
+                                        !isMobileLayout &&
+                                        !platformSearchQuery.trim() &&
+                                        handleDragEnter(item.index)}
                                     on:dragend={handleDragEnd}
                                     on:dragover={e =>
-                                        !platformSearchQuery.trim() && handleDragOver(e)}
+                                        !isMobileLayout &&
+                                        !platformSearchQuery.trim() &&
+                                        handleDragOver(e)}
                                     on:drop={e =>
-                                        !platformSearchQuery.trim() && handleDrop(e, item.index)}
+                                        !isMobileLayout &&
+                                        !platformSearchQuery.trim() &&
+                                        handleDrop(e, item.index)}
                                     on:contextmenu={e =>
                                         openPlatformContextMenu(e, item.platform.id)}
                                     role="button"
@@ -1567,7 +1631,24 @@ description: 描述这个 Skill 的功能
                     </div>
                 {/if}
 
-                <main class="platform-main">
+                <main
+                    class="platform-main"
+                    class:platform-main--mobile-open={mobileModelPanelOpen}
+                >
+                    <div class="platform-main__mobile-header">
+                        <button
+                            class="b3-button b3-button--text"
+                            on:click={closeMobileModelPanel}
+                        >
+                            <svg class="b3-button__icon">
+                                <use xlink:href="#iconLeft"></use>
+                            </svg>
+                            {i18n('common.back') || '返回'}
+                        </button>
+                        <span class="platform-main__mobile-title">
+                            {selectedProviderId ? selectedProviderName : (i18n('platform.select') || '选择平台')}
+                        </span>
+                    </div>
                     {#if selectedProviderId}
                         {#if builtInProviderNames[selectedProviderId]}
                             {#key selectedProviderId}
@@ -2205,12 +2286,24 @@ description: 描述这个 Skill 的功能
         flex-direction: column;
     }
 
-    .no-selection {
-        padding: 24px;
-        background: var(--b3-theme-background);
-        border: 1px dashed var(--b3-border-color);
-        border-radius: 6px;
-        color: var(--b3-theme-on-surface-light);
+    .platform-main__mobile-header {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-surface);
+        flex-shrink: 0;
+    }
+
+    .platform-main__mobile-title {
+        font-size: 14px;
+        font-weight: 500;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .unified-platform-manager {
@@ -2531,17 +2624,47 @@ description: 描述这个 Skill 的功能
     @container settings-panel (max-width: 599px) {
         .platform-management-layout {
             flex-direction: column;
-            gap: 12px;
-            overflow-y: auto;
+            gap: 0;
+            overflow: hidden;
+            position: relative;
         }
 
         .platform-sidebar {
             width: 100%;
-            max-height: 42%;
+            max-height: none;
+            flex: 1;
+        }
+
+        .platform-sidebar--hidden-mobile {
+            display: none;
         }
 
         .platform-main {
-            min-height: 260px;
+            min-height: 0;
+            width: 100%;
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: var(--b3-theme-background);
+            z-index: 1;
+        }
+
+        .platform-main--mobile-open {
+            display: flex;
+        }
+
+        .platform-main__mobile-header {
+            display: flex;
+        }
+
+        .platform-item__drag-handle {
+            display: none;
+        }
+
+        :global(.platform-main--mobile-open .provider-config) {
+            flex: 1;
+            height: auto;
+            min-height: 0;
         }
     }
 
