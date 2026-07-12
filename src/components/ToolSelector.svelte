@@ -22,6 +22,10 @@
     // 本地缓存的 autoApprove 配置（从外部 settings 初始化）
     let toolAutoApproveMap: Map<string, boolean> = new Map();
 
+    // 搜索与筛选状态
+    let searchQuery = '';
+    let showSelectedOnly = false;
+
     // 当外部 selectedTools 改变时，同步到本地状态
     $: if (selectedTools) {
         localSelectedTools = [...selectedTools];
@@ -336,6 +340,38 @@
     function toggleMcpParentCollapse() {
         mcpParentCollapsed = !mcpParentCollapsed;
     }
+
+    // 搜索与筛选逻辑
+    $: normalizedSearch = searchQuery.trim().toLowerCase();
+    $: filterActive = normalizedSearch !== '' || showSelectedOnly;
+
+    function toolMatchesFilter(tool: Tool, query: string, showOnly: boolean, selected: Set<string>): boolean {
+        if (showOnly && !selected.has(tool.function.name)) return false;
+        if (!query) return true;
+
+        if (tool.function.name.toLowerCase().includes(query)) return true;
+        if (getToolDisplayName(tool.function.name).toLowerCase().includes(query)) return true;
+        if (getToolFullDescription(tool).toLowerCase().includes(query)) return true;
+        return false;
+    }
+
+    $: filteredCategories = (() => {
+        const result: Record<string, Tool[]> = {};
+        for (const [category, tools] of Object.entries(categorizedTools)) {
+            const visible = tools.filter(tool => toolMatchesFilter(tool, normalizedSearch, showSelectedOnly, selectedSet));
+            if (visible.length > 0) result[category] = visible;
+        }
+        return result;
+    })();
+
+    function isCategoryEffectivelyCollapsed(category: string): boolean {
+        if (filterActive) return false;
+        return collapsedCategories.has(category);
+    }
+
+    $: effectiveMcpParentCollapsed = filterActive ? false : mcpParentCollapsed;
+    $: hasVisibleSiyuanTools = Object.entries(filteredCategories).some(([cat]) => isSiyuanCategory(cat));
+    $: hasAnyVisibleTools = Object.keys(filteredCategories).length > 0;
 </script>
 
 <div class="tool-selector__overlay" on:click={close}></div>
@@ -360,7 +396,42 @@
             <span>{i18n('toolsSelectorInfo')}</span>
         </div>
 
-        {#if hasSiyuanTools}
+        <div class="tool-selector__filter-bar">
+            <div class="tool-selector__search">
+                <svg class="svg tool-selector__search-icon">
+                    <use xlink:href="#iconSearch"></use>
+                </svg>
+                <input
+                    class="b3-text-field"
+                    type="text"
+                    bind:value={searchQuery}
+                    placeholder={i18n('toolsSelectorSearchPlaceholder')}
+                />
+                {#if searchQuery}
+                    <button
+                        class="b3-button b3-button--text tool-selector__search-clear"
+                        on:click={() => searchQuery = ''}
+                        title={i18n('commonClose')}
+                    >
+                        <svg class="b3-button__icon">
+                            <use xlink:href="#iconClose"></use>
+                        </svg>
+                    </button>
+                {/if}
+            </div>
+            <label class="tool-selector__filter-label">
+                <input
+                    type="checkbox"
+                    class="b3-switch"
+                    bind:checked={showSelectedOnly}
+                />
+                <span class="tool-selector__filter-text">
+                    {i18n('toolsSelectorShowSelectedOnly')}
+                </span>
+            </label>
+        </div>
+
+        {#if hasVisibleSiyuanTools}
             <div class="mcp-parent-category">
                 <div class="mcp-parent-category__header">
                     <div
@@ -370,7 +441,7 @@
                     >
                         <svg
                             class="svg mcp-parent-category__arrow"
-                            class:mcp-parent-category__arrow--rotated={!mcpParentCollapsed}
+                            class:mcp-parent-category__arrow--rotated={!effectiveMcpParentCollapsed}
                             style="width: 12px; height: 12px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
                         >
                             <use xlink:href="#iconRight"></use>
@@ -389,9 +460,9 @@
                     </button>
                 </div>
 
-                {#if !mcpParentCollapsed}
+                {#if !effectiveMcpParentCollapsed}
                     <div class="mcp-parent-category__content">
-                        {#each Object.entries(categorizedTools).filter(([cat, tList]) => tList.length > 0 && isSiyuanCategory(cat)) as [category, tools] (category)}
+                        {#each Object.entries(filteredCategories).filter(([cat]) => isSiyuanCategory(cat)) as [category, tools] (category)}
                             <div class="tool-category">
                                 <div class="tool-category__header">
                                     <div
@@ -401,7 +472,7 @@
                                     >
                                         <svg
                                             class="svg tool-category__arrow"
-                                            class:tool-category__arrow--rotated={!collapsedCategories.has(category)}
+                                            class:tool-category__arrow--rotated={!isCategoryEffectivelyCollapsed(category)}
                                             style="width: 10px; height: 10px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
                                         >
                                             <use xlink:href="#iconRight"></use>
@@ -411,16 +482,16 @@
                                     <button
                                         class="b3-button b3-button--text tool-category__select-btn"
                                         class:tool-category__select-btn--partial={isCategoryPartiallySelected(
-                                            tools
+                                            categorizedTools[category]
                                         )}
-                                        on:click={() => toggleCategory(tools)}
+                                        on:click={() => toggleCategory(categorizedTools[category])}
                                     >
-                                        {isCategoryFullySelected(tools)
+                                        {isCategoryFullySelected(categorizedTools[category])
                                             ? i18n('toolsSelectorDeselectAll')
                                             : i18n('toolsSelectorSelectAll')}
                                     </button>
                                 </div>
-                                {#if !collapsedCategories.has(category)}
+                                {#if !isCategoryEffectivelyCollapsed(category)}
                                     <div class="tool-list">
                                         {#each tools as tool (tool.function.name)}
                                             {@const toolName = tool.function.name}
@@ -510,7 +581,7 @@
             </div>
         {/if}
 
-        {#each Object.entries(categorizedTools).filter(([cat, tList]) => tList.length > 0 && !isSiyuanCategory(cat)) as [category, tools] (category)}
+        {#each Object.entries(filteredCategories).filter(([cat]) => !isSiyuanCategory(cat)) as [category, tools] (category)}
             <div class="tool-category">
                 <div class="tool-category__header">
                     <div
@@ -520,7 +591,7 @@
                     >
                         <svg
                             class="svg tool-category__arrow"
-                            class:tool-category__arrow--rotated={!collapsedCategories.has(category)}
+                            class:tool-category__arrow--rotated={!isCategoryEffectivelyCollapsed(category)}
                             style="width: 10px; height: 10px; transition: transform 0.2s; fill: var(--b3-theme-primary); flex-shrink: 0;"
                         >
                             <use xlink:href="#iconRight"></use>
@@ -530,16 +601,16 @@
                     <button
                         class="b3-button b3-button--text tool-category__select-btn"
                         class:tool-category__select-btn--partial={isCategoryPartiallySelected(
-                            tools
+                            categorizedTools[category]
                         )}
-                        on:click={() => toggleCategory(tools)}
+                        on:click={() => toggleCategory(categorizedTools[category])}
                     >
-                        {isCategoryFullySelected(tools)
+                        {isCategoryFullySelected(categorizedTools[category])
                             ? i18n('toolsSelectorDeselectAll')
                             : i18n('toolsSelectorSelectAll')}
                     </button>
                 </div>
-                {#if !collapsedCategories.has(category)}
+                {#if !isCategoryEffectivelyCollapsed(category)}
                     <div class="tool-list">
                         {#each tools as tool (tool.function.name)}
                             {@const toolName = tool.function.name}
@@ -624,6 +695,12 @@
                 {/if}
             </div>
         {/each}
+
+        {#if !hasAnyVisibleTools}
+            <div class="tool-selector__no-results">
+                {i18n('toolsSelectorNoMatchingResults')}
+            </div>
+        {/if}
     </div>
 
     <div class="tool-selector__footer">
@@ -739,6 +816,75 @@
 
         &__count {
             font-weight: 500;
+        }
+
+        &__filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        &__search {
+            position: relative;
+            flex: 1;
+
+            .tool-selector__search-icon {
+                position: absolute;
+                left: 10px;
+                top: 50%;
+                width: 14px;
+                height: 14px;
+                transform: translateY(-50%);
+                color: var(--b3-theme-on-surface-light);
+                pointer-events: none;
+                z-index: 1;
+            }
+
+            .b3-text-field {
+                width: 100%;
+                padding-left: 32px;
+                padding-right: 28px;
+            }
+        }
+
+        &__search-clear {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 4px;
+            min-width: unset;
+            height: auto;
+            line-height: 1;
+        }
+
+        &__filter-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 13px;
+            color: var(--b3-theme-on-surface);
+            padding: 4px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+
+            &:hover {
+                background: var(--b3-theme-primary-lightest);
+            }
+        }
+
+        &__filter-text {
+            font-size: 13px;
+        }
+
+        &__no-results {
+            text-align: center;
+            padding: 24px;
+            font-size: 13px;
+            color: var(--b3-theme-on-surface-light);
         }
     }
 
