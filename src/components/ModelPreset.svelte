@@ -1,6 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher, tick, onMount } from 'svelte';
-    import { i18n } from '../utils/i18n';
+    import { i18n, i18nKey } from '../utils/i18n';
     import { exportMdContent, pushErrMsg, pushMsg, openBlock } from '@/api';
     import { confirm, Constants, getActiveEditor } from 'siyuan';
     import MultiModelSelector from './MultiModelSelector.svelte';
@@ -619,7 +619,7 @@
     // 保存当前设置为预设
     async function saveAsPreset() {
         if (!newPresetName.trim()) {
-            pushMsg(i18n('aiSidebar.modelSettings.enterPresetName'));
+            pushMsg(i18n('aiSidebarModelSettingsEnterPresetName'));
             return;
         }
 
@@ -648,7 +648,7 @@
         selectedPresetId = preset.id;
         await saveSelectedPresetId(preset.id);
 
-        pushMsg(i18n('aiSidebar.modelSettings.presetSaved'));
+        pushMsg(i18n('aiSidebarModelSettingsPresetSaved'));
 
         // 关闭设置面板
         isSettingsOpen = false;
@@ -733,8 +733,8 @@
         document.removeEventListener('click', closeOnOutsideClick);
 
         confirm(
-            i18n('aiSidebar.modelSettings.deletePreset'),
-            i18n('aiSidebar.modelSettings.confirmDelete'),
+            i18n('aiSidebarModelSettingsDeletePreset'),
+            i18n('aiSidebarModelSettingsConfirmDelete'),
             async () => {
                 presets = presets.filter(p => p.id !== presetId);
                 await savePresetsToStorage();
@@ -742,7 +742,7 @@
                     selectedPresetId = '';
                     await saveSelectedPresetId('');
                 }
-                pushMsg(i18n('aiSidebar.modelSettings.presetDeleted'));
+                pushMsg(i18n('aiSidebarModelSettingsPresetDeleted'));
 
                 // 重新添加外部点击监听器
                 setTimeout(() => {
@@ -1066,8 +1066,8 @@
         document.removeEventListener('click', closeOnOutsideClick);
 
         confirm(
-            i18n('aiSidebar.modelSettings.unsavedChanges') || '未保存的更改',
-            i18n('aiSidebar.modelSettings.confirmClose') || '您有未保存的更改，是否保存预设？',
+            i18n('aiSidebarModelSettingsUnsavedChanges') || '未保存的更改',
+            i18n('aiSidebarModelSettingsConfirmClose') || '您有未保存的更改，是否保存预设？',
             async () => {
                 // 用户选择保存
                 if (editingPresetId) {
@@ -1277,7 +1277,7 @@
         bind:this={buttonElement}
         class="b3-button b3-button--text model-settings-button__trigger"
         on:click|stopPropagation={toggleDropdown}
-        title={currentPresetName || i18n('aiSidebar.modelSettings.title')}
+        title={currentPresetName || i18n('aiSidebarModelSettingsTitle')}
     >
         <svg class="b3-button__icon"><use xlink:href="#iconModelSetting"></use></svg>
         {#if currentPresetName}
@@ -1296,12 +1296,12 @@
             on:click|stopPropagation
         >
             <div class="model-settings-preset-list-header">
-                <h4>{i18n('aiSidebar.modelSettings.title')}</h4>
+                <h4>{i18n('aiSidebarModelSettingsTitle')}</h4>
                 <div class="model-settings-preset-list-actions">
                     <button
                         class="b3-button b3-button--text"
                         on:click={() => (isPresetListOpen = false)}
-                        title={i18n('common.close')}
+                        title={i18n('commonClose')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -1321,7 +1321,7 @@
                         }}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>
-                        {i18n('aiSidebar.modelSettings.createNewPreset') || '新建预设'}
+                        {i18n('aiSidebarModelSettingsCreateNewPreset') || '新建预设'}
                     </button>
                 </div>
 
@@ -1331,7 +1331,7 @@
                         <input
                             type="text"
                             class="b3-text-field"
-                            placeholder={i18n('aiSidebar.modelSettings.searchPresets') ||
+                            placeholder={i18n('aiSidebarModelSettingsSearchPresets') ||
                                 '搜索预设'}
                             bind:value={presetSearchQuery}
                         />
@@ -1376,26 +1376,26 @@
                                         <div class="model-settings-preset-list-item-content">
                                             <span class="preset-name">{preset.name}</span>
                                             <div class="model-settings-preset-details">
-                                                {i18n('aiSidebar.modelSettings.contextCount')}: {preset.contextCount ===
+                                                {i18n('aiSidebarModelSettingsContextCount')}: {preset.contextCount ===
                                                 -1
-                                                    ? i18n('aiSidebar.modelSettings.unlimited') ||
+                                                    ? i18n('aiSidebarModelSettingsUnlimited') ||
                                                       '不限制'
                                                     : preset.contextCount}
                                                 {#if preset.temperatureEnabled ?? true}
-                                                    | {i18n('aiSidebar.modelSettings.temperature')}: {preset.temperature.toFixed(
+                                                    | {i18n('aiSidebarModelSettingsTemperature')}: {preset.temperature.toFixed(
                                                         2
                                                     )}
                                                 {/if}
                                                 {#if preset.chatMode}
-                                                    | {i18n('aiSidebar.modelSettings.chatMode')}: {i18n(
-                                                        `aiSidebar.mode.${preset.chatMode}`
+                                                    | {i18n('aiSidebarModelSettingsChatMode')}: {i18n(
+                                                        i18nKey('aiSidebar', 'mode', preset.chatMode)
                                                     ) || preset.chatMode}
                                                 {/if}
                                                 {#if preset.promptBlocks && preset.promptBlocks.length > 0}
                                                     | Prompt 块: {preset.promptBlocks.length}
                                                 {/if}
                                                 {#if preset.toolSelectionEnabled && preset.chatMode !== 'draw' && getPresetToolCount(preset.selectedTools) > 0}
-                                                    | {i18n('aiSidebar.agent.tools') || '工具'}: {getPresetToolCount(
+                                                    | {i18n('aiSidebarAgentTools') || '工具'}: {getPresetToolCount(
                                                         preset.selectedTools
                                                     )}
                                                 {/if}
@@ -1403,12 +1403,10 @@
                                                     <br />
                                                     <span class="model-settings-preset-models">
                                                         {#if preset.enableMultiModel}
-                                                            {i18n(
-                                                                'aiSidebar.modelSettings.multiModel'
+                                                            {i18n('aiSidebarModelSettingsMultiModel'
                                                             ) || '多模型'}:
                                                         {:else}
-                                                            {i18n(
-                                                                'aiSidebar.modelSettings.model'
+                                                            {i18n('aiSidebarModelSettingsModel'
                                                             ) || '模型'}:
                                                         {/if}
                                                         {formatPresetModels(preset.selectedModels)}
@@ -1421,7 +1419,7 @@
                                         <button
                                             class="b3-button b3-button--text"
                                             on:click|stopPropagation={() => editPreset(preset.id)}
-                                            title={i18n('aiSidebar.modelSettings.editPreset') ||
+                                            title={i18n('aiSidebarModelSettingsEditPreset') ||
                                                 '编辑预设'}
                                         >
                                             <svg class="b3-button__icon">
@@ -1431,7 +1429,7 @@
                                         <button
                                             class="b3-button b3-button--text"
                                             on:click|stopPropagation={() => deletePreset(preset.id)}
-                                            title={i18n('aiSidebar.modelSettings.deletePreset')}
+                                            title={i18n('aiSidebarModelSettingsDeletePreset')}
                                         >
                                             <svg class="b3-button__icon">
                                                 <use xlink:href="#iconTrashcan"></use>
@@ -1443,16 +1441,16 @@
                         </div>
                     {:else if presetSearchQuery.trim()}
                         <div class="model-settings-preset-list-empty">
-                            {i18n('aiSidebar.modelSettings.noResults') || '无匹配结果'}
+                            {i18n('aiSidebarModelSettingsNoResults') || '无匹配结果'}
                         </div>
                     {:else}
                         <div class="model-settings-preset-list-empty">
-                            {i18n('aiSidebar.modelSettings.noPresets')}
+                            {i18n('aiSidebarModelSettingsNoPresets')}
                         </div>
                     {/if}
                 {:else}
                     <div class="model-settings-preset-list-empty">
-                        {i18n('aiSidebar.modelSettings.noPresets')}
+                        {i18n('aiSidebarModelSettingsNoPresets')}
                     </div>
                 {/if}
             </div>
@@ -1474,31 +1472,31 @@
                             class="b3-button b3-button--primary"
                             on:click={() => updatePreset(editingPresetId)}
                         >
-                            {i18n('aiSidebar.modelSettings.savePreset') || '保存预设'}
+                            {i18n('aiSidebarModelSettingsSavePreset') || '保存预设'}
                         </button>
                     {:else}
                         <button class="b3-button b3-button--primary" on:click={saveAsPreset}>
-                            {i18n('aiSidebar.modelSettings.savePreset') || '保存预设'}
+                            {i18n('aiSidebarModelSettingsSavePreset') || '保存预设'}
                         </button>
                     {/if}
                 </div>
                 <h4>
                     {editingPresetId
-                        ? i18n('aiSidebar.modelSettings.editPreset') || '编辑预设'
-                        : i18n('aiSidebar.modelSettings.createNewPreset') || '新建预设'}
+                        ? i18n('aiSidebarModelSettingsEditPreset') || '编辑预设'
+                        : i18n('aiSidebarModelSettingsCreateNewPreset') || '新建预设'}
                 </h4>
                 <div class="model-settings-header-actions">
                     <button
                         class="b3-button b3-button--text"
                         on:click={safeCloseSettings}
-                        title={i18n('common.back') || '返回'}
+                        title={i18n('commonBack') || '返回'}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconBack"></use></svg>
                     </button>
                     <button
                         class="b3-button b3-button--text"
                         on:click={safeCloseSettings}
-                        title={i18n('common.close')}
+                        title={i18n('commonClose')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -1509,7 +1507,7 @@
                 <!-- 预设名称 -->
                 <div class="model-settings-item">
                     <label class="model-settings-label">
-                        {i18n('aiSidebar.modelSettings.presetName')}
+                        {i18n('aiSidebarModelSettingsPresetName')}
                     </label>
                     <div class="model-settings-preset-new">
                         <input
@@ -1517,7 +1515,7 @@
                             bind:value={newPresetName}
                             on:input={applySettings}
                             class="b3-text-field"
-                            placeholder={i18n('aiSidebar.modelSettings.enterPresetName')}
+                            placeholder={i18n('aiSidebarModelSettingsEnterPresetName')}
                         />
                     </div>
                 </div>
@@ -1525,10 +1523,10 @@
                 <!-- 上下文数设置 -->
                 <div class="model-settings-item">
                     <label class="model-settings-label">
-                        {i18n('aiSidebar.modelSettings.contextCount')}
+                        {i18n('aiSidebarModelSettingsContextCount')}
                         <span class="model-settings-value">
                             {tempContextCount === -1
-                                ? i18n('aiSidebar.modelSettings.unlimited') || '不限制'
+                                ? i18n('aiSidebarModelSettingsUnlimited') || '不限制'
                                 : tempContextCount}
                         </span>
                     </label>
@@ -1542,9 +1540,9 @@
                         class="b3-slider"
                     />
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.contextCountHint')}
+                        {i18n('aiSidebarModelSettingsContextCountHint')}
                         {tempContextCount === -1
-                            ? i18n('aiSidebar.modelSettings.unlimitedHint') ||
+                            ? i18n('aiSidebarModelSettingsUnlimitedHint') ||
                               '（-1 代表不限制上下文消息数）'
                             : ''}
                     </div>
@@ -1553,7 +1551,7 @@
                 <!-- Temperature设置 -->
                 <div class="model-settings-item">
                     <label class="model-settings-label">
-                        {i18n('aiSidebar.modelSettings.temperature')}
+                        {i18n('aiSidebarModelSettingsTemperature')}
                         <span class="model-settings-value">{tempTemperature.toFixed(2)}</span>
                     </label>
                     <div class="model-settings-checkbox">
@@ -1565,7 +1563,7 @@
                             class="b3-switch"
                         />
                         <label for="temperature-enabled">
-                            {i18n('aiSidebar.modelSettings.enableTemperature') ||
+                            {i18n('aiSidebarModelSettingsEnableTemperature') ||
                                 '启用Temperature调整'}
                         </label>
                     </div>
@@ -1580,14 +1578,14 @@
                         disabled={!tempTemperatureEnabled}
                     />
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.temperatureHint')}
+                        {i18n('aiSidebarModelSettingsTemperatureHint')}
                     </div>
                 </div>
 
                 <!-- 系统提示词设置 -->
                 <div class="model-settings-item">
                     <label class="model-settings-label">
-                        {i18n('aiSidebar.modelSettings.systemPrompt')}
+                        {i18n('aiSidebarModelSettingsSystemPrompt')}
                     </label>
                     <div class="model-settings-prompt-actions">
                         <button
@@ -1604,7 +1602,7 @@
                         bind:value={tempSystemPrompt}
                         on:change={applySettings}
                         class="b3-text-field model-settings-textarea"
-                        placeholder={i18n('aiSidebar.modelSettings.systemPromptPlaceholder')}
+                        placeholder={i18n('aiSidebarModelSettingsSystemPromptPlaceholder')}
                         rows="4"
                     ></textarea>
                     <div
@@ -1649,14 +1647,14 @@
                         </div>
                     {/if}
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.systemPromptHint')}
+                        {i18n('aiSidebarModelSettingsSystemPromptHint')}
                     </div>
                 </div>
 
                 <!-- 聊天模式设置 -->
                 <div class="model-settings-item">
                     <label class="model-settings-label">
-                        {i18n('aiSidebar.modelSettings.chatMode') || '聊天模式'}
+                        {i18n('aiSidebarModelSettingsChatMode') || '聊天模式'}
                     </label>
                     <select
                         bind:value={tempChatMode}
@@ -1673,12 +1671,12 @@
                             applySettings();
                         }}
                     >
-                        <option value="ask">{i18n('aiSidebar.mode.ask') || '问答模式'}</option>
-                        <option value="agent">{i18n('aiSidebar.mode.agent') || 'Agent模式'}</option>
-                        <option value="draw">{i18n('aiSidebar.mode.draw') || '画图模式'}</option>
+                        <option value="ask">{i18n('aiSidebarModeAsk') || '问答模式'}</option>
+                        <option value="agent">{i18n('aiSidebarModeAgent') || 'Agent模式'}</option>
+                        <option value="draw">{i18n('aiSidebarModeDraw') || '画图模式'}</option>
                     </select>
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.chatModeHint') ||
+                        {i18n('aiSidebarModelSettingsChatModeHint') ||
                             '选择聊天模式，只有问答模式支持多模型'}
                     </div>
                 </div>
@@ -1694,7 +1692,7 @@
                             class="b3-switch"
                         />
                         <label for="model-selection-enabled">
-                            {i18n('aiSidebar.modelSettings.enableModelSelection') || '启用模型选择'}
+                            {i18n('aiSidebarModelSettingsEnableModelSelection') || '启用模型选择'}
                         </label>
                     </div>
 
@@ -1721,7 +1719,7 @@
                     {/if}
 
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.modelSelectionHint') ||
+                        {i18n('aiSidebarModelSettingsModelSelectionHint') ||
                             '启用后，应用预设时会自动切换到选择的模型'}
                     </div>
                 </div>
@@ -1738,7 +1736,7 @@
                             class="b3-switch"
                         />
                         <label for="tool-selection-enabled">
-                            {i18n('aiSidebar.modelSettings.enableToolSelection') || '启用工具选择'}
+                            {i18n('aiSidebarModelSettingsEnableToolSelection') || '启用工具选择'}
                         </label>
                     </div>
 
@@ -1750,7 +1748,7 @@
                             >
                                 <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
                                 <span>
-                                    {i18n('aiSidebar.agent.selectTools') || '选择工具'}
+                                    {i18n('aiSidebarAgentSelectTools') || '选择工具'}
                                     ({getPresetToolCount(tempSelectedTools)})
                                 </span>
                             </button>
@@ -1758,7 +1756,7 @@
                     {/if}
 
                     <div class="model-settings-hint">
-                        {i18n('aiSidebar.modelSettings.toolSelectionHint') ||
+                        {i18n('aiSidebarModelSettingsToolSelectionHint') ||
                             '启用后，应用预设时会自动切换到选择的工具'}
                     </div>
                 </div>
@@ -1778,7 +1776,7 @@
 
             <div class="model-settings-footer">
                 <button class="b3-button b3-button--text" on:click={resetToDefaults}>
-                    {i18n('aiSidebar.modelSettings.reset')}
+                    {i18n('aiSidebarModelSettingsReset')}
                 </button>
             </div>
         </div>

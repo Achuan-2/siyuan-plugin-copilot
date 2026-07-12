@@ -8,7 +8,7 @@
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
     import { AVAILABLE_TOOLS, TOOL_CATEGORIES, type Tool } from '../tools';
-    import { i18n } from '../utils/i18n';
+    import { i18n, i18nKey } from '../utils/i18n';
 
     export let selectedTools: ToolConfig[] = [];
     export let toolAutoApproveSettings: Record<string, boolean> = {}; // 所有工具的 autoApprove 配置
@@ -207,14 +207,14 @@
 
     // 获取工具的友好名称
     function getToolDisplayName(toolName: string): string {
-        const key = `tools.${toolName}.name`;
+        const key = i18nKey('tools', toolName, 'name');
         const name = i18n(key);
         return name === key ? toolName : name;
     }
 
     // 获取工具的完整描述
     function getToolFullDescription(tool: Tool): string {
-        const key = `tools.${tool.function.name}.description`;
+        const key = i18nKey('tools', tool.function.name, 'description');
         const localDesc = i18n(key);
         return localDesc !== key ? localDesc : tool.function.description;
     }
@@ -341,15 +341,15 @@
 <div class="tool-selector__overlay" on:click={close}></div>
 <div class="tool-selector">
     <div class="tool-selector__header">
-        <h3>{i18n('tools.selector.title')}</h3>
+        <h3>{i18n('toolsSelectorTitle')}</h3>
         <div class="tool-selector__actions">
             <button class="b3-button b3-button--text" on:click={toggleAll}>
                 {userSelectedCount === userSelectableTools.length
-                    ? i18n('tools.selector.deselectAll')
-                    : i18n('tools.selector.selectAll')}
+                    ? i18n('toolsSelectorDeselectAll')
+                    : i18n('toolsSelectorSelectAll')}
             </button>
             <button class="b3-button b3-button--cancel" on:click={close}>
-                {i18n('common.close')}
+                {i18n('commonClose')}
             </button>
         </div>
     </div>
@@ -357,7 +357,7 @@
     <div class="tool-selector__content">
         <div class="tool-selector__info">
             <svg class="svg"><use xlink:href="#iconInfo"></use></svg>
-            <span>{i18n('tools.selector.info')}</span>
+            <span>{i18n('toolsSelectorInfo')}</span>
         </div>
 
         {#if hasSiyuanTools}
@@ -375,7 +375,7 @@
                         >
                             <use xlink:href="#iconRight"></use>
                         </svg>
-                        <h3 class="mcp-parent-category__title" style="margin: 0; font-size: 15px; font-weight: 600; color: var(--b3-theme-primary);">{i18n('tools.category.siyuan_mcp_parent')}</h3>
+                        <h3 class="mcp-parent-category__title" style="margin: 0; font-size: 15px; font-weight: 600; color: var(--b3-theme-primary);">{i18n('toolsCategorySiyuanMcpParent')}</h3>
                     </div>
                     <button
                         class="b3-button b3-button--text mcp-parent-category__select-btn"
@@ -384,8 +384,8 @@
                         style="font-size: 12px; padding: 2px 8px; min-width: unset; height: auto; line-height: 1.5;"
                     >
                         {isMcpParentFullySelected()
-                            ? i18n('tools.selector.deselectAll')
-                            : i18n('tools.selector.selectAll')}
+                            ? i18n('toolsSelectorDeselectAll')
+                            : i18n('toolsSelectorSelectAll')}
                     </button>
                 </div>
 
@@ -406,7 +406,7 @@
                                         >
                                             <use xlink:href="#iconRight"></use>
                                         </svg>
-                                        <h4 class="tool-category__title" style="margin: 0;">{i18n(`tools.category.${category}`)}</h4>
+                                        <h4 class="tool-category__title" style="margin: 0;">{i18n(i18nKey('tools', 'category', category))}</h4>
                                     </div>
                                     <button
                                         class="b3-button b3-button--text tool-category__select-btn"
@@ -416,8 +416,8 @@
                                         on:click={() => toggleCategory(tools)}
                                     >
                                         {isCategoryFullySelected(tools)
-                                            ? i18n('tools.selector.deselectAll')
-                                            : i18n('tools.selector.selectAll')}
+                                            ? i18n('toolsSelectorDeselectAll')
+                                            : i18n('toolsSelectorSelectAll')}
                                     </button>
                                 </div>
                                 {#if !collapsedCategories.has(category)}
@@ -444,7 +444,7 @@
                                                     <div class="tool-item__header-right">
                                                         <label
                                                             class="tool-item__auto-approve"
-                                                            title={i18n('tools.autoApprove.tooltip')}
+                                                            title={i18n('toolsAutoApproveTooltip')}
                                                         >
                                                             <input
                                                                 type="checkbox"
@@ -453,15 +453,15 @@
                                                                 on:change={() => toggleToolAutoApprove(toolName)}
                                                             />
                                                             <span class="tool-item__auto-approve-text">
-                                                                {i18n('tools.autoApprove.label')}
+                                                                {i18n('toolsAutoApproveLabel')}
                                                             </span>
                                                         </label>
                                                         <button
                                                             class="tool-item__expand b3-button b3-button--text"
                                                             on:click={() => toggleExpand(toolName)}
                                                             title={isExpanded
-                                                                ? i18n('common.collapse')
-                                                                : i18n('common.expand')}
+                                                                ? i18n('commonCollapse')
+                                                                : i18n('commonExpand')}
                                                         >
                                                             <svg
                                                                 class="svg"
@@ -482,14 +482,14 @@
                                                         <pre class="tool-item__full-description">{getToolFullDescription(tool)}</pre>
 
                                                         <div class="tool-item__parameters">
-                                                            <strong>{i18n('tools.selector.parameters')}:</strong>
+                                                            <strong>{i18n('toolsSelectorParameters')}:</strong>
                                                             <ul>
                                                                 {#each Object.entries(tool.function.parameters.properties) as [paramName, param]}
                                                                     <li>
                                                                         <code>{paramName}</code>
                                                                         {#if tool.function.parameters.required.includes(paramName)}
                                                                             <span class="tool-item__required">
-                                                                                ({i18n('common.required')})
+                                                                                ({i18n('commonRequired')})
                                                                             </span>
                                                                         {/if}
                                                                         : {param.description}
@@ -525,7 +525,7 @@
                         >
                             <use xlink:href="#iconRight"></use>
                         </svg>
-                        <h4 class="tool-category__title" style="margin: 0;">{i18n(`tools.category.${category}`)}</h4>
+                        <h4 class="tool-category__title" style="margin: 0;">{i18n(i18nKey('tools', 'category', category))}</h4>
                     </div>
                     <button
                         class="b3-button b3-button--text tool-category__select-btn"
@@ -535,8 +535,8 @@
                         on:click={() => toggleCategory(tools)}
                     >
                         {isCategoryFullySelected(tools)
-                            ? i18n('tools.selector.deselectAll')
-                            : i18n('tools.selector.selectAll')}
+                            ? i18n('toolsSelectorDeselectAll')
+                            : i18n('toolsSelectorSelectAll')}
                     </button>
                 </div>
                 {#if !collapsedCategories.has(category)}
@@ -563,7 +563,7 @@
                                     <div class="tool-item__header-right">
                                         <label
                                             class="tool-item__auto-approve"
-                                            title={i18n('tools.autoApprove.tooltip')}
+                                            title={i18n('toolsAutoApproveTooltip')}
                                         >
                                             <input
                                                 type="checkbox"
@@ -572,15 +572,15 @@
                                                 on:change={() => toggleToolAutoApprove(toolName)}
                                             />
                                             <span class="tool-item__auto-approve-text">
-                                                {i18n('tools.autoApprove.label')}
+                                                {i18n('toolsAutoApproveLabel')}
                                             </span>
                                         </label>
                                         <button
                                             class="tool-item__expand b3-button b3-button--text"
                                             on:click={() => toggleExpand(toolName)}
                                             title={isExpanded
-                                                ? i18n('common.collapse')
-                                                : i18n('common.expand')}
+                                                ? i18n('commonCollapse')
+                                                : i18n('commonExpand')}
                                         >
                                             <svg
                                                 class="svg"
@@ -601,14 +601,14 @@
                                         <pre class="tool-item__full-description">{getToolFullDescription(tool)}</pre>
 
                                         <div class="tool-item__parameters">
-                                            <strong>{i18n('tools.selector.parameters')}:</strong>
+                                            <strong>{i18n('toolsSelectorParameters')}:</strong>
                                             <ul>
                                                 {#each Object.entries(tool.function.parameters.properties) as [paramName, param]}
                                                     <li>
                                                         <code>{paramName}</code>
                                                         {#if tool.function.parameters.required.includes(paramName)}
                                                             <span class="tool-item__required">
-                                                                ({i18n('common.required')})
+                                                                ({i18n('commonRequired')})
                                                             </span>
                                                         {/if}
                                                         : {param.description}
@@ -630,11 +630,11 @@
         <div class="tool-selector__footer-left">
             <div class="tool-selector__footer-info">
                 <svg class="svg"><use xlink:href="#iconInfo"></use></svg>
-                <span>{i18n('tools.autoApprove.footerInfo')}</span>
+                <span>{i18n('toolsAutoApproveFooterInfo')}</span>
             </div>
         </div>
         <span class="tool-selector__count">
-            {i18n('tools.selector.selected')}: {userSelectedCount}/{userSelectableTools.length}
+            {i18n('toolsSelectorSelected')}: {userSelectedCount}/{userSelectableTools.length}
         </span>
     </div>
 </div>

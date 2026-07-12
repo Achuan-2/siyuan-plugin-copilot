@@ -62,7 +62,7 @@
     import type { ProviderConfig } from './defaultSettings';
     import { settingsStore } from './stores/settings';
     import { confirm, Constants, platformUtils } from 'siyuan';
-    import { i18n } from './utils/i18n';
+    import { i18n, i18nKey } from './utils/i18n';
     import {
         AVAILABLE_TOOLS,
         createGetSiyuanSkillsTool,
@@ -886,7 +886,7 @@
             }
             suggestionCommand({
                 id: item.id,
-                title: item.content || item.title || i18n('common.untitled'),
+                title: item.content || item.title || i18n('commonUntitled'),
                 type: 'doc',
                 content: content
             });
@@ -1487,25 +1487,25 @@
     async function regenerateModelResponse(index: number) {
         const response = multiModelResponses[index];
         if (!response) {
-            pushErrMsg(i18n('aiSidebar.errors.noMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoMessage'));
             return;
         }
 
         // 如果目标模型正在加载中，则拒绝重复触发
         if (response.isLoading) {
-            pushErrMsg(i18n('aiSidebar.errors.generating'));
+            pushErrMsg(i18n('aiSidebarErrorsGenerating'));
             return;
         }
 
         const config = getProviderAndModelConfig(response.provider, response.modelId);
         if (!config) {
-            pushErrMsg(i18n('aiSidebar.info.noValidModel') || '无效的模型');
+            pushErrMsg(i18n('aiSidebarInfoNoValidModel') || '无效的模型');
             return;
         }
 
         const { providerConfig, modelConfig } = config;
         if (!providerConfig || !providerConfig.apiKey) {
-            pushErrMsg(i18n('aiSidebar.errors.noApiKey'));
+            pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             return;
         }
 
@@ -1524,7 +1524,7 @@
         // 获取最后一条用户消息并准备上下文
         const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
         if (!lastUserMessage) {
-            pushErrMsg(i18n('aiSidebar.errors.noUserMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoUserMessage'));
             multiModelResponses[index].isLoading = false;
             multiModelResponses = [...multiModelResponses];
             return;
@@ -1824,30 +1824,30 @@
     async function regenerateHistoryModelResponse(absMessageIndex: number, responseIndex: number) {
         const msg = messages[absMessageIndex];
         if (!msg || !msg.multiModelResponses) {
-            pushErrMsg(i18n('aiSidebar.errors.noMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoMessage'));
             return;
         }
 
         const response = msg.multiModelResponses[responseIndex];
         if (!response) {
-            pushErrMsg(i18n('aiSidebar.errors.noMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoMessage'));
             return;
         }
 
         if (response.isLoading) {
-            pushErrMsg(i18n('aiSidebar.errors.generating'));
+            pushErrMsg(i18n('aiSidebarErrorsGenerating'));
             return;
         }
 
         const config = getProviderAndModelConfig(response.provider, response.modelId);
         if (!config) {
-            pushErrMsg(i18n('aiSidebar.info.noValidModel') || '无效的模型');
+            pushErrMsg(i18n('aiSidebarInfoNoValidModel') || '无效的模型');
             return;
         }
 
         const { providerConfig, modelConfig } = config;
         if (!providerConfig || !providerConfig.apiKey) {
-            pushErrMsg(i18n('aiSidebar.errors.noApiKey'));
+            pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             return;
         }
 
@@ -1872,7 +1872,7 @@
         }
 
         if (!lastUserMessage) {
-            pushErrMsg(i18n('aiSidebar.errors.noUserMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoUserMessage'));
             msg.multiModelResponses[responseIndex].isLoading = false;
             messages = [...messages];
             return;
@@ -2354,7 +2354,7 @@
                 ContextImage,
                 SkillSuggestion,
                 Placeholder.configure({
-                    placeholder: i18n('aiSidebar.input.placeholder'),
+                    placeholder: i18n('aiSidebarInputPlaceholder'),
                 })
             ],
             content: currentInput,
@@ -2708,7 +2708,7 @@
     // 添加图片附件
     async function addImageAttachment(file: File) {
         if (!file.type.startsWith('image/')) {
-            pushErrMsg(i18n('aiSidebar.errors.imageOnly'));
+            pushErrMsg(i18n('aiSidebarErrorsImageOnly'));
             return;
         }
 
@@ -2779,7 +2779,7 @@
                         }
                     });
                 }
-                pushErrMsg(i18n('aiSidebar.errors.addImageFailed'));
+                pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
             }
         })();
 
@@ -2811,14 +2811,14 @@
         const isImage = file.type.startsWith('image/');
 
         if (!isText && !isImage) {
-            pushErrMsg(i18n('aiSidebar.errors.textAndImageOnly'));
+            pushErrMsg(i18n('aiSidebarErrorsTextAndImageOnly'));
             return;
         }
 
         // 检查文件大小 (文本文件最大 5MB，图片最大 10MB)
         const maxSize = isImage ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
         if (file.size > maxSize) {
-            pushErrMsg(i18n('aiSidebar.errors.fileTooLarge'));
+            pushErrMsg(i18n('aiSidebarErrorsFileTooLarge'));
             return;
         }
 
@@ -2846,7 +2846,7 @@
             }
         } catch (error) {
             console.error('Add file error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.addFileFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsAddFileFailed'));
         } finally {
             if (pendingAttachmentSaveTasks.size === 0) {
                 isUploadingFile = false;
@@ -4271,7 +4271,7 @@
         // 获取最后一条用户消息（用于 prepareMessagesForAI）
         const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
         if (!lastUserMessage) {
-            pushErrMsg(i18n('aiSidebar.errors.noUserMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoUserMessage'));
             isLoading = false;
             return;
         }
@@ -6139,7 +6139,7 @@
             } else {
                 const errorMessage: Message = {
                     role: 'assistant',
-                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${(error as Error).message}`,
+                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
                 hasUnsavedChanges = true;
@@ -6246,7 +6246,7 @@
             if ((error as Error).name !== 'AbortError') {
                 const errorMessage: Message = {
                     role: 'assistant',
-                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${(error as Error).message}`,
+                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
                 hasUnsavedChanges = true;
@@ -6273,7 +6273,7 @@
 
         // 如果处于等待选择答案状态，阻止发送
         if (isWaitingForAnswerSelection) {
-            pushErrMsg(i18n('multiModel.waitingSelection'));
+            pushErrMsg(i18n('multiModelWaitingSelection'));
             isLoading = false;
             return;
         }
@@ -6288,20 +6288,20 @@
         // 检查设置
         const providerConfig = getCurrentProviderConfig();
         if (!providerConfig) {
-            pushErrMsg(i18n('aiSidebar.errors.noProvider'));
+            pushErrMsg(i18n('aiSidebarErrorsNoProvider'));
             isLoading = false;
             return;
         }
 
         if (!providerConfig.apiKey) {
-            pushErrMsg(i18n('aiSidebar.errors.noApiKey'));
+            pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             isLoading = false;
             return;
         }
 
         const modelConfig = getCurrentModelConfig();
         if (!modelConfig) {
-            pushErrMsg(i18n('aiSidebar.errors.noModel'));
+            pushErrMsg(i18n('aiSidebarErrorsNoModel'));
             isLoading = false;
             return;
         }
@@ -7434,7 +7434,7 @@
                                 if (error.message !== 'Request aborted') {
                                     const errorMessage: Message = {
                                         role: 'assistant',
-                                        content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${error.message}`,
+                                        content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${error.message}`,
                                     };
                                     messages = [...messages, errorMessage];
                                     hasUnsavedChanges = true;
@@ -7593,7 +7593,7 @@
                                 // 将错误消息作为一条 assistant 消息添加
                                 const errorMessage: Message = {
                                     role: 'assistant',
-                                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${error.message}`,
+                                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${error.message}`,
                                 };
                                 messages = [...messages, errorMessage];
                                 hasUnsavedChanges = true;
@@ -7624,7 +7624,7 @@
                 // 这种情况下才需要添加错误消息（比如网络请求失败）
                 const errorMessage: Message = {
                     role: 'assistant',
-                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${(error as Error).message}`,
+                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
                 hasUnsavedChanges = true;
@@ -7714,7 +7714,7 @@
 
                 const message: Message = {
                     role: 'assistant',
-                    content: convertedMessage + '\n\n' + i18n('aiSidebar.messages.interrupted'),
+                    content: convertedMessage + '\n\n' + i18n('aiSidebarMessagesInterrupted'),
                 };
                 if (tempStreamingThinking) {
                     message.thinking = tempStreamingThinking;
@@ -7746,10 +7746,10 @@
         navigator.clipboard
             .writeText(markdown)
             .then(() => {
-                pushMsg(i18n('aiSidebar.success.copyMarkdownSuccess'));
+                pushMsg(i18n('aiSidebarSuccessCopyMarkdownSuccess'));
             })
             .catch(err => {
-                pushErrMsg(i18n('aiSidebar.errors.copyFailed'));
+                pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                 console.error('Copy failed:', err);
             });
     }
@@ -7799,8 +7799,8 @@
 
         if (hasUnsavedChanges && messages.filter(m => m.role !== 'system').length > 0) {
             confirm(
-                i18n('aiSidebar.confirm.clearChat.title'),
-                i18n('aiSidebar.confirm.clearChat.message'),
+                i18n('aiSidebarConfirmClearChatTitle'),
+                i18n('aiSidebarConfirmClearChatMessage'),
                 () => {
                     doClearChat();
                 }
@@ -7828,7 +7828,7 @@
         selectedAnswerIndex = null;
         selectedTabIndex = 0;
 
-        pushMsg(i18n('aiSidebar.success.clearSuccess'));
+        pushMsg(i18n('aiSidebarSuccessClearSuccess'));
     }
 
     // 处理键盘事件
@@ -8609,10 +8609,10 @@
         navigator.clipboard
             .writeText(textContent)
             .then(() => {
-                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
             })
             .catch(err => {
-                pushErrMsg(i18n('aiSidebar.errors.copyFailed'));
+                pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                 console.error('Copy failed:', err);
             });
     }
@@ -9141,10 +9141,10 @@
                             ? container.innerText
                             : multiModelResponses[messageIndex]?.content || '';
                         await platformUtils.writeText(text);
-                        pushMsg(i18n('aiSidebar.success.copySuccess'));
+                        pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                     } catch (err) {
                         console.error('Copy multi-model response failed:', err);
-                        pushErrMsg(i18n('aiSidebar.errors.copyFailed'));
+                        pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                     }
                 } else {
                     const message = messages[messageIndex];
@@ -9166,15 +9166,15 @@
                                 const lute = window.Lute.New();
                                 const md = lute.HTML2Md(selectionHtml || selectionText);
                                 await platformUtils.writeText(md);
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             } else {
                                 // 降级为纯文本
                                 await platformUtils.writeText(selectionText);
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             }
                         } else if (action === 'copy_plain') {
                             await platformUtils.writeText(selectionText);
-                            pushMsg(i18n('aiSidebar.success.copySuccess'));
+                            pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                         } else if (action === 'copy_html') {
                             // 尝试写入富文本（text/html + text/plain）
                             if (navigator.clipboard && (navigator.clipboard as any).write) {
@@ -9187,16 +9187,16 @@
                                     'text/html': blobHtml,
                                 });
                                 await (navigator.clipboard as any).write([item]);
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             } else {
                                 // 回退到纯文本
                                 await platformUtils.writeText(selectionText);
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             }
                         }
                     } catch (err) {
                         console.error('Copy selection failed:', err);
-                        pushErrMsg(i18n('aiSidebar.errors.copyFailed'));
+                        pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                     }
                 } else {
                     // 如果是多模型区域且没有选区，复制整个多模型响应内容
@@ -9224,10 +9224,10 @@
                                 } else {
                                     await platformUtils.writeText(text);
                                 }
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             } else if (action === 'copy_plain') {
                                 await platformUtils.writeText(text);
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             } else if (action === 'copy_html') {
                                 if (navigator.clipboard && (navigator.clipboard as any).write) {
                                     const blobPlain = new Blob([text], { type: 'text/plain' });
@@ -9242,14 +9242,14 @@
                                 } else {
                                     await platformUtils.writeText(text);
                                 }
-                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                             }
                         } catch (err) {
                             console.error('Copy multi-model content failed:', err);
-                            pushErrMsg(i18n('aiSidebar.errors.copyFailed'));
+                            pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                         }
                     } else {
-                        pushErrMsg(i18n('aiSidebar.errors.noSelection'));
+                        pushErrMsg(i18n('aiSidebarErrorsNoSelection'));
                     }
                 }
 
@@ -9413,7 +9413,7 @@
         } catch (e) {}
 
         if (exists) {
-            pushMsg(i18n('aiSidebar.success.documentExists'));
+            pushMsg(i18n('aiSidebarSuccessDocumentExists'));
             return;
         }
 
@@ -9436,7 +9436,7 @@
             searchResults = [];
         } catch (error) {
             console.error('Add document error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.addDocumentFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsAddDocumentFailed'));
         }
     }
 
@@ -9445,7 +9445,7 @@
         const currentProtyle = getActiveEditor(false)?.protyle;
         const blockId = currentProtyle?.block?.id;
         if (!blockId) {
-            pushErrMsg(i18n('aiSidebar.errors.noActiveDocument'));
+            pushErrMsg(i18n('aiSidebarErrorsNoActiveDocument'));
             return;
         }
         const blocks = await sql(
@@ -9466,7 +9466,7 @@
                     return;
                 }
             }
-            pushErrMsg(i18n('aiSidebar.errors.noActiveDocument'));
+            pushErrMsg(i18n('aiSidebarErrorsNoActiveDocument'));
             return;
         }
         await addDocumentToContext(
@@ -9478,7 +9478,7 @@
     // 基于已有上下文文档直接发送总结请求
     async function summarizeContextDoc() {
         if (contextDocuments.length === 0) return;
-        currentInput = i18n('menu.summarizePrompt');
+        currentInput = i18n('menuSummarizePrompt');
         await tick();
         sendMessage();
     }
@@ -9496,12 +9496,12 @@
             await addDocumentToContext(docId, docTitle);
             // 设置输入并自动发送
             await tick();
-            currentInput = i18n('menu.summarizePrompt');
+            currentInput = i18n('menuSummarizePrompt');
             await tick();
             sendMessage();
         } catch (error) {
             console.error('Summarize doc error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.addDocumentFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsAddDocumentFailed'));
         }
     }
 
@@ -9542,22 +9542,22 @@
             if (blocks && blocks.length > 0) {
                 const block = blocks[0];
                 let docId = targetBlockId;
-                let docTitle = i18n('common.untitled');
+                let docTitle = i18n('commonUntitled');
 
                 // 如果是文档块，直接添加
                 if (block.type === 'd') {
-                    docTitle = block.content || i18n('common.untitled');
+                    docTitle = block.content || i18n('commonUntitled');
                     await addDocumentToContext(docId, docTitle);
                 } else {
                     // 普通块：文档标题已在联查中拿到
-                    docTitle = block.root_doc_content || i18n('common.untitled');
+                    docTitle = block.root_doc_content || i18n('commonUntitled');
                     // 添加该块的内容
                     await addBlockToContext(targetBlockId, docTitle, false);
                 }
             }
         } catch (error) {
             console.error('Add block error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.addBlockFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsAddBlockFailed'));
         }
     }
 
@@ -9575,7 +9575,7 @@
         } catch (e) {}
 
         if (exists) {
-            pushMsg(i18n('aiSidebar.success.blockExists'));
+            pushMsg(i18n('aiSidebarSuccessBlockExists'));
             return;
         }
 
@@ -9630,7 +9630,7 @@
             });
         } catch (error) {
             console.error('Add block error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.addBlockContentFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsAddBlockContentFailed'));
         }
     }
 
@@ -9651,7 +9651,7 @@
             await openBlock(docId);
         } catch (error) {
             console.error('Open document error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.openDocumentFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsOpenDocumentFailed'));
         }
     }
 
@@ -9845,7 +9845,7 @@
             await plugin.saveData('chat-sessions.json', { sessions: metadata });
         } catch (error) {
             console.error('Save sessions error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.saveSessionFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsSaveSessionFailed'));
         }
     }
 
@@ -9855,7 +9855,7 @@
             const firstMessage = getMessageText(userMessages[0].content);
             return firstMessage.length > 30 ? firstMessage.substring(0, 30) + '...' : firstMessage;
         }
-        return i18n('aiSidebar.session.new');
+        return i18n('aiSidebarSessionNew');
     }
 
     // 保存会话的锁，防止并发保存导致竞态条件
@@ -9865,7 +9865,7 @@
     async function saveCurrentSession(silent: boolean = false) {
         if (messages.filter(m => m.role !== 'system').length === 0) {
             if (!silent) {
-                pushErrMsg(i18n('aiSidebar.errors.emptySession'));
+                pushErrMsg(i18n('aiSidebarErrorsEmptySession'));
             }
             return;
         }
@@ -9982,7 +9982,7 @@
             hasUnsavedChanges = false;
 
             if (!silent) {
-                pushMsg(i18n('aiSidebar.success.saveSessionSuccess'));
+                pushMsg(i18n('aiSidebarSuccessSaveSessionSuccess'));
             }
         } finally {
             isSavingSession = false;
@@ -10039,8 +10039,8 @@
 
         if (hasUnsavedChanges) {
             confirm(
-                i18n('aiSidebar.confirm.switchSession.title'),
-                i18n('aiSidebar.confirm.switchSession.message'),
+                i18n('aiSidebarConfirmSwitchSessionTitle'),
+                i18n('aiSidebarConfirmSwitchSessionMessage'),
                 async () => {
                     await saveCurrentSession();
                     await doLoadSession(sessionId);
@@ -10375,8 +10375,8 @@
 
     async function deleteSession(sessionId: string) {
         confirm(
-            i18n('aiSidebar.confirm.deleteSession.title'),
-            i18n('aiSidebar.confirm.deleteSession.message'),
+            i18n('aiSidebarConfirmDeleteSessionTitle'),
+            i18n('aiSidebarConfirmDeleteSessionMessage'),
             async () => {
                 // 【修复】删除前重新加载最新的会话列表，避免多页签覆盖问题
                 await loadSessions();
@@ -10485,7 +10485,7 @@
             const sessionMessages = sessionData?.messages || [];
 
             if (sessionMessages.length === 0) {
-                pushErrMsg(i18n('aiSidebar.errors.emptySession'));
+                pushErrMsg(i18n('aiSidebarErrorsEmptySession'));
                 return;
             }
 
@@ -10532,7 +10532,7 @@
     // 保存到笔记相关函数
     async function openSaveToNoteDialog(messageIndex: number | null = null) {
         if (messages.length === 0) {
-            pushErrMsg(i18n('aiSidebar.errors.emptySession'));
+            pushErrMsg(i18n('aiSidebarErrorsEmptySession'));
             return;
         }
 
@@ -10897,7 +10897,7 @@
             settings.exportLastNotebook = saveNotebookId;
             await plugin.saveSettings(settings);
 
-            pushMsg(i18n('aiSidebar.success.saveToNoteSuccess'));
+            pushMsg(i18n('aiSidebarSuccessSaveToNoteSuccess'));
             closeSaveToNoteDialog();
 
             // 如果选择了保存后打开笔记，则打开文档
@@ -10906,7 +10906,7 @@
                     await openBlock(docId);
                 } catch (error) {
                     console.error('Open document error:', error);
-                    pushErrMsg(i18n('aiSidebar.errors.openDocumentFailed'));
+                    pushErrMsg(i18n('aiSidebarErrorsOpenDocumentFailed'));
                 }
             }
         } catch (error) {
@@ -10959,7 +10959,7 @@
             );
         } catch (error) {
             console.error('Save prompts error:', error);
-            pushErrMsg(i18n('aiSidebar.errors.savePromptFailed'));
+            pushErrMsg(i18n('aiSidebarErrorsSavePromptFailed'));
         }
     }
 
@@ -11097,7 +11097,7 @@
 
     async function saveNewPrompt() {
         if (!newPromptTitle.trim() || !newPromptContent.trim()) {
-            pushErrMsg(i18n('aiSidebar.errors.emptyPromptContent'));
+            pushErrMsg(i18n('aiSidebarErrorsEmptyPromptContent'));
             return;
         }
 
@@ -11139,8 +11139,8 @@
     // 删除提示词
     async function deletePrompt(promptId: string) {
         confirm(
-            i18n('aiSidebar.confirm.deletePrompt.title'),
-            i18n('aiSidebar.confirm.deletePrompt.message'),
+            i18n('aiSidebarConfirmDeletePromptTitle'),
+            i18n('aiSidebarConfirmDeletePromptMessage'),
             async () => {
                 prompts = prompts.filter(p => p.id !== promptId);
                 await savePrompts();
@@ -11251,7 +11251,7 @@
 
     // 获取工具的显示名称
     function getToolDisplayName(toolName: string): string {
-        const key = `tools.${toolName}.name`;
+        const key = i18nKey('tools', toolName, 'name');
         const name = i18n(key);
         return name === key ? toolName : name;
     }
@@ -11826,8 +11826,8 @@
     // 删除消息
     function deleteMessage(index: number) {
         confirm(
-            i18n('aiSidebar.confirm.deleteMessage.title'),
-            i18n('aiSidebar.confirm.deleteMessage.message'),
+            i18n('aiSidebarConfirmDeleteMessageTitle'),
+            i18n('aiSidebarConfirmDeleteMessageMessage'),
             () => {
                 messages = messages.filter((_, i) => i !== index);
                 hasUnsavedChanges = true;
@@ -11841,7 +11841,7 @@
         const modelConfig = getCurrentModelConfig();
 
         if (isLoading) {
-            pushErrMsg(i18n('aiSidebar.errors.generating'));
+            pushErrMsg(i18n('aiSidebarErrorsGenerating'));
             return;
         }
 
@@ -11850,7 +11850,7 @@
 
         const targetMessage = messages[index];
         if (!targetMessage) {
-            pushErrMsg(i18n('aiSidebar.errors.noMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoMessage'));
             return;
         }
 
@@ -11905,7 +11905,7 @@
         // 获取最后一条用户消息
         const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
         if (!lastUserMessage) {
-            pushErrMsg(i18n('aiSidebar.errors.noUserMessage'));
+            pushErrMsg(i18n('aiSidebarErrorsNoUserMessage'));
             return;
         }
 
@@ -11981,7 +11981,7 @@
         autoScroll = true; // 重新生成时启用自动滚动
 
         if (!providerConfig || !modelConfig) {
-            pushErrMsg(i18n('aiSidebar.errors.noProvider'));
+            pushErrMsg(i18n('aiSidebarErrorsNoProvider'));
             isLoading = false;
             return;
         }
@@ -12428,7 +12428,7 @@
         abortController = new AbortController();
 
         if (!providerConfig || !modelConfig) {
-            pushErrMsg(i18n('aiSidebar.errors.noProvider'));
+            pushErrMsg(i18n('aiSidebarErrorsNoProvider'));
             isLoading = false;
             return;
         }
@@ -12937,7 +12937,7 @@
                                 if (error.message !== 'Request aborted') {
                                     const errorMessage: Message = {
                                         role: 'assistant',
-                                        content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${error.message}`,
+                                        content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${error.message}`,
                                     };
                                     messages = [...messages, errorMessage];
                                     hasUnsavedChanges = true;
@@ -13084,7 +13084,7 @@
                                 // 将错误消息作为一条 assistant 消息添加
                                 const errorMessage: Message = {
                                     role: 'assistant',
-                                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${error.message}`,
+                                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${error.message}`,
                                 };
                                 messages = [...messages, errorMessage];
                                 hasUnsavedChanges = true;
@@ -13113,7 +13113,7 @@
                 // 这种情况下才需要添加错误消息
                 const errorMessage: Message = {
                     role: 'assistant',
-                    content: `❌ **${i18n('aiSidebar.errors.requestFailed')}**\n\n${(error as Error).message}`,
+                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
                 hasUnsavedChanges = true;
@@ -13190,7 +13190,7 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={openTranslateDialog}
-                title={i18n('aiSidebar.translate.openDialog') || '翻译'}
+                title={i18n('aiSidebarTranslateOpenDialog') || '翻译'}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconTranslate"></use></svg>
             </button>
@@ -13199,13 +13199,13 @@
                     class="b3-button b3-button--text"
                     bind:this={webAppMenuButton}
                     on:click={toggleWebAppMenu}
-                    title={i18n('aiSidebar.webapp.title') || '小程序'}
+                    title={i18n('aiSidebarWebappTitle') || '小程序'}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconCopilotWebApp"></use></svg>
                 </button>
             </div>
             {#if hasUnsavedChanges}
-                <span class="ai-sidebar__unsaved" title={i18n('aiSidebar.unsavedChanges')}>●</span>
+                <span class="ai-sidebar__unsaved" title={i18n('aiSidebarUnsavedChanges')}>●</span>
             {/if}
         </h3>
 
@@ -13256,7 +13256,7 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={newSession}
-                title={i18n('aiSidebar.session.new')}
+                title={i18n('aiSidebarSessionNew')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>
             </button>
@@ -13276,21 +13276,21 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={copyAsMarkdown}
-                title={i18n('aiSidebar.actions.copyAllChat')}
+                title={i18n('aiSidebarActionsCopyAllChat')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
             </button>
             <button
                 class="b3-button b3-button--text"
                 on:click={() => openSaveToNoteDialog()}
-                title={i18n('aiSidebar.actions.saveToNote')}
+                title={i18n('aiSidebarActionsSaveToNote')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconDownload"></use></svg>
             </button>
             <button
                 class="b3-button b3-button--text"
                 on:click={clearChat}
-                title={i18n('aiSidebar.actions.clear')}
+                title={i18n('aiSidebarActionsClear')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconTrashcan"></use></svg>
             </button>
@@ -13299,7 +13299,7 @@
                     class="b3-button b3-button--text"
                     bind:this={openWindowMenuButton}
                     on:click={toggleOpenWindowMenu}
-                    title={i18n('aiSidebar.actions.openWindow') || '在新窗口打开'}
+                    title={i18n('aiSidebarActionsOpenWindow') || '在新窗口打开'}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>
                 </button>
@@ -13334,7 +13334,7 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={openSettings}
-                title={i18n('aiSidebar.actions.settings')}
+                title={i18n('aiSidebarActionsSettings')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
             </button>
@@ -13429,7 +13429,7 @@
                                     {#if roundToolCalls.length > 0}
                                         <div class="ai-message__tool-calls">
                                             <div class="ai-message__tool-calls-title">
-                                                🔧 {i18n('tools.calling')} ({roundToolCalls.length})
+                                                🔧 {i18n('toolsCalling')} ({roundToolCalls.length})
                                             </div>
                                             {#each roundToolCalls as toolCall}
                                                 {@const toolResult = group.messages
@@ -13515,8 +13515,7 @@
                                                                         ></use>
                                                                     </svg>
                                                                     <strong>
-                                                                        {i18n(
-                                                                            'tools.selector.parameters'
+                                                                        {i18n('toolsSelectorParameters'
                                                                         )}
                                                                     </strong>
                                                                 </div>
@@ -13554,7 +13553,7 @@
                                                                             ></use>
                                                                         </svg>
                                                                         <strong>
-                                                                            {i18n('tools.result')}
+                                                                            {i18n('toolsResult')}
                                                                         </strong>
                                                                     </div>
                                                                     {#if resultExpanded}
@@ -13626,7 +13625,7 @@
                             {#if message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0 && !message.toolCallThinkings && !(message.multiModelResponses && message.multiModelResponses.length > 0)}
                                 <div class="ai-message__tool-calls">
                                     <div class="ai-message__tool-calls-title">
-                                        🔧 {i18n('tools.calling')} ({message.tool_calls.length})
+                                        🔧 {i18n('toolsCalling')} ({message.tool_calls.length})
                                     </div>
                                     {#each message.tool_calls as toolCall}
                                         {@const toolResult = group.messages
@@ -13697,7 +13696,7 @@
                                                                 <use xlink:href="#iconRight"></use>
                                                             </svg>
                                                             <strong>
-                                                                {i18n('tools.selector.parameters')}
+                                                                {i18n('toolsSelectorParameters')}
                                                             </strong>
                                                         </div>
                                                         {#if paramsExpanded}
@@ -13730,7 +13729,7 @@
                                                                     ></use>
                                                                 </svg>
                                                                 <strong>
-                                                                    {i18n('tools.result')}
+                                                                    {i18n('toolsResult')}
                                                                 </strong>
                                                             </div>
                                                             {#if resultExpanded}
@@ -13832,12 +13831,12 @@
                                                     thinkingCollapsed[layoutKey] = 'card';
                                                     thinkingCollapsed = { ...thinkingCollapsed };
                                                 }}
-                                                title={i18n('multiModel.layout.card')}
+                                                title={i18n('multiModelLayoutCard')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconSplitLR"></use>
                                                 </svg>
-                                                {i18n('multiModel.layout.card')}
+                                                {i18n('multiModelLayoutCard')}
                                             </button>
                                             <button
                                                 class="b3-button b3-button--text b3-button--small"
@@ -13846,12 +13845,12 @@
                                                     thinkingCollapsed[layoutKey] = 'tab';
                                                     thinkingCollapsed = { ...thinkingCollapsed };
                                                 }}
-                                                title={i18n('multiModel.layout.tab')}
+                                                title={i18n('multiModelLayoutTab')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconSplitTB"></use>
                                                 </svg>
-                                                {i18n('multiModel.layout.tab')}
+                                                {i18n('multiModelLayoutTab')}
                                             </button>
                                         </div>
                                     </div>
@@ -13876,7 +13875,7 @@
                                                             <span
                                                                 class="ai-sidebar__multi-model-card-status ai-sidebar__multi-model-card-status--error"
                                                             >
-                                                                ❌ {i18n('multiModel.error')}
+                                                                ❌ {i18n('multiModelError')}
                                                             </span>
                                                         {/if}
                                                     </div>
@@ -13891,8 +13890,7 @@
                                                                         messageIndex + msgIndex,
                                                                         index
                                                                     )}
-                                                                title={i18n(
-                                                                    'aiSidebar.actions.regenerate'
+                                                                title={i18n('aiSidebarActionsRegenerate'
                                                                 )}
                                                             >
                                                                 <svg class="b3-button__icon">
@@ -13907,8 +13905,7 @@
                                                                     copyMessage(
                                                                         response.content || ''
                                                                     )}
-                                                                title={i18n(
-                                                                    'aiSidebar.actions.copyMessage'
+                                                                title={i18n('aiSidebarActionsCopyMessage'
                                                                 )}
                                                             >
                                                                 <svg class="b3-button__icon">
@@ -13927,11 +13924,9 @@
                                                                     )}
                                                             >
                                                                 {response.isSelected
-                                                                    ? i18n(
-                                                                          'multiModel.answerSelected'
+                                                                    ? i18n('multiModelAnswerSelected'
                                                                       )
-                                                                    : i18n(
-                                                                          'multiModel.selectAnswer'
+                                                                    : i18n('multiModelSelectAnswer'
                                                                       )}
                                                             </button>
                                                         {/if}
@@ -13965,8 +13960,7 @@
                                                                 <span
                                                                     class="ai-message__thinking-title"
                                                                 >
-                                                                    💭 {i18n(
-                                                                        'aiSidebar.messages.thinking'
+                                                                    💭 {i18n('aiSidebarMessagesThinking'
                                                                     )}
                                                                 </span>
                                                             </div>
@@ -14039,8 +14033,7 @@
                                                                         <span
                                                                             class="ai-message__thinking-title"
                                                                         >
-                                                                            💭 {i18n(
-                                                                                'aiSidebar.messages.thinking'
+                                                                            💭 {i18n('aiSidebarMessagesThinking'
                                                                             )}
                                                                         </span>
                                                                     </div>
@@ -14066,7 +14059,7 @@
                                                                 <div
                                                                     class="ai-message__tool-calls-title"
                                                                 >
-                                                                    🔧 {i18n('tools.calling')} ({group
+                                                                    🔧 {i18n('toolsCalling')} ({group
                                                                         .toolCalls.length})
                                                                 </div>
                                                                 {#each group.toolCalls as toolCall}
@@ -14140,8 +14133,7 @@
                                                                                     <div
                                                                                         class="ai-message__tool-call-section-header"
                                                                                     >
-                                                                                        {i18n(
-                                                                                            'aiSidebar.messages.params'
+                                                                                        {i18n('aiSidebarMessagesParams'
                                                                                         )}
                                                                                     </div>
                                                                                     <div
@@ -14160,8 +14152,7 @@
                                                                                         <div
                                                                                             class="ai-message__tool-call-section-header"
                                                                                         >
-                                                                                            {i18n(
-                                                                                                'aiSidebar.messages.result'
+                                                                                            {i18n('aiSidebarMessagesResult'
                                                                                             )}
                                                                                         </div>
                                                                                         <div
@@ -14207,8 +14198,7 @@
                                                                     <span
                                                                         class="ai-message__thinking-title"
                                                                     >
-                                                                        💭 {i18n(
-                                                                            'aiSidebar.messages.thinking'
+                                                                        💭 {i18n('aiSidebarMessagesThinking'
                                                                         )}
                                                                     </span>
                                                                 </div>
@@ -14249,8 +14239,7 @@
                                                                 <span
                                                                     class="ai-message__thinking-title"
                                                                 >
-                                                                    💭 {i18n(
-                                                                        'aiSidebar.messages.thinking'
+                                                                    💭 {i18n('aiSidebarMessagesThinking'
                                                                     )}
                                                                 </span>
                                                             </div>
@@ -14374,8 +14363,7 @@
                                                                                     msgIndex,
                                                                                 index
                                                                             )}
-                                                                        title={i18n(
-                                                                            'aiSidebar.actions.regenerate'
+                                                                        title={i18n('aiSidebarActionsRegenerate'
                                                                         )}
                                                                     >
                                                                         <svg
@@ -14393,8 +14381,7 @@
                                                                                 response.content ||
                                                                                     ''
                                                                             )}
-                                                                        title={i18n(
-                                                                            'aiSidebar.actions.copyMessage'
+                                                                        title={i18n('aiSidebarActionsCopyMessage'
                                                                         )}
                                                                     >
                                                                         <svg
@@ -14512,8 +14499,7 @@
                                                                             <span
                                                                                 class="ai-message__thinking-title"
                                                                             >
-                                                                                💭 {i18n(
-                                                                                    'aiSidebar.messages.thinking'
+                                                                                💭 {i18n('aiSidebarMessagesThinking'
                                                                                 )}
                                                                             </span>
                                                                         </div>
@@ -14539,7 +14525,7 @@
                                                                     <div
                                                                         class="ai-message__tool-calls-title"
                                                                     >
-                                                                        🔧 {i18n('tools.calling')} ({group
+                                                                        🔧 {i18n('toolsCalling')} ({group
                                                                             .toolCalls.length})
                                                                     </div>
                                                                     {#each group.toolCalls as toolCall}
@@ -14615,8 +14601,7 @@
                                                                                         <div
                                                                                             class="ai-message__tool-call-section-header"
                                                                                         >
-                                                                                            {i18n(
-                                                                                                'aiSidebar.messages.params'
+                                                                                            {i18n('aiSidebarMessagesParams'
                                                                                             )}
                                                                                         </div>
                                                                                         <div
@@ -14635,8 +14620,7 @@
                                                                                             <div
                                                                                                 class="ai-message__tool-call-section-header"
                                                                                             >
-                                                                                                {i18n(
-                                                                                                    'aiSidebar.messages.result'
+                                                                                                {i18n('aiSidebarMessagesResult'
                                                                                                 )}
                                                                                             </div>
                                                                                             <div
@@ -14684,8 +14668,7 @@
                                                                         <span
                                                                             class="ai-message__thinking-title"
                                                                         >
-                                                                            💭 {i18n(
-                                                                                'aiSidebar.messages.thinking'
+                                                                            💭 {i18n('aiSidebarMessagesThinking'
                                                                             )}
                                                                         </span>
                                                                     </div>
@@ -14726,8 +14709,7 @@
                                                                     <span
                                                                         class="ai-message__thinking-title"
                                                                     >
-                                                                        💭 {i18n(
-                                                                            'aiSidebar.messages.thinking'
+                                                                        💭 {i18n('aiSidebarMessagesThinking'
                                                                         )}
                                                                     </span>
                                                                 </div>
@@ -14795,7 +14777,7 @@
                                     {#if message.role === 'assistant'}
                                         🖼️ 图片与附件 ({contextCount})
                                     {:else}
-                                        📎 {i18n('aiSidebar.context.content')} ({contextCount})
+                                        📎 {i18n('aiSidebarContextContent')} ({contextCount})
                                     {/if}
                                 </div>
                                 {#if shouldShowDrawImageChoice(message)}
@@ -14946,7 +14928,7 @@
                                                     class="b3-button b3-button--text ai-sidebar__context-doc-copy"
                                                     on:click|stopPropagation={() =>
                                                         copyMessage(doc.content || '')}
-                                                    title={i18n('aiSidebar.actions.copyMessage')}
+                                                    title={i18n('aiSidebarActionsCopyMessage')}
                                                 >
                                                     <svg class="b3-button__icon">
                                                         <use xlink:href="#iconCopy"></use>
@@ -14992,11 +14974,11 @@
                                             </span>
                                             <span class="ai-message__edit-operation-status">
                                                 {#if operation.status === 'applied'}
-                                                    ✓ {i18n('aiSidebar.actions.applied')}
+                                                    ✓ {i18n('aiSidebarActionsApplied')}
                                                 {:else if operation.status === 'rejected'}
-                                                    ✗ {i18n('aiSidebar.actions.rejected')}
+                                                    ✗ {i18n('aiSidebarActionsRejected')}
                                                 {:else}
-                                                    ⏳ {i18n('aiSidebar.edit.changes')}
+                                                    ⏳ {i18n('aiSidebarEditChanges')}
                                                 {/if}
                                             </span>
                                         </div>
@@ -15015,12 +14997,12 @@
                                             <button
                                                 class="b3-button b3-button--text"
                                                 on:click={() => viewDiff(operation)}
-                                                title={i18n('aiSidebar.actions.viewDiff')}
+                                                title={i18n('aiSidebarActionsViewDiff')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconEye"></use>
                                                 </svg>
-                                                {i18n('aiSidebar.actions.viewDiff')}
+                                                {i18n('aiSidebarActionsViewDiff')}
                                             </button>
                                         </div>
                                     </div>
@@ -15037,14 +15019,14 @@
                         <button
                             class="b3-button b3-button--text ai-message__action"
                             on:click={() => copyMessage(getActualMessageContent(firstMessage))}
-                            title={i18n('aiSidebar.actions.copyMessage')}
+                            title={i18n('aiSidebarActionsCopyMessage')}
                         >
                             <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
                         </button>
                         <button
                             class="b3-button b3-button--text ai-message__action"
                             on:click={() => openSaveToNoteDialog(messageIndex)}
-                            title={i18n('aiSidebar.actions.saveToNote')}
+                            title={i18n('aiSidebarActionsSaveToNote')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconDownload"></use>
@@ -15053,14 +15035,14 @@
                         <button
                             class="b3-button b3-button--text ai-message__action"
                             on:click={() => startEditMessage(messageIndex)}
-                            title={i18n('aiSidebar.actions.editMessage')}
+                            title={i18n('aiSidebarActionsEditMessage')}
                         >
                             <svg class="b3-button__icon"><use xlink:href="#iconEdit"></use></svg>
                         </button>
                         <button
                             class="b3-button b3-button--text ai-message__action"
                             on:click={() => deleteMessage(messageIndex)}
-                            title={i18n('aiSidebar.actions.deleteMessage')}
+                            title={i18n('aiSidebarActionsDeleteMessage')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconTrashcan"></use>
@@ -15070,8 +15052,8 @@
                             class="b3-button b3-button--text ai-message__action"
                             on:click={() => regenerateMessage(messageIndex)}
                             title={group.type === 'user'
-                                ? i18n('aiSidebar.actions.resend')
-                                : i18n('aiSidebar.actions.regenerate')}
+                                ? i18n('aiSidebarActionsResend')
+                                : i18n('aiSidebarActionsRegenerate')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconRefresh"></use>
@@ -15301,35 +15283,35 @@
             <div class="ai-sidebar__multi-model-responses">
                 <div class="ai-sidebar__multi-model-header">
                     <div class="ai-sidebar__multi-model-header-top">
-                        <h3>{i18n('multiModel.responses')}</h3>
+                        <h3>{i18n('multiModelResponses')}</h3>
                         <div class="ai-sidebar__multi-model-layout-selector">
                             <button
                                 class="b3-button b3-button--text b3-button--small"
                                 class:b3-button--primary={multiModelLayout === 'card'}
                                 on:click={() => (multiModelLayout = 'card')}
-                                title={i18n('multiModel.layout.card')}
+                                title={i18n('multiModelLayoutCard')}
                             >
                                 <svg class="b3-button__icon">
                                     <use xlink:href="#iconSplitLR"></use>
                                 </svg>
-                                {i18n('multiModel.layout.card')}
+                                {i18n('multiModelLayoutCard')}
                             </button>
                             <button
                                 class="b3-button b3-button--text b3-button--small"
                                 class:b3-button--primary={multiModelLayout === 'tab'}
                                 on:click={() => (multiModelLayout = 'tab')}
-                                title={i18n('multiModel.layout.tab')}
+                                title={i18n('multiModelLayoutTab')}
                             >
                                 <svg class="b3-button__icon">
                                     <use xlink:href="#iconSplitTB"></use>
                                 </svg>
-                                {i18n('multiModel.layout.tab')}
+                                {i18n('multiModelLayoutTab')}
                             </button>
                         </div>
                     </div>
                     {#if isWaitingForAnswerSelection}
                         <div class="ai-sidebar__multi-model-hint">
-                            {i18n('multiModel.waitingSelection')}
+                            {i18n('multiModelWaitingSelection')}
                         </div>
                     {/if}
                 </div>
@@ -15357,13 +15339,13 @@
                                             <span
                                                 class="ai-sidebar__multi-model-card-status ai-sidebar__multi-model-card-status--loading"
                                             >
-                                                ⏳ {i18n('multiModel.loading')}
+                                                ⏳ {i18n('multiModelLoading')}
                                             </span>
                                         {:else if response.error}
                                             <span
                                                 class="ai-sidebar__multi-model-card-status ai-sidebar__multi-model-card-status--error"
                                             >
-                                                ❌ {i18n('multiModel.error')}
+                                                ❌ {i18n('multiModelError')}
                                             </span>
                                         {/if}
                                     </div>
@@ -15372,7 +15354,7 @@
                                             <button
                                                 class="b3-button b3-button--text ai-sidebar__multi-model-copy-btn"
                                                 on:click={() => copyMessage(response.content || '')}
-                                                title={i18n('aiSidebar.actions.copyMessage')}
+                                                title={i18n('aiSidebarActionsCopyMessage')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconCopy"></use>
@@ -15383,7 +15365,7 @@
                                             <button
                                                 class="b3-button b3-button--text"
                                                 on:click={() => regenerateModelResponse(index)}
-                                                title={i18n('aiSidebar.actions.regenerate')}
+                                                title={i18n('aiSidebarActionsRegenerate')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconRefresh"></use>
@@ -15396,8 +15378,8 @@
                                                 on:click={() => selectMultiModelAnswer(index)}
                                             >
                                                 {selectedAnswerIndex === index
-                                                    ? i18n('multiModel.answerSelected')
-                                                    : i18n('multiModel.selectAnswer')}
+                                                    ? i18n('multiModelAnswerSelected')
+                                                    : i18n('multiModelSelectAnswer')}
                                             </button>
                                         {/if}
                                     </div>
@@ -15446,7 +15428,7 @@
                                                             <use xlink:href="#iconRight"></use>
                                                         </svg>
                                                         <span class="ai-message__thinking-title">
-                                                            💭 {i18n('aiSidebar.messages.thinking')}
+                                                            💭 {i18n('aiSidebarMessagesThinking')}
                                                         </span>
                                                     </div>
                                                     {#if !thinkingCollapsed[`mm-${index}-group-${groupIndex}`]}
@@ -15468,7 +15450,7 @@
                                                 style="margin-top: 8px;"
                                             >
                                                 <div class="ai-message__tool-calls-title">
-                                                    🔧 {i18n('tools.calling')} ({group.toolCalls
+                                                    🔧 {i18n('toolsCalling')} ({group.toolCalls
                                                         .length})
                                                 </div>
                                                 {#each group.toolCalls as toolCall}
@@ -15527,8 +15509,7 @@
                                                                     <div
                                                                         class="ai-message__tool-call-section-header"
                                                                     >
-                                                                        {i18n(
-                                                                            'aiSidebar.messages.params'
+                                                                        {i18n('aiSidebarMessagesParams'
                                                                         )}
                                                                     </div>
                                                                     <div
@@ -15547,8 +15528,7 @@
                                                                         <div
                                                                             class="ai-message__tool-call-section-header"
                                                                         >
-                                                                            {i18n(
-                                                                                'aiSidebar.messages.result'
+                                                                            {i18n('aiSidebarMessagesResult'
                                                                             )}
                                                                         </div>
                                                                         <div
@@ -15592,7 +15572,7 @@
                                                         <use xlink:href="#iconRight"></use>
                                                     </svg>
                                                     <span class="ai-message__thinking-title">
-                                                        💭 {i18n('aiSidebar.messages.thinking')}
+                                                        💭 {i18n('aiSidebarMessagesThinking')}
                                                     </span>
                                                 </div>
                                                 {#if !response.thinkingCollapsed}
@@ -15626,7 +15606,7 @@
                                                     <use xlink:href="#iconRight"></use>
                                                 </svg>
                                                 <span class="ai-message__thinking-title">
-                                                    💭 {i18n('aiSidebar.messages.thinking')}
+                                                    💭 {i18n('aiSidebarMessagesThinking')}
                                                 </span>
                                             </div>
                                             {#if !response.thinkingCollapsed}
@@ -15750,7 +15730,7 @@
                                                 <span
                                                     class="ai-sidebar__multi-model-tab-panel-status ai-sidebar__multi-model-tab-panel-status--error"
                                                 >
-                                                    ❌ {i18n('multiModel.error')}
+                                                    ❌ {i18n('multiModelError')}
                                                 </span>
                                             {/if}
                                         </div>
@@ -15760,7 +15740,7 @@
                                                     class="b3-button b3-button--text ai-sidebar__multi-model-copy-btn"
                                                     on:click={() =>
                                                         copyMessage(response.content || '')}
-                                                    title={i18n('aiSidebar.actions.copyMessage')}
+                                                    title={i18n('aiSidebarActionsCopyMessage')}
                                                 >
                                                     <svg class="b3-button__icon">
                                                         <use xlink:href="#iconCopy"></use>
@@ -15772,7 +15752,7 @@
                                                     class="b3-button b3-button--text"
                                                     on:click={() =>
                                                         regenerateModelResponse(selectedTabIndex)}
-                                                    title={i18n('aiSidebar.actions.regenerate')}
+                                                    title={i18n('aiSidebarActionsRegenerate')}
                                                 >
                                                     <svg class="b3-button__icon">
                                                         <use xlink:href="#iconRefresh"></use>
@@ -15786,8 +15766,8 @@
                                                         selectMultiModelAnswer(selectedTabIndex)}
                                                 >
                                                     {selectedAnswerIndex === selectedTabIndex
-                                                        ? i18n('multiModel.answerSelected')
-                                                        : i18n('multiModel.selectAnswer')}
+                                                        ? i18n('multiModelAnswerSelected')
+                                                        : i18n('multiModelSelectAnswer')}
                                                 </button>
                                             {/if}
                                         </div>
@@ -15857,7 +15837,7 @@
                                                 style="margin-top: 8px;"
                                             >
                                                 <div class="ai-message__tool-calls-title">
-                                                    🔧 {i18n('tools.calling')} ({group.toolCalls
+                                                    🔧 {i18n('toolsCalling')} ({group.toolCalls
                                                         .length})
                                                 </div>
                                                 {#each group.toolCalls as toolCall}
@@ -15916,8 +15896,7 @@
                                                                     <div
                                                                         class="ai-message__tool-call-section-header"
                                                                     >
-                                                                        {i18n(
-                                                                            'aiSidebar.messages.params'
+                                                                        {i18n('aiSidebarMessagesParams'
                                                                         )}
                                                                     </div>
                                                                     <div
@@ -15936,8 +15915,7 @@
                                                                         <div
                                                                             class="ai-message__tool-call-section-header"
                                                                         >
-                                                                            {i18n(
-                                                                                'aiSidebar.messages.result'
+                                                                            {i18n('aiSidebarMessagesResult'
                                                                             )}
                                                                         </div>
                                                                         <div
@@ -16062,7 +16040,7 @@
                                             {@html streamTabContent}
                                         {:else if response.isLoading}
                                             <div class="ai-sidebar__multi-model-tab-panel-loading">
-                                                {i18n('multiModel.loading')}
+                                                {i18n('multiModelLoading')}
                                             </div>
                                         {/if}
                                     </div>
@@ -16077,7 +16055,7 @@
         {#if messages.filter(msg => msg.role !== 'system').length === 0 && !isLoading}
             <div class="ai-sidebar__empty">
                 <div class="ai-sidebar__empty-icon">💬</div>
-                <p>{i18n('aiSidebar.empty.greeting')}</p>
+                <p>{i18n('aiSidebarEmptyGreeting')}</p>
             </div>
         {/if}
     </div>
@@ -16091,7 +16069,7 @@
             on:dragleave={handleDragLeave}
             on:drop={handleDrop}
         >
-            <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebar.context.content')}</div>
+            <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebarContextContent')}</div>
             <div class="ai-sidebar__context-docs-list">
 
                 <!-- 显示当前附件（排除已内联显示的图片） -->
@@ -16159,16 +16137,16 @@
         <!-- 模式选择 -->
         <div class="ai-sidebar__mode-selector">
             <label for="chat-mode-select" class="ai-sidebar__mode-label">
-                {i18n('aiSidebar.mode.label')}:
+                {i18n('aiSidebarModeLabel')}:
             </label>
             <select
                 id="chat-mode-select"
                 class="b3-select ai-sidebar__mode-select"
                 bind:value={chatMode}
             >
-                <option value="ask">{i18n('aiSidebar.mode.ask')}</option>
-                <option value="agent">{i18n('aiSidebar.mode.agent')}</option>
-                <option value="draw">{i18n('aiSidebar.mode.draw') || '画图模式'}</option>
+                <option value="ask">{i18n('aiSidebarModeAsk')}</option>
+                <option value="agent">{i18n('aiSidebarModeAgent')}</option>
+                <option value="draw">{i18n('aiSidebarModeDraw') || '画图模式'}</option>
             </select>
 
             <!-- Agent/Ask 模式工具选择按钮 -->
@@ -16176,10 +16154,10 @@
                 <button
                     class="b3-button b3-button--text ai-sidebar__tool-selector-btn"
                     on:click={() => (isToolSelectorOpen = !isToolSelectorOpen)}
-                    title={i18n('aiSidebar.agent.selectTools')}
+                    title={i18n('aiSidebarAgentSelectTools')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
-                    <span>{i18n('aiSidebar.agent.tools')} ({userToolCount})</span>
+                    <span>{i18n('aiSidebarAgentTools')} ({userToolCount})</span>
                 </button>
             {/if}
 
@@ -16194,8 +16172,8 @@
                                     class:ai-sidebar__thinking-toggle--active={isWebSearchModeEnabled}
                                     on:click={toggleWebSearchMode}
                                     title={isWebSearchModeEnabled
-                                        ? i18n('webSearch.enabled')
-                                        : i18n('webSearch.disabled')}
+                                        ? i18n('webSearchEnabled')
+                                        : i18n('webSearchDisabled')}
                                     disabled={!currentProvider || !currentModelId}
                                 >
                                     🌐
@@ -16207,11 +16185,11 @@
                                     class:ai-sidebar__thinking-toggle--active={isThinkingModeEnabled}
                                     on:click={toggleThinkingMode}
                                     title={isThinkingModeEnabled
-                                        ? i18n('thinking.enabled')
-                                        : i18n('thinking.disabled')}
+                                        ? i18n('thinkingEnabled')
+                                        : i18n('thinkingDisabled')}
                                     disabled={!currentProvider || !currentModelId}
                                 >
-                                    {i18n('thinking.toggle')}
+                                    {i18n('thinkingToggle')}
                                 </button>
                             {/if}
                             {#if showThinkingEffortSelector}
@@ -16219,7 +16197,7 @@
                                     class="ai-sidebar__thinking-effort-select b3-select"
                                     value={currentThinkingEffort}
                                     on:change={handleThinkingEffortChange}
-                                    title={i18n('thinking.effort.title')}
+                                    title={i18n('thinkingEffortTitle')}
                                 >
                                     {#each getSupportedThinkingEffortLevels(currentModelId) as effort}
                                         <option value={effort}>
@@ -16253,8 +16231,8 @@
                                     class:ai-sidebar__thinking-toggle--active={isWebSearchModeEnabled}
                                     on:click={toggleWebSearchMode}
                                     title={isWebSearchModeEnabled
-                                        ? i18n('webSearch.enabled')
-                                        : i18n('webSearch.disabled')}
+                                        ? i18n('webSearchEnabled')
+                                        : i18n('webSearchDisabled')}
                                     disabled={!currentProvider || !currentModelId}
                                 >
                                     🌐
@@ -16266,11 +16244,11 @@
                                     class:ai-sidebar__thinking-toggle--active={isThinkingModeEnabled}
                                     on:click={toggleThinkingMode}
                                     title={isThinkingModeEnabled
-                                        ? i18n('thinking.enabled')
-                                        : i18n('thinking.disabled')}
+                                        ? i18n('thinkingEnabled')
+                                        : i18n('thinkingDisabled')}
                                     disabled={!currentProvider || !currentModelId}
                                 >
-                                    {i18n('thinking.toggle')}
+                                    {i18n('thinkingToggle')}
                                 </button>
                             {/if}
                             {#if showThinkingEffortSelector}
@@ -16278,7 +16256,7 @@
                                     class="ai-sidebar__thinking-effort-select b3-select"
                                     value={currentThinkingEffort}
                                     on:change={handleThinkingEffortChange}
-                                    title={i18n('thinking.effort.title')}
+                                    title={i18n('thinkingEffortTitle')}
                                 >
                                     {#each getSupportedThinkingEffortLevels(currentModelId) as effort}
                                         <option value={effort}>
@@ -16365,7 +16343,7 @@
                 {#if showContextPopover && activeModelsContextInfo.length > 0}
                     <div class="ai-sidebar__context-popover" on:click|stopPropagation>
                         <div class="ai-sidebar__context-popover-title">
-                            {(enableMultiModel && chatMode === 'ask') ? i18n('aiSidebar.context.multiUsage') : i18n('aiSidebar.context.usage')}
+                            {(enableMultiModel && chatMode === 'ask') ? i18n('aiSidebarContextMultiUsage') : i18n('aiSidebarContextUsage')}
                         </div>
                         <div class="ai-sidebar__context-popover-list">
                             {#each activeModelsContextInfo as info}
@@ -16383,7 +16361,7 @@
                             {/each}
                         </div>
                         <div class="ai-sidebar__context-popover-hint">
-                            {i18n('aiSidebar.context.usageHint')}
+                            {i18n('aiSidebarContextUsageHint')}
                         </div>
                     </div>
                 {/if}
@@ -16421,7 +16399,7 @@
                 class="b3-button b3-button--text ai-sidebar__upload-btn"
                 on:click={triggerFileUpload}
                 disabled={isUploadingFile || isLoading}
-                title={i18n('aiSidebar.actions.upload')}
+                title={i18n('aiSidebarActionsUpload')}
             >
                 {#if isUploadingFile}
                     <svg class="b3-button__icon ai-sidebar__loading-icon">
@@ -16435,7 +16413,7 @@
                 class="b3-button b3-button--text ai-sidebar__weblink-btn"
                 on:click={openWebLinkDialog}
                 disabled={isFetchingWebContent || isLoading}
-                title={i18n('aiSidebar.actions.addWebLink')}
+                title={i18n('aiSidebarActionsAddWebLink')}
             >
                 {#if isFetchingWebContent}
                     <svg class="b3-button__icon ai-sidebar__loading-icon">
@@ -16448,7 +16426,7 @@
             <button
                 class="b3-button b3-button--text ai-sidebar__add-current-doc-btn"
                 on:click={addCurrentDocToContext}
-                title={i18n('aiSidebar.actions.addCurrentDoc')}
+                title={i18n('aiSidebarActionsAddCurrentDoc')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconFile"></use></svg>
             </button>
@@ -16461,7 +16439,7 @@
                         searchDocuments();
                     }
                 }}
-                title={i18n('aiSidebar.actions.search')}
+                title={i18n('aiSidebarActionsSearch')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconSearch"></use></svg>
             </button>
@@ -16469,7 +16447,7 @@
                 <button
                     class="b3-button b3-button--text"
                     on:click={togglePromptSelector}
-                    title={i18n('aiSidebar.prompt.title')}
+                    title={i18n('aiSidebarPromptTitle')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconQuote"></use></svg>
                 </button>
@@ -16536,7 +16514,7 @@
                             <use xlink:href="#iconAdd"></use>
                         </svg>
                         <span class="ai-sidebar__prompt-item-title">
-                            {i18n('aiSidebar.prompt.new')}
+                            {i18n('aiSidebarPromptNew')}
                         </span>
                     </button>
 
@@ -16564,7 +16542,7 @@
                                     <button
                                         class="ai-sidebar__prompt-item-edit"
                                         on:click|stopPropagation={() => editPrompt(prompt)}
-                                        title={i18n('aiSidebar.prompt.edit')}
+                                        title={i18n('aiSidebarPromptEdit')}
                                     >
                                         <svg class="b3-button__icon">
                                             <use xlink:href="#iconEdit"></use>
@@ -16573,7 +16551,7 @@
                                     <button
                                         class="ai-sidebar__prompt-item-delete"
                                         on:click|stopPropagation={() => deletePrompt(prompt.id)}
-                                        title={i18n('aiSidebar.prompt.delete')}
+                                        title={i18n('aiSidebarPromptDelete')}
                                     >
                                         <svg class="b3-button__icon">
                                             <use xlink:href="#iconTrashcan"></use>
@@ -16596,8 +16574,8 @@
                 <div class="ai-sidebar__prompt-dialog-header">
                     <h4>
                         {editingPrompt
-                            ? i18n('aiSidebar.prompt.edit')
-                            : i18n('aiSidebar.prompt.create')}
+                            ? i18n('aiSidebarPromptEdit')
+                            : i18n('aiSidebarPromptCreate')}
                     </h4>
                     <button class="b3-button b3-button--text" on:click={closePromptManager}>
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
@@ -16610,7 +16588,7 @@
                             <input
                                 type="text"
                                 bind:value={newPromptTitle}
-                                placeholder={i18n('aiSidebar.prompt.titlePlaceholder')}
+                                placeholder={i18n('aiSidebarPromptTitlePlaceholder')}
                                 class="b3-text-field"
                             />
                         </div>
@@ -16704,7 +16682,7 @@
             ></div>
             <div class="ai-sidebar__search-dialog-content">
                 <div class="ai-sidebar__search-dialog-header">
-                    <h4>{i18n('aiSidebar.search.title')}</h4>
+                    <h4>{i18n('aiSidebarSearchTitle')}</h4>
                     <button
                         class="b3-button b3-button--text"
                         on:click={() => (isSearchDialogOpen = false)}
@@ -16719,7 +16697,7 @@
                             bind:value={searchKeyword}
                             on:input={autoSearch}
                             on:paste={autoSearch}
-                            placeholder={i18n('aiSidebar.search.placeholder')}
+                            placeholder={i18n('aiSidebarSearchPlaceholder')}
                             class="b3-text-field"
                         />
                         {#if isSearching}
@@ -16735,10 +16713,10 @@
                             {#each searchResults as result (result.id)}
                                 <div class="ai-sidebar__search-result-item">
                                     <div class="ai-sidebar__search-result-title">
-                                        {result.content || i18n('common.untitled')}
+                                        {result.content || i18n('commonUntitled')}
                                         {#if !searchKeyword.trim()}
                                             <span class="ai-sidebar__search-current-doc-badge">
-                                                {i18n('aiSidebar.search.currentDoc')}
+                                                {i18n('aiSidebarSearchCurrentDoc')}
                                             </span>
                                         {/if}
                                     </div>
@@ -16747,20 +16725,20 @@
                                         on:click={() =>
                                             addDocumentToContext(
                                                 result.id,
-                                                result.content || i18n('common.untitled')
+                                                result.content || i18n('commonUntitled')
                                             )}
                                     >
-                                        {i18n('aiSidebar.search.add')}
+                                        {i18n('aiSidebarSearchAdd')}
                                     </button>
                                 </div>
                             {/each}
                         {:else if !isSearching && searchKeyword}
                             <div class="ai-sidebar__search-empty">
-                                {i18n('aiSidebar.search.noResults')}
+                                {i18n('aiSidebarSearchNoResults')}
                             </div>
                         {:else if !isSearching && !searchKeyword}
                             <div class="ai-sidebar__search-empty">
-                                {i18n('aiSidebar.search.noCurrentDoc')}
+                                {i18n('aiSidebarSearchNoCurrentDoc')}
                             </div>
                         {/if}
                     </div>
@@ -16775,7 +16753,7 @@
             <div class="ai-sidebar__edit-dialog-overlay" on:click={cancelEditMessage}></div>
             <div class="ai-sidebar__edit-dialog-content">
                 <div class="ai-sidebar__edit-dialog-header">
-                    <h3>{i18n('aiSidebar.actions.editMessage')}</h3>
+                    <h3>{i18n('aiSidebarActionsEditMessage')}</h3>
                     <button class="b3-button b3-button--cancel" on:click={cancelEditMessage}>
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -16790,10 +16768,10 @@
                 </div>
                 <div class="ai-sidebar__edit-dialog-footer">
                     <button class="b3-button b3-button--cancel" on:click={cancelEditMessage}>
-                        {i18n('aiSidebar.actions.cancel')}
+                        {i18n('aiSidebarActionsCancel')}
                     </button>
                     <button class="b3-button b3-button--text" on:click={saveEditMessage}>
-                        {i18n('aiSidebar.actions.save')}
+                        {i18n('aiSidebarActionsSave')}
                     </button>
                 </div>
             </div>
@@ -16808,11 +16786,10 @@
                 <div class="ai-sidebar__diff-dialog-header">
                     <h3>
                         {#if currentDiffOperation.operationType === 'insert'}
-                            {i18n('aiSidebar.edit.insertBlock')} - {i18n(
-                                'aiSidebar.actions.viewDiff'
+                            {i18n('aiSidebarEditInsertBlock')} - {i18n('aiSidebarActionsViewDiff'
                             )}
                         {:else}
-                            {i18n('aiSidebar.actions.viewDiff')}
+                            {i18n('aiSidebarActionsViewDiff')}
                         {/if}
                     </h3>
                     {#if currentDiffOperation.operationType !== 'insert'}
@@ -16822,14 +16799,14 @@
                                 class:b3-button--primary={diffViewMode === 'diff'}
                                 on:click={() => (diffViewMode = 'diff')}
                             >
-                                {i18n('aiSidebar.diff.modeUnified')}
+                                {i18n('aiSidebarDiffModeUnified')}
                             </button>
                             <button
                                 class="b3-button b3-button--text"
                                 class:b3-button--primary={diffViewMode === 'split'}
                                 on:click={() => (diffViewMode = 'split')}
                             >
-                                {i18n('aiSidebar.diff.modeSplit')}
+                                {i18n('aiSidebarDiffModeSplit')}
                             </button>
                         </div>
                     {/if}
@@ -16858,13 +16835,13 @@
                             <strong>文档ID:</strong>
                             {currentDiffOperation.docId}
                         {:else if currentDiffOperation.operationType === 'insert'}
-                            <strong>{i18n('aiSidebar.edit.insertBlock')}:</strong>
+                            <strong>{i18n('aiSidebarEditInsertBlock')}:</strong>
                             {currentDiffOperation.position === 'before'
-                                ? i18n('aiSidebar.edit.before')
-                                : i18n('aiSidebar.edit.after')}
+                                ? i18n('aiSidebarEditBefore')
+                                : i18n('aiSidebarEditAfter')}
                             {currentDiffOperation.blockId}
                         {:else}
-                            <strong>{i18n('aiSidebar.edit.blockId')}:</strong>
+                            <strong>{i18n('aiSidebarEditBlockId')}:</strong>
                             {currentDiffOperation.blockId}
                         {/if}
                     </div>
@@ -16875,19 +16852,19 @@
                                 class="ai-sidebar__diff-split-header"
                                 style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;"
                             >
-                                <span>{i18n('aiSidebar.edit.insertContent')}</span>
+                                <span>{i18n('aiSidebarEditInsertContent')}</span>
                                 <button
                                     class="b3-button b3-button--text b3-button--small"
                                     on:click={() => {
                                         platformUtils.writeText(currentDiffOperation.newContent);
-                                        pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                        pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                                     }}
-                                    title={i18n('aiSidebar.actions.copyNewContent')}
+                                    title={i18n('aiSidebarActionsCopyNewContent')}
                                 >
                                     <svg class="b3-button__icon">
                                         <use xlink:href="#iconCopy"></use>
                                     </svg>
-                                    {i18n('aiSidebar.actions.copy')}
+                                    {i18n('aiSidebarActionsCopy')}
                                 </button>
                             </div>
                             <pre
@@ -16902,27 +16879,27 @@
                                     class="b3-button b3-button--text b3-button--small"
                                     on:click={() => {
                                         platformUtils.writeText(currentDiffOperation.oldContent);
-                                        pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                        pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                                     }}
-                                    title={i18n('aiSidebar.actions.copyOldContent')}
+                                    title={i18n('aiSidebarActionsCopyOldContent')}
                                 >
                                     <svg class="b3-button__icon">
                                         <use xlink:href="#iconCopy"></use>
                                     </svg>
-                                    {i18n('aiSidebar.actions.copyBefore')}
+                                    {i18n('aiSidebarActionsCopyBefore')}
                                 </button>
                                 <button
                                     class="b3-button b3-button--text b3-button--small"
                                     on:click={() => {
                                         platformUtils.writeText(currentDiffOperation.newContent);
-                                        pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                        pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                                     }}
-                                    title={i18n('aiSidebar.actions.copyNewContent')}
+                                    title={i18n('aiSidebarActionsCopyNewContent')}
                                 >
                                     <svg class="b3-button__icon">
                                         <use xlink:href="#iconCopy"></use>
                                     </svg>
-                                    {i18n('aiSidebar.actions.copyAfter')}
+                                    {i18n('aiSidebarActionsCopyAfter')}
                                 </button>
                             </div>
                             <div class="ai-sidebar__diff-content">
@@ -16946,16 +16923,16 @@
                             <div class="ai-sidebar__diff-split">
                                 <div class="ai-sidebar__diff-split-column">
                                     <div class="ai-sidebar__diff-split-header">
-                                        <span>{i18n('aiSidebar.edit.before')}</span>
+                                        <span>{i18n('aiSidebarEditBefore')}</span>
                                         <button
                                             class="b3-button b3-button--text b3-button--small"
                                             on:click={() => {
                                                 platformUtils.writeText(
                                                     currentDiffOperation.oldContent
                                                 );
-                                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                                             }}
-                                            title={i18n('aiSidebar.actions.copyOldContent')}
+                                            title={i18n('aiSidebarActionsCopyOldContent')}
                                         >
                                             <svg class="b3-button__icon">
                                                 <use xlink:href="#iconCopy"></use>
@@ -16970,16 +16947,16 @@
                                 </div>
                                 <div class="ai-sidebar__diff-split-column">
                                     <div class="ai-sidebar__diff-split-header">
-                                        <span>{i18n('aiSidebar.edit.after')}</span>
+                                        <span>{i18n('aiSidebarEditAfter')}</span>
                                         <button
                                             class="b3-button b3-button--text b3-button--small"
                                             on:click={() => {
                                                 platformUtils.writeText(
                                                     currentDiffOperation.newContent
                                                 );
-                                                pushMsg(i18n('aiSidebar.success.copySuccess'));
+                                                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
                                             }}
-                                            title={i18n('aiSidebar.actions.copyNewContent')}
+                                            title={i18n('aiSidebarActionsCopyNewContent')}
                                         >
                                             <svg class="b3-button__icon">
                                                 <use xlink:href="#iconCopy"></use>
@@ -16996,13 +16973,13 @@
                         {/if}
                     {:else}
                         <div class="ai-sidebar__diff-loading">
-                            {i18n('common.loading')}
+                            {i18n('commonLoading')}
                         </div>
                     {/if}
                 </div>
                 <div class="ai-sidebar__diff-dialog-footer">
                     <button class="b3-button b3-button--cancel" on:click={closeDiffDialog}>
-                        {i18n('common.close')}
+                        {i18n('commonClose')}
                     </button>
                 </div>
             </div>
@@ -17090,7 +17067,7 @@
                         on:click={() => handleContextMenuAction('copy')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>{i18n('aiSidebar.actions.copyMessage')}</span>
+                        <span>{i18n('aiSidebarActionsCopyMessage')}</span>
                     </button>
                 {/if}
 
@@ -17099,14 +17076,14 @@
                     on:click={() => handleContextMenuAction('edit')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconEdit"></use></svg>
-                    <span>{i18n('aiSidebar.actions.editMessage')}</span>
+                    <span>{i18n('aiSidebarActionsEditMessage')}</span>
                 </button>
                 <button
                     class="ai-sidebar__context-menu-item"
                     on:click={() => handleContextMenuAction('delete')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconTrashcan"></use></svg>
-                    <span>{i18n('aiSidebar.actions.deleteMessage')}</span>
+                    <span>{i18n('aiSidebarActionsDeleteMessage')}</span>
                 </button>
                 <div class="ai-sidebar__context-menu-divider"></div>
                 <button
@@ -17114,7 +17091,7 @@
                     on:click={() => handleContextMenuAction('save')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconDownload"></use></svg>
-                    <span>{i18n('aiSidebar.actions.saveToNote')}</span>
+                    <span>{i18n('aiSidebarActionsSaveToNote')}</span>
                 </button>
                 <button
                     class="ai-sidebar__context-menu-item"
@@ -17123,8 +17100,8 @@
                     <svg class="b3-button__icon"><use xlink:href="#iconRefresh"></use></svg>
                     <span>
                         {contextMenuMessageType === 'user'
-                            ? i18n('aiSidebar.actions.resend')
-                            : i18n('aiSidebar.actions.regenerate')}
+                            ? i18n('aiSidebarActionsResend')
+                            : i18n('aiSidebarActionsRegenerate')}
                     </span>
                 </button>
             {/if}
@@ -17155,11 +17132,11 @@
         <div class="save-to-note-dialog__overlay" on:click={closeSaveToNoteDialog}></div>
         <div class="save-to-note-dialog">
             <div class="save-to-note-dialog__header">
-                <h3>{i18n('aiSidebar.session.saveToNote.title')}</h3>
+                <h3>{i18n('aiSidebarSessionSaveToNoteTitle')}</h3>
                 <button
                     class="b3-button b3-button--text"
                     on:click={closeSaveToNoteDialog}
-                    title={i18n('common.close')}
+                    title={i18n('commonClose')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                 </button>
@@ -17171,27 +17148,27 @@
                     <button
                         class="b3-button b3-button--outline"
                         on:click={useCurrentDocPath}
-                        title={i18n('aiSidebar.session.saveToNote.useCurrentDoc')}
+                        title={i18n('aiSidebarSessionSaveToNoteUseCurrentDoc')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconFile"></use></svg>
-                        <span>{i18n('aiSidebar.session.saveToNote.useCurrentDoc')}</span>
+                        <span>{i18n('aiSidebarSessionSaveToNoteUseCurrentDoc')}</span>
                     </button>
                 </div>
             {/if}
 
             <div class="save-to-note-dialog__content">
                 <div class="save-to-note-dialog__field">
-                    <label>{i18n('aiSidebar.session.saveToNote.documentName')}</label>
+                    <label>{i18n('aiSidebarSessionSaveToNoteDocumentName')}</label>
                     <input
                         type="text"
                         class="b3-text-field"
                         bind:value={saveDocumentName}
-                        placeholder={i18n('aiSidebar.session.saveToNote.documentNamePlaceholder')}
+                        placeholder={i18n('aiSidebarSessionSaveToNoteDocumentNamePlaceholder')}
                     />
                 </div>
 
                 <div class="save-to-note-dialog__field">
-                    <label>{i18n('aiSidebar.session.saveToNote.notebook')}</label>
+                    <label>{i18n('aiSidebarSessionSaveToNoteNotebook')}</label>
                     <select
                         class="b3-select"
                         bind:value={saveNotebookId}
@@ -17202,13 +17179,13 @@
                                 <option value={notebook.id}>{notebook.name}</option>
                             {/each}
                         {:else}
-                            <option value="">{i18n('common.loading')}</option>
+                            <option value="">{i18n('commonLoading')}</option>
                         {/if}
                     </select>
                 </div>
 
                 <div class="save-to-note-dialog__field">
-                    <label>{i18n('aiSidebar.session.saveToNote.path')}</label>
+                    <label>{i18n('aiSidebarSessionSaveToNotePath')}</label>
                     <div class="save-to-note-dialog__path-input-wrapper">
                         <input
                             type="text"
@@ -17218,14 +17195,14 @@
                             on:blur={() => {
                                 setTimeout(() => (showSavePathDropdown = false), 200);
                             }}
-                            placeholder={i18n('aiSidebar.session.saveToNote.pathPlaceholder')}
+                            placeholder={i18n('aiSidebarSessionSaveToNotePathPlaceholder')}
                         />
                         <!-- 路径搜索结果下拉框 -->
                         {#if showSavePathDropdown && (savePathSearchResults.length > 0 || isSavePathSearching)}
                             <div class="save-to-note-dialog__path-dropdown">
                                 {#if isSavePathSearching}
                                     <div class="save-to-note-dialog__path-loading">
-                                        {i18n('aiSidebar.session.saveToNote.searching')}
+                                        {i18n('aiSidebarSessionSaveToNoteSearching')}
                                     </div>
                                 {:else if savePathSearchResults.length > 0}
                                     {#each savePathSearchResults as doc}
@@ -17255,14 +17232,14 @@
             <div class="save-to-note-dialog__footer">
                 <label class="save-to-note-dialog__footer-option">
                     <input type="checkbox" class="b3-switch" bind:checked={openAfterSave} />
-                    <span>{i18n('aiSidebar.session.saveToNote.openAfterSave')}</span>
+                    <span>{i18n('aiSidebarSessionSaveToNoteOpenAfterSave')}</span>
                 </label>
                 <div class="save-to-note-dialog__footer-buttons">
                     <button class="b3-button b3-button--cancel" on:click={closeSaveToNoteDialog}>
-                        {i18n('aiSidebar.session.saveToNote.cancel')}
+                        {i18n('aiSidebarSessionSaveToNoteCancel')}
                     </button>
                     <button class="b3-button b3-button--primary" on:click={confirmSaveToNote}>
-                        {i18n('aiSidebar.session.saveToNote.confirm')}
+                        {i18n('aiSidebarSessionSaveToNoteConfirm')}
                     </button>
                 </div>
             </div>
@@ -17274,11 +17251,11 @@
         <div class="tool-approval-dialog__overlay" on:click={rejectToolCall}></div>
         <div class="tool-approval-dialog">
             <div class="tool-approval-dialog__header">
-                <h3>{i18n('tools.waitingApproval')}</h3>
+                <h3>{i18n('toolsWaitingApproval')}</h3>
                 <button
                     class="b3-button b3-button--text"
                     on:click={rejectToolCall}
-                    title={i18n('common.close')}
+                    title={i18n('commonClose')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                 </button>
@@ -17299,7 +17276,7 @@
 
                 <div class="tool-approval-dialog__params">
                     <div class="tool-approval-dialog__section-title">
-                        {i18n('tools.selector.parameters')}:
+                        {i18n('toolsSelectorParameters')}:
                     </div>
                     <pre class="tool-approval-dialog__code">{pendingToolCall.function
                             .arguments}</pre>
@@ -17314,11 +17291,11 @@
             <div class="tool-approval-dialog__footer">
                 <button class="b3-button b3-button--cancel" on:click={rejectToolCall}>
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
-                    {i18n('tools.reject')}
+                    {i18n('toolsReject')}
                 </button>
                 <button class="b3-button b3-button--primary" on:click={approveToolCall}>
                     <svg class="b3-button__icon"><use xlink:href="#iconCheck"></use></svg>
-                    {i18n('tools.approve')}
+                    {i18n('toolsApprove')}
                 </button>
             </div>
         </div>

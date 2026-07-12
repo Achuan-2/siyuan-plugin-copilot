@@ -134,18 +134,18 @@
 
         if (days === 0) {
             return (
-                i18n('aiSidebar.session.today') +
+                i18n('aiSidebarSessionToday') +
                 ' ' +
                 date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
             );
         } else if (days === 1) {
             return (
-                i18n('aiSidebar.session.yesterday') +
+                i18n('aiSidebarSessionYesterday') +
                 ' ' +
                 date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
             );
         } else if (days < 7) {
-            return `${days}${i18n('aiSidebar.session.daysAgo')}`;
+            return `${days}${i18n('aiSidebarSessionDaysAgo')}`;
         } else {
             return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
         }
@@ -357,8 +357,8 @@
             dispatch('update', { sessions });
             pushMsg(
                 session.pinned
-                    ? i18n('aiSidebar.session.pinned')
-                    : i18n('aiSidebar.session.unpinned')
+                    ? i18n('aiSidebarSessionPinned')
+                    : i18n('aiSidebarSessionUnpinned')
             );
         }
         // 不关闭右键菜单，让用户可以继续操作
@@ -390,7 +390,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        pushMsg(i18n('aiSidebar.session.exportSuccess'));
+        pushMsg(i18n('aiSidebarSessionExportSuccess'));
         closeContextMenu();
     }
 
@@ -453,7 +453,7 @@
             session.title = renameSessionTitle.trim();
             sessions = [...sessions];
             dispatch('update', { sessions });
-            pushMsg(i18n('aiSidebar.session.renameSuccess') || '重命名成功');
+            pushMsg(i18n('aiSidebarSessionRenameSuccess') || '重命名成功');
         }
 
         isRenameDialogOpen = false;
@@ -474,7 +474,7 @@
         bind:this={buttonElement}
         class="session-manager__button b3-button b3-button--text"
         on:click|stopPropagation={() => (isOpen = !isOpen)}
-        title={i18n('aiSidebar.session.title')}
+        title={i18n('aiSidebarSessionTitle')}
     >
         <svg class="b3-button__icon"><use xlink:href="#iconHistory"></use></svg>
     </button>
@@ -486,7 +486,7 @@
             style="top: {dropdownTop}px; left: {dropdownLeft}px;"
         >
             <div class="session-manager__header">
-                <h4>{i18n('aiSidebar.session.history')}</h4>
+                <h4>{i18n('aiSidebarSessionHistory')}</h4>
                 <div class="session-manager__header-actions">
                     {#if isMultiSelectMode}
                         <!-- 多选模式下的操作按钮 -->
@@ -534,7 +534,7 @@
                         </button>
                         <button class="b3-button b3-button--primary" on:click={newSession}>
                             <svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>
-                            {i18n('aiSidebar.session.new')}
+                            {i18n('aiSidebarSessionNew')}
                         </button>
                     {/if}
                 </div>
@@ -548,7 +548,7 @@
                     type="text"
                     class="session-manager__search-input"
                     bind:value={searchQuery}
-                    placeholder={i18n('aiSidebar.session.searchPlaceholder') ||
+                    placeholder={i18n('aiSidebarSessionSearchPlaceholder') ||
                         '搜索会话标题或对话内容'}
                 />
                 {#if isSearchLoading}
@@ -559,7 +559,7 @@
                         type="button"
                         class="session-manager__search-clear"
                         on:click={() => (searchQuery = '')}
-                        title={i18n('aiSidebar.session.searchClear') || '清除搜索'}
+                        title={i18n('aiSidebarSessionSearchClear') || '清除搜索'}
                     >
                         <svg class="b3-button__icon">
                             <use xlink:href="#iconClose"></use>
@@ -573,9 +573,9 @@
                     <div class="session-manager__empty">
                         {searchQuery.trim()
                             ? isSearchLoading
-                                ? i18n('aiSidebar.session.searching') || '正在搜索…'
-                                : i18n('aiSidebar.session.searchNoResults') || '没有匹配的会话'
-                            : i18n('aiSidebar.session.empty')}
+                                ? i18n('aiSidebarSessionSearching') || '正在搜索…'
+                                : i18n('aiSidebarSessionSearchNoResults') || '没有匹配的会话'
+                            : i18n('aiSidebarSessionEmpty')}
                     </div>
                 {:else}
                     {#each sortedSessions as session}
@@ -620,7 +620,7 @@
                                                 ? session.messages.filter(m => m.role !== 'system')
                                                       .length
                                                 : 0)}
-                                        {i18n('aiSidebar.messages.messageCount')}
+                                        {i18n('aiSidebarMessagesMessageCount')}
                                     </span>
                                 </div>
                             </div>
@@ -629,7 +629,7 @@
                                 <button
                                     class="b3-button b3-button--text session-item__delete"
                                     on:click={e => deleteSession(session.id, e)}
-                                    title={i18n('aiSidebar.session.delete')}
+                                    title={i18n('aiSidebarSessionDelete')}
                                 >
                                     <svg class="b3-button__icon">
                                         <use xlink:href="#iconTrashcan"></use>
@@ -658,8 +658,8 @@
                 </svg>
                 <span>
                     {contextMenuSession.pinned
-                        ? i18n('aiSidebar.session.unpin')
-                        : i18n('aiSidebar.session.pin')}
+                        ? i18n('aiSidebarSessionUnpin')
+                        : i18n('aiSidebarSessionPin')}
                 </span>
             </div>
             <div
@@ -672,7 +672,7 @@
                 <svg class="b3-menu__icon">
                     <use xlink:href="#iconEdit"></use>
                 </svg>
-                <span>{i18n('aiSidebar.session.rename') || '重命名'}</span>
+                <span>{i18n('aiSidebarSessionRename') || '重命名'}</span>
             </div>
             <div
                 class="session-context-menu__item"
@@ -684,7 +684,7 @@
                 <svg class="b3-menu__icon">
                     <use xlink:href="#iconDownload"></use>
                 </svg>
-                <span>{i18n('aiSidebar.actions.saveToNote') || '保存为笔记'}</span>
+                <span>{i18n('aiSidebarActionsSaveToNote') || '保存为笔记'}</span>
             </div>
             <div
                 class="session-context-menu__item"
@@ -696,7 +696,7 @@
                 <svg class="b3-menu__icon">
                     <use xlink:href="#iconDownload"></use>
                 </svg>
-                <span>{i18n('aiSidebar.session.export')}</span>
+                <span>{i18n('aiSidebarSessionExport')}</span>
             </div>
         </div>
     {/if}
@@ -706,11 +706,11 @@
         <div class="session-rename-dialog-overlay" on:click={cancelRename}>
             <div class="session-rename-dialog" on:click|stopPropagation>
                 <div class="session-rename-dialog__header">
-                    <h3>{i18n('aiSidebar.session.rename') || '重命名会话'}</h3>
+                    <h3>{i18n('aiSidebarSessionRename') || '重命名会话'}</h3>
                     <button
                         class="b3-button b3-button--text"
                         on:click={cancelRename}
-                        title={i18n('common.cancel') || '取消'}
+                        title={i18n('commonCancel') || '取消'}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -720,17 +720,17 @@
                         type="text"
                         class="b3-text-field"
                         bind:value={renameSessionTitle}
-                        placeholder={i18n('aiSidebar.session.titlePlaceholder') || '请输入会话标题'}
+                        placeholder={i18n('aiSidebarSessionTitlePlaceholder') || '请输入会话标题'}
                         on:keydown={e => e.key === 'Enter' && confirmRename()}
                         autofocus
                     />
                 </div>
                 <div class="session-rename-dialog__footer">
                     <button class="b3-button b3-button--text" on:click={cancelRename}>
-                        {i18n('common.cancel') || '取消'}
+                        {i18n('commonCancel') || '取消'}
                     </button>
                     <button class="b3-button b3-button--primary" on:click={confirmRename}>
-                        {i18n('common.confirm') || '确定'}
+                        {i18n('commonConfirm') || '确定'}
                     </button>
                 </div>
             </div>

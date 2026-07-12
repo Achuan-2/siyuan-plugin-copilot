@@ -559,11 +559,11 @@ export default class PluginSample extends Plugin {
                 position: "RightBottom",
                 size: { width: 400, height: 0 },
                 icon: "iconCopilotWebApp",
-                title: i18n("settings.webAppCollectionDock.title") || "网页小程序",
+                title: i18n("settingsWebAppCollectionDockTitle") || "网页小程序",
                 show: false,
             },
             data: {
-                text: i18n("settings.webAppCollectionDock.title") || "网页小程序"
+                text: i18n("settingsWebAppCollectionDockTitle") || "网页小程序"
             },
             type: COLLECTION_DOCK_TYPE,
             init: (dock) => {
@@ -2235,7 +2235,7 @@ export default class PluginSample extends Plugin {
 
         // 创建对话框
         const dialog = new Dialog({
-            title: i18n("toolbar.aiChatDialog"),
+            title: i18n("toolbarAiChatDialog"),
             content: `<div id="${dialogId}" style="height: 100%;"></div>`,
             width: "800px",
             height: "700px",
@@ -2281,7 +2281,7 @@ export default class PluginSample extends Plugin {
 
         menu.addItem({
             icon: "iconCopilot",
-            label: i18n('menu.summarizeDoc'),
+            label: i18n('menuSummarizeDoc'),
             click: () => {
                 this.summarizeDocInSidebar(docId);
             }
@@ -2296,7 +2296,7 @@ export default class PluginSample extends Plugin {
 
         menu.addItem({
             icon: "iconCopilot",
-            label: i18n('menu.summarizeDoc'),
+            label: i18n('menuSummarizeDoc'),
             click: () => {
                 this.summarizeDocInSidebar(docId);
             }
@@ -2314,7 +2314,7 @@ export default class PluginSample extends Plugin {
 
         menu.addItem({
             icon: "iconCopilotWebApp",
-            label: i18n('menu.openLinkInTab'),
+            label: i18n('menuOpenLinkInTab'),
             click: () => {
                 const linkTitle = element.textContent?.trim() || normalizedHref;
                 const appData = {
@@ -2381,7 +2381,7 @@ export default class PluginSample extends Plugin {
     // 重写 openSetting 方法
     async openSetting() {
         let dialog = new Dialog({
-            title: i18n("settings.settingsPanel"),
+            title: i18n("settingsSettingsPanel"),
             content: `<div id="SettingPanel" style="height: 100%;"></div>`,
             width: "800px",
             height: "700px",

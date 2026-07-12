@@ -25,6 +25,25 @@ export function getCurrentLanguage(): string {
 }
 
 /**
+ * 将路径段转换为 PascalCase（按一个或多个下划线拆词，首字母大写后拼接）
+ */
+function toPascalCase(segment: string): string {
+    return segment
+        .split(/_+/)
+        .filter(Boolean)
+        .map(part => part[0].toUpperCase() + part.slice(1))
+        .join('');
+}
+
+/**
+ * 构造平铺驼峰 i18n 键
+ * 第一个段保持原样，后续段按 toPascalCase 转换
+ */
+export function i18nKey(first: string, ...rest: string[]): string {
+    return [first, ...rest.map(toPascalCase)].join('');
+}
+
+/**
  * 翻译函数
  */
 export function i18n(key: string, params?: { [key: string]: string }): string {
@@ -51,18 +70,8 @@ export function i18n(key: string, params?: { [key: string]: string }): string {
         return key;
     }
 
-    // 支持嵌套键访问（如 settings.template.description）
-    let text = i18nData;
-    const keyParts = key.split('.');
-
-    for (const part of keyParts) {
-        if (text && typeof text === 'object' && part in text) {
-            text = text[part];
-        } else {
-            text = undefined;
-            break;
-        }
-    }
+    // 平铺键直接查找
+    let text: any = i18nData[key];
 
     // 如果没有找到对应的翻译文本，使用key作为后备
     if (typeof text !== 'string') {
@@ -103,19 +112,8 @@ export function hasTranslation(key: string): boolean {
         return false;
     }
 
-    // 支持嵌套键检查
-    let current = i18nData;
-    const keyParts = key.split('.');
-
-    for (const part of keyParts) {
-        if (current && typeof current === 'object' && part in current) {
-            current = current[part];
-        } else {
-            return false;
-        }
-    }
-
-    return typeof current === 'string';
+    // 平铺键直接检查
+    return typeof i18nData[key] === 'string';
 }
 
 /**

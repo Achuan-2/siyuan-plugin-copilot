@@ -191,10 +191,10 @@
                 clearTranslate();
             }
 
-            pushMsg(i18n('aiSidebar.translate.deleteSuccess') || '删除成功');
+            pushMsg(i18n('aiSidebarTranslateDeleteSuccess') || '删除成功');
         } catch (error) {
             console.error('Delete translate history error:', error);
-            pushErrMsg(i18n('aiSidebar.translate.deleteError') || '删除失败');
+            pushErrMsg(i18n('aiSidebarTranslateDeleteError') || '删除失败');
         }
     }
 
@@ -266,12 +266,12 @@
     // 执行翻译
     async function performTranslate() {
         if (!translateInputText.trim()) {
-            pushErrMsg(i18n('aiSidebar.translate.emptyInput') || '请输入要翻译的文本');
+            pushErrMsg(i18n('aiSidebarTranslateEmptyInput') || '请输入要翻译的文本');
             return;
         }
 
         if (!translateProvider || !translateModelId) {
-            pushErrMsg(i18n('aiSidebar.translate.noModel') || '请选择翻译模型');
+            pushErrMsg(i18n('aiSidebarTranslateNoModel') || '请选择翻译模型');
             return;
         }
 
@@ -322,7 +322,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
 
             const result = getProviderAndModelConfig(translateProvider, translateModelId);
             if (!result) {
-                throw new Error(i18n('aiSidebar.translate.noConfig') || '未找到模型配置');
+                throw new Error(i18n('aiSidebarTranslateNoConfig') || '未找到模型配置');
             }
 
             const { providerConfig, modelConfig } = result;
@@ -380,7 +380,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                     console.error('翻译API错误:', error);
                     isTranslating = false;
                     pushErrMsg(
-                        i18n('aiSidebar.translate.error') ||
+                        i18n('aiSidebarTranslateError') ||
                             `翻译失败: ${error.message || '未知错误'}`
                     );
                 },
@@ -392,7 +392,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
             console.error('翻译失败:', error);
             if (error.name !== 'AbortError') {
                 pushErrMsg(
-                    i18n('aiSidebar.translate.error') || `翻译失败: ${error.message || '未知错误'}`
+                    i18n('aiSidebarTranslateError') || `翻译失败: ${error.message || '未知错误'}`
                 );
             }
             isTranslating = false;
@@ -413,19 +413,19 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
     <div class="translate-dialog__overlay" on:click={close}></div>
     <div class="translate-dialog">
         <div class="translate-dialog__header">
-            <h3>{i18n('aiSidebar.translate.title') || '翻译'}</h3>
+            <h3>{i18n('aiSidebarTranslateTitle') || '翻译'}</h3>
             <div class="translate-dialog__header-actions">
                 <button
                     class="b3-button b3-button--text"
                     on:click={() => (showTranslateHistory = !showTranslateHistory)}
-                    title={i18n('aiSidebar.translate.history') || '翻译历史'}
+                    title={i18n('aiSidebarTranslateHistory') || '翻译历史'}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconHistory"></use></svg>
                 </button>
                 <button
                     class="b3-button b3-button--text"
                     on:click={close}
-                    title={i18n('common.close')}
+                    title={i18n('commonClose')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                 </button>
@@ -435,10 +435,10 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
         <div class="translate-dialog__content">
             {#if showTranslateHistory}
                 <div class="translate-dialog__history">
-                    <h4>{i18n('aiSidebar.translate.history') || '翻译历史'}</h4>
+                    <h4>{i18n('aiSidebarTranslateHistory') || '翻译历史'}</h4>
                     {#if translateHistory.length === 0}
                         <div class="translate-dialog__history-empty">
-                            {i18n('aiSidebar.translate.noHistory') || '暂无翻译历史'}
+                            {i18n('aiSidebarTranslateNoHistory') || '暂无翻译历史'}
                         </div>
                     {:else}
                         <div class="translate-dialog__history-list">
@@ -457,7 +457,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                                                 class="b3-button b3-button--text translate-dialog__delete-btn"
                                                 on:click={e =>
                                                     deleteTranslateHistoryItem(history, e)}
-                                                title={i18n('common.delete') || '删除'}
+                                                title={i18n('commonDelete') || '删除'}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconTrashcan"></use>
@@ -488,14 +488,14 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                     </div>
                     <div class="translate-dialog__language-selector">
                         <div class="translate-dialog__language-group">
-                            <label>{i18n('aiSidebar.translate.inputLanguage') || '输入语言'}</label>
+                            <label>{i18n('aiSidebarTranslateInputLanguage') || '输入语言'}</label>
                             <select
                                 class="b3-select"
                                 bind:value={translateInputLanguage}
                                 on:change={saveTranslateLanguageSettings}
                             >
                                 <option value="auto">
-                                    {i18n('aiSidebar.translate.auto') || '自动检测'}
+                                    {i18n('aiSidebarTranslateAuto') || '自动检测'}
                                 </option>
                                 <option value="zh-CN">简体中文</option>
                                 <option value="zh-TW">繁体中文</option>
@@ -512,13 +512,13 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                         <button
                             class="b3-button b3-button--text translate-dialog__swap-button"
                             on:click={swapLanguages}
-                            title={i18n('aiSidebar.translate.swap') || '交换语言'}
+                            title={i18n('aiSidebarTranslateSwap') || '交换语言'}
                         >
                             <svg class="b3-button__icon"><use xlink:href="#iconRefresh"></use></svg>
                         </button>
                         <div class="translate-dialog__language-group">
                             <label>
-                                {i18n('aiSidebar.translate.outputLanguage') || '输出语言'}
+                                {i18n('aiSidebarTranslateOutputLanguage') || '输出语言'}
                             </label>
                             <select
                                 class="b3-select"
@@ -541,21 +541,21 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                 </div>
                 <div class="translate-dialog__textareas">
                     <div class="translate-dialog__textarea-container">
-                        <label>{i18n('aiSidebar.translate.inputText') || '输入文本'}</label>
+                        <label>{i18n('aiSidebarTranslateInputText') || '输入文本'}</label>
                         <textarea
                             class="b3-text-field translate-dialog__textarea"
                             bind:value={translateInputText}
-                            placeholder={i18n('aiSidebar.translate.inputPlaceholder') ||
+                            placeholder={i18n('aiSidebarTranslateInputPlaceholder') ||
                                 '请输入要翻译的文本...'}
                         ></textarea>
                     </div>
                     <div class="translate-dialog__textarea-container">
                         <div class="translate-dialog__textarea-header">
-                            <label>{i18n('aiSidebar.translate.outputText') || '翻译结果'}</label>
+                            <label>{i18n('aiSidebarTranslateOutputText') || '翻译结果'}</label>
                             <button
                                 class="b3-button b3-button--text"
                                 on:click={copyOutput}
-                                title={i18n('common.copy') || '复制'}
+                                title={i18n('commonCopy') || '复制'}
                                 disabled={!translateOutputText}
                             >
                                 <svg class="b3-button__icon">
@@ -566,7 +566,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                         <textarea
                             class="b3-text-field translate-dialog__textarea"
                             bind:value={translateOutputText}
-                            placeholder={i18n('aiSidebar.translate.outputPlaceholder') ||
+                            placeholder={i18n('aiSidebarTranslateOutputPlaceholder') ||
                                 '翻译结果将显示在这里...'}
                         ></textarea>
                     </div>
@@ -577,11 +577,11 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
         <div class="translate-dialog__footer">
             {#if !showTranslateHistory}
                 <button class="b3-button b3-button--cancel" on:click={clearTranslate}>
-                    {i18n('aiSidebar.translate.clear') || '清空'}
+                    {i18n('aiSidebarTranslateClear') || '清空'}
                 </button>
                 {#if isTranslating}
                     <button class="b3-button b3-button--cancel" on:click={cancelTranslate}>
-                        {i18n('aiSidebar.translate.cancel') || '取消'}
+                        {i18n('aiSidebarTranslateCancel') || '取消'}
                     </button>
                 {:else}
                     <button
@@ -591,7 +591,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                             !translateProvider ||
                             !translateModelId}
                     >
-                        {i18n('aiSidebar.translate.translate') || '翻译'}
+                        {i18n('aiSidebarTranslateTranslate') || '翻译'}
                     </button>
                 {/if}
             {/if}

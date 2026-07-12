@@ -27,13 +27,13 @@
     }
 
     const builtInProviderNames: Record<string, string> = {
-        Achuan: i18n('platform.builtIn.Achuan'),
-        gemini: i18n('platform.builtIn.gemini'),
-        deepseek: i18n('platform.builtIn.deepseek'),
-        openai: i18n('platform.builtIn.openai'),
-        volcano: i18n('platform.builtIn.volcano'),
-        moonshot: i18n('platform.builtIn.moonshot'),
-        minimax: i18n('platform.builtIn.minimax'),
+        Achuan: i18n('platformBuiltInAchuan'),
+        gemini: i18n('platformBuiltInGemini'),
+        deepseek: i18n('platformBuiltInDeepseek'),
+        openai: i18n('platformBuiltInOpenai'),
+        volcano: i18n('platformBuiltInVolcano'),
+        moonshot: i18n('platformBuiltInMoonshot'),
+        minimax: i18n('platformBuiltInMinimax'),
     };
 
     let expandedProviders: Set<string> = new Set();
@@ -488,7 +488,7 @@
     // 单选模式：获取当前选中的模型名称
     function getCurrentModelName(): string {
         if (!currentProvider || !currentModelId) {
-            return i18n('models.selectPlaceholder');
+            return i18n('modelsSelectPlaceholder');
         }
         return getModelName(currentProvider, currentModelId);
     }
@@ -497,11 +497,11 @@
     $: fullModelName =
         currentProvider && currentModelId
             ? getModelName(currentProvider, currentModelId)
-            : i18n('models.selectPlaceholder');
+            : i18n('modelsSelectPlaceholder');
 
     // 根据容器宽度自适应截断的模型名称（单选模式）
     $: displayModelName = (() => {
-        if (!fullModelName || fullModelName === i18n('models.selectPlaceholder'))
+        if (!fullModelName || fullModelName === i18n('modelsSelectPlaceholder'))
             return fullModelName;
         if (containerWidth > 0 && containerWidth < 200 && fullModelName.length > 10) {
             return fullModelName.substring(0, 10) + '...';
@@ -632,7 +632,7 @@
         class="multi-model-selector__button b3-button b3-button--text"
         class:multi-model-selector__button--active={enableMultiModel}
         on:click|stopPropagation={() => (isOpen = !isOpen)}
-        title={enableMultiModel ? i18n('multiModel.title') : fullModelName}
+        title={enableMultiModel ? i18n('multiModelTitle') : fullModelName}
     >
         <svg class="b3-button__icon">
             <use xlink:href="#iconLayout"></use>
@@ -640,9 +640,9 @@
         <span class="multi-model-selector__label">
             {#if enableMultiModel}
                 {#if selectedModels.length > 0}
-                    {i18n('multiModel.enabled')} ({selectedModels.length})
+                    {i18n('multiModelEnabled')} ({selectedModels.length})
                 {:else}
-                    {i18n('multiModel.title')}
+                    {i18n('multiModelTitle')}
                 {/if}
             {:else}
                 {displayModelName}
@@ -659,8 +659,8 @@
             <div class="multi-model-selector__header">
                 <div class="multi-model-selector__title">
                     {enableMultiModel
-                        ? i18n('multiModel.selectModels')
-                        : i18n('models.selectPlaceholder')}
+                        ? i18n('multiModelSelectModels')
+                        : i18n('modelsSelectPlaceholder')}
                 </div>
                 <div
                     class="multi-model-selector__toggle"
@@ -678,7 +678,7 @@
                             disabled={chatMode === 'agent' || chatMode === 'draw'}
                         />
                         <span class="multi-model-selector__toggle-label">
-                            {i18n('multiModel.enable')}
+                            {i18n('multiModelEnable')}
                         </span>
                     </label>
                 </div>
@@ -690,9 +690,9 @@
                         <div class="multi-model-selector__count-header">
                             <div class="multi-model-selector__count">
                                 {#if selectedModels.length > 0}
-                                    {i18n('multiModel.selected')}: {selectedModels.length} ({selectedModelNames})
+                                    {i18n('multiModelSelected')}: {selectedModels.length} ({selectedModelNames})
                                 {:else}
-                                    {i18n('multiModel.selected')}: {selectedModels.length}
+                                    {i18n('multiModelSelected')}: {selectedModels.length}
                                 {/if}
                             </div>
                         </div>
@@ -700,7 +700,7 @@
                         {#if selectedModels.length > 0}
                             <div class="multi-model-selector__selected-header">
                                 <div class="multi-model-selector__selected-title">
-                                    {i18n('multiModel.selectedModels')}
+                                    {i18n('multiModelSelectedModels')}
                                 </div>
                             </div>
 
@@ -798,7 +798,7 @@
                                                         class="multi-model-selector__move-btn"
                                                         disabled={index === 0}
                                                         on:click|stopPropagation={() => moveModelUp(index)}
-                                                        title={i18n('multiModel.moveUp')}
+                                                        title={i18n('multiModelMoveUp')}
                                                     >
                                                         <svg class="multi-model-selector__move-icon">
                                                             <use xlink:href="#iconUp"></use>
@@ -808,7 +808,7 @@
                                                         class="multi-model-selector__move-btn"
                                                         disabled={index === selectedModels.length - 1}
                                                         on:click|stopPropagation={() => moveModelDown(index)}
-                                                        title={i18n('multiModel.moveDown')}
+                                                        title={i18n('multiModelMoveDown')}
                                                     >
                                                         <svg class="multi-model-selector__move-icon">
                                                             <use xlink:href="#iconDown"></use>
@@ -817,7 +817,7 @@
                                                     <button
                                                         class="multi-model-selector__remove-btn"
                                                         on:click|stopPropagation={() => removeModel(index)}
-                                                        title={i18n('multiModel.remove')}
+                                                        title={i18n('multiModelRemove')}
                                                     >
                                                         <svg class="multi-model-selector__remove-icon">
                                                             <use xlink:href="#iconClose"></use>
@@ -838,7 +838,7 @@
                             </div>
                         {:else}
                             <div class="multi-model-selector__selected-empty">
-                                {i18n('multiModel.noSelectedModels') || '点击右侧模型添加到已选'}
+                                {i18n('multiModelNoSelectedModels') || '点击右侧模型添加到已选'}
                             </div>
                         {/if}
                     </div>
@@ -854,7 +854,7 @@
                             <input
                                 type="text"
                                 class="b3-text-field"
-                                placeholder={i18n('multiModel.searchModels') || '搜索模型'}
+                                placeholder={i18n('multiModelSearchModels') || '搜索模型'}
                                 bind:value={modelSearchQuery}
                                 spellcheck="false"
                             />
@@ -862,7 +862,7 @@
 
                         {#if modelSearchQuery.trim() && filteredProviders.length === 0}
                             <div class="multi-model-selector__no-results">
-                                {i18n('multiModel.noResults') || '无匹配结果'}
+                                {i18n('multiModelNoResults') || '无匹配结果'}
                             </div>
                         {/if}
 

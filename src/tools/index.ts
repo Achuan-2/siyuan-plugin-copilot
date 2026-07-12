@@ -24,7 +24,7 @@ import { parseWebPageToMarkdown, fetchWithWebView } from '../utils/webParser';
 import { settingsStore } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
-import { i18n } from '../utils/i18n';
+import { i18n, i18nKey } from '../utils/i18n';
 
 /**
  * 获取当前激活的编辑器 Protyle 实例
@@ -2461,7 +2461,7 @@ export async function initializeMcpTools() {
             const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
 
             // Translate the description dynamically if there is a translation
-            const descKey = `tools.${mcpTool.name}.description`;
+            const descKey = i18nKey('tools', mcpTool.name, 'description');
             const translatedDesc = i18n(descKey);
             const description = (translatedDesc !== descKey) ? translatedDesc : (mcpTool.description || '');
 

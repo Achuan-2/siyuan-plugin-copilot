@@ -281,7 +281,7 @@
                 class="b3-button b3-button--text webapp-collection__toolbar-btn"
                 bind:this={appMenuButton}
                 on:click={toggleAppMenu}
-                title={i18n('aiSidebar.webapp.title') || '小程序'}
+                title={i18n('aiSidebarWebappTitle') || '小程序'}
             >
                 <svg class="b3-button__icon">
                     <use xlink:href="#iconCopilotWebApp"></use>
@@ -315,7 +315,7 @@
                     {/each}
                     {#if (webApps || []).length === 0}
                         <div class="webapp-collection__app-menu-empty">
-                            {i18n('settings.webAppCollectionDock.noApps') || '暂无小程序'}
+                            {i18n('settingsWebAppCollectionDockNoApps') || '暂无小程序'}
                         </div>
                     {/if}
                 </div>

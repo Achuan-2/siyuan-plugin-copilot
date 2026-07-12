@@ -485,13 +485,13 @@ description: 描述这个 Skill 的功能
     }
 
     const builtInProviderNames: Record<string, string> = {
-        Achuan: i18n('platform.builtIn.Achuan'),
-        gemini: i18n('platform.builtIn.gemini'),
-        openai: i18n('platform.builtIn.openai'),
-        deepseek: i18n('platform.builtIn.deepseek'),
-        moonshot: i18n('platform.builtIn.moonshot'),
-        volcano: i18n('platform.builtIn.volcano'),
-        minimax: i18n('platform.builtIn.minimax'),
+        Achuan: i18n('platformBuiltInAchuan'),
+        gemini: i18n('platformBuiltInGemini'),
+        openai: i18n('platformBuiltInOpenai'),
+        deepseek: i18n('platformBuiltInDeepseek'),
+        moonshot: i18n('platformBuiltInMoonshot'),
+        volcano: i18n('platformBuiltInVolcano'),
+        minimax: i18n('platformBuiltInMinimax'),
     };
 
     // 内置平台的默认 API 地址
@@ -661,7 +661,7 @@ description: 描述这个 Skill 的功能
         };
 
         saveSettings();
-        pushMsg(i18n('platform.reorderSuccess') || '平台顺序已更新');
+        pushMsg(i18n('platformReorderSuccess') || '平台顺序已更新');
     }
 
     // 处理拖拽悬停（防止默认行为）
@@ -718,7 +718,7 @@ description: 描述这个 Skill 的功能
     // 添加自定义平台
     function addCustomPlatform() {
         if (!newPlatformName.trim()) {
-            pushErrMsg(i18n('platform.nameRequired'));
+            pushErrMsg(i18n('platformNameRequired'));
             return;
         }
 
@@ -748,7 +748,7 @@ description: 描述这个 Skill 的功能
         newPlatformName = '';
         showAddPlatform = false;
         saveSettings();
-        pushMsg(i18n('aiSidebar.success.addPromptSuccess') + `: ${newPlatform.name}`);
+        pushMsg(i18n('aiSidebarSuccessAddPromptSuccess') + `: ${newPlatform.name}`);
     }
 
     function updateProviderEnabled(providerId: string, enabled: boolean) {
@@ -800,11 +800,11 @@ description: 描述这个 Skill 的功能
         const platformName =
             builtInProviderNames[providerId] ||
             settings.aiProviders?.customProviders?.find(p => p.id === providerId)?.name ||
-            i18n('platform.unknown');
+            i18n('platformUnknown');
 
         confirm(
-            i18n('aiSidebar.confirm.deletePlatform.title'),
-            i18n('aiSidebar.confirm.deletePlatform.message', { platformName }),
+            i18n('aiSidebarConfirmDeletePlatformTitle'),
+            i18n('aiSidebarConfirmDeletePlatformMessage', { platformName }),
             async () => {
                 // 检查是否需要清空当前选中的模型
                 // 只有当删除的平台是当前正在使用的平台时才清空模型选择
@@ -862,7 +862,7 @@ description: 描述这个 Skill 的功能
                 }
 
                 saveSettings();
-                pushMsg(i18n('aiSidebar.success.deletePromptSuccess') + `: ${platformName}`);
+                pushMsg(i18n('aiSidebarSuccessDeletePromptSuccess') + `: ${platformName}`);
             }
         );
     }
@@ -937,7 +937,7 @@ description: 描述这个 Skill 的功能
 
     // 获取当前选中平台的名称 - 使用响应式语句
     $: selectedProviderName = (() => {
-        if (!selectedProviderId) return i18n('platform.select');
+        if (!selectedProviderId) return i18n('platformSelect');
 
         if (builtInProviderNames[selectedProviderId]) {
             // 优先使用用户自定义的名称
@@ -947,7 +947,7 @@ description: 描述这个 Skill 的功能
         const customProvider = settings.aiProviders?.customProviders?.find(
             (p: CustomProviderConfig) => p.id === selectedProviderId
         );
-        return customProvider?.name || i18n('platform.unknown');
+        return customProvider?.name || i18n('platformUnknown');
     })();
 
     // 保存选中的平台ID（仅在设置面板中选择平台，不影响对话中的当前平台）
@@ -962,64 +962,64 @@ description: 描述这个 Skill 的功能
 
     let groups: ISettingGroup[] = [
         {
-            name: i18n('settings.settingsGroup.systemPrompt'),
+            name: i18n('settingsSettingsGroupSystemPrompt'),
             items: [
                 {
                     key: 'aiSystemPromptAsk',
                     value: settings.aiSystemPromptAsk,
                     type: 'textarea',
-                    title: i18n('settings.ai.systemPromptAsk.title'),
-                    description: i18n('settings.ai.systemPromptAsk.description'),
+                    title: i18n('settingsAiSystemPromptAskTitle'),
+                    description: i18n('settingsAiSystemPromptAskDescription'),
                     direction: 'row',
                     rows: 4,
-                    placeholder: i18n('settings.ai.systemPromptAsk.placeholder'),
+                    placeholder: i18n('settingsAiSystemPromptAskPlaceholder'),
                 },
                 {
                     key: 'aiSystemPromptAgent',
                     value: settings.aiSystemPromptAgent,
                     type: 'textarea',
-                    title: i18n('settings.ai.systemPromptAgent.title'),
-                    description: i18n('settings.ai.systemPromptAgent.description'),
+                    title: i18n('settingsAiSystemPromptAgentTitle'),
+                    description: i18n('settingsAiSystemPromptAgentDescription'),
                     direction: 'row',
                     rows: 4,
-                    placeholder: i18n('settings.ai.systemPromptAgent.placeholder'),
+                    placeholder: i18n('settingsAiSystemPromptAgentPlaceholder'),
                 },
                 {
                     key: 'aiSystemPromptDraw',
                     value: settings.aiSystemPromptDraw,
                     type: 'textarea',
-                    title: i18n('settings.ai.systemPromptDraw.title'),
-                    description: i18n('settings.ai.systemPromptDraw.description'),
+                    title: i18n('settingsAiSystemPromptDrawTitle'),
+                    description: i18n('settingsAiSystemPromptDrawDescription'),
                     direction: 'row',
                     rows: 4,
-                    placeholder: i18n('settings.ai.systemPromptDraw.placeholder'),
+                    placeholder: i18n('settingsAiSystemPromptDrawPlaceholder'),
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.platformManagement'),
+            name: i18n('settingsSettingsGroupPlatformManagement'),
             items: [],
         },
         {
-            name: i18n('settings.settingsGroup.displayAndOperation'),
+            name: i18n('settingsSettingsGroupDisplayAndOperation'),
             items: [
                 {
                     key: 'sendMessageShortcut',
                     value: settings.sendMessageShortcut,
                     type: 'select',
-                    title: i18n('settings.sendMessageShortcut.title'),
-                    description: i18n('settings.sendMessageShortcut.description'),
+                    title: i18n('settingsSendMessageShortcutTitle'),
+                    description: i18n('settingsSendMessageShortcutDescription'),
                     options: {
-                        'ctrl+enter': i18n('settings.sendMessageShortcut.options.ctrlEnter'),
-                        enter: i18n('settings.sendMessageShortcut.options.enter'),
+                        'ctrl+enter': i18n('settingsSendMessageShortcutOptionsCtrlEnter'),
+                        enter: i18n('settingsSendMessageShortcutOptionsEnter'),
                     },
                 },
                 {
                     key: 'messageFontSize',
                     value: settings.messageFontSize,
                     type: 'number',
-                    title: i18n('settings.messageFontSize.title'),
-                    description: i18n('settings.messageFontSize.description'),
+                    title: i18n('settingsMessageFontSizeTitle'),
+                    description: i18n('settingsMessageFontSizeDescription'),
                     number: {
                         min: 5,
                         max: 32,
@@ -1030,60 +1030,60 @@ description: 描述这个 Skill 的功能
                     key: 'multiModelViewMode',
                     value: settings.multiModelViewMode,
                     type: 'select',
-                    title: i18n('settings.multiModelViewMode.title'),
-                    description: i18n('settings.multiModelViewMode.description'),
+                    title: i18n('settingsMultiModelViewModeTitle'),
+                    description: i18n('settingsMultiModelViewModeDescription'),
                     options: {
-                        tab: i18n('settings.multiModelViewMode.options.tab'),
-                        card: i18n('settings.multiModelViewMode.options.card'),
+                        tab: i18n('settingsMultiModelViewModeOptionsTab'),
+                        card: i18n('settingsMultiModelViewModeOptionsCard'),
                     },
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.noteExport'),
+            name: i18n('settingsSettingsGroupNoteExport'),
             items: [
                 {
                     key: 'exportNotebook',
                     value: settings.exportNotebook,
                     type: 'select',
-                    title: i18n('settings.exportNotebook.title'),
-                    description: i18n('settings.exportNotebook.description'),
+                    title: i18n('settingsExportNotebookTitle'),
+                    description: i18n('settingsExportNotebookDescription'),
                     options: notebookOptions,
                 },
                 {
                     key: 'exportDefaultPath',
                     value: settings.exportDefaultPath,
                     type: 'textinput',
-                    title: i18n('settings.exportDefaultPath.title'),
-                    description: i18n('settings.exportDefaultPath.description'),
-                    placeholder: i18n('settings.exportDefaultPath.placeholder'),
+                    title: i18n('settingsExportDefaultPathTitle'),
+                    description: i18n('settingsExportDefaultPathDescription'),
+                    placeholder: i18n('settingsExportDefaultPathPlaceholder'),
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.sessionManagement') || '会话管理',
+            name: i18n('settingsSettingsGroupSessionManagement') || '会话管理',
             items: [
                 {
                     key: 'autoRenameSession',
                     value: settings.autoRenameSession,
                     type: 'checkbox',
-                    title: i18n('settings.autoRenameSession.title') || '会话自动重命名',
+                    title: i18n('settingsAutoRenameSessionTitle') || '会话自动重命名',
                     description:
-                        i18n('settings.autoRenameSession.description') ||
+                        i18n('settingsAutoRenameSessionDescription') ||
                         '在首次发送消息时，自动使用AI生成会话标题',
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.translate') || '翻译设置',
+            name: i18n('settingsSettingsGroupTranslate') || '翻译设置',
             items: [
                 {
                     key: 'translateTemperature',
                     value: settings.translateTemperature,
                     type: 'number',
-                    title: i18n('settings.translate.temperature.title') || '翻译 Temperature',
+                    title: i18n('settingsTranslateTemperatureTitle') || '翻译 Temperature',
                     description:
-                        i18n('settings.translate.temperature.description') ||
+                        i18n('settingsTranslateTemperatureDescription') ||
                         '翻译专用的 temperature 参数（0-2），为空则使用模型默认值。值越小，翻译越准确一致；值越大，翻译越灵活多样',
                     number: {
                         min: 0,
@@ -1095,70 +1095,70 @@ description: 描述这个 Skill 的功能
                     key: 'translatePrompt',
                     value: settings.translatePrompt,
                     type: 'textarea',
-                    title: i18n('settings.translate.prompt.title') || '翻译提示词',
+                    title: i18n('settingsTranslatePromptTitle') || '翻译提示词',
                     description:
-                        i18n('settings.translate.prompt.description') ||
+                        i18n('settingsTranslatePromptDescription') ||
                         '翻译时使用的提示词模板，${content} 会被替换为要翻译的内容',
                     direction: 'row',
                     rows: 8,
                     placeholder:
-                        i18n('settings.translate.prompt.placeholder') || '输入翻译提示词模板...',
+                        i18n('settingsTranslatePromptPlaceholder') || '输入翻译提示词模板...',
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.tools') || '工具设置',
+            name: i18n('settingsSettingsGroupTools') || '工具设置',
             items: [
                 {
                     key: 'pythonPath',
                     value: settings.pythonPath,
                     type: 'textinput',
-                    title: i18n('settings.pythonPath.title') || 'Python 解释器路径',
+                    title: i18n('settingsPythonPathTitle') || 'Python 解释器路径',
                     description:
-                        i18n('settings.pythonPath.description') ||
+                        i18n('settingsPythonPathDescription') ||
                         '设置 Python 可执行文件的路径，用于运行 Python 代码工具。留空则使用系统默认的 python 命令',
                     placeholder:
-                        i18n('settings.pythonPath.placeholder') ||
+                        i18n('settingsPythonPathPlaceholder') ||
                         '例如：C:\\Python311\\python.exe 或 /usr/bin/python3',
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.soul') || 'SOUL 文档',
+            name: i18n('settingsSettingsGroupSoul') || 'SOUL 文档',
             items: [
                 {
                     key: 'soulDocId',
                     value: settings.soulDocId,
                     type: 'textinput',
-                    title: i18n('settings.soulDocId.title') || 'SOUL 文档 ID',
+                    title: i18n('settingsSoulDocIdTitle') || 'SOUL 文档 ID',
                     description:
-                        i18n('settings.soulDocId.description') ||
+                        i18n('settingsSoulDocIdDescription') ||
                         '设置 SOUL 数据存储的文档 ID。SOUL 工具只能在此文档内进行增删改查操作。',
                     placeholder:
-                        i18n('settings.soulDocId.placeholder') ||
+                        i18n('settingsSoulDocIdPlaceholder') ||
                         '输入文档块 ID，如 20260312120000-xxxxxxxx',
                 },
             ],
         },
         {
-            name: i18n('settings.settingsGroup.webApp') || '网页小程序',
+            name: i18n('settingsSettingsGroupWebApp') || '网页小程序',
             items: [
                 {
                     key: 'openLinksInWebView',
                     value: settings.openLinksInWebView,
                     type: 'checkbox',
-                    title: i18n('settings.openLinksInWebView.title') || '在 WebView 中打开链接',
+                    title: i18n('settingsOpenLinksInWebViewTitle') || '在 WebView 中打开链接',
                     description:
-                        i18n('settings.openLinksInWebView.description') ||
+                        i18n('settingsOpenLinksInWebViewDescription') ||
                         '点击思源笔记中的 https 链接时，在内置 WebView 标签页中打开，而不是外部浏览器',
                 },
                 {
                     key: 'webAppCollectionDock',
                     value: settings.webAppCollectionDock,
                     type: 'checkbox',
-                    title: i18n('settings.webAppCollectionDock.title') || '小程序集合侧栏',
+                    title: i18n('settingsWebAppCollectionDockTitle') || '小程序集合侧栏',
                     description:
-                        i18n('settings.webAppCollectionDock.description') ||
+                        i18n('settingsWebAppCollectionDockDescription') ||
                         '在侧边栏中添加一个网页小程序集合面板，以标签页形式打开所有小程序',
                 },
                 {
@@ -1179,29 +1179,29 @@ description: 描述这个 Skill 的功能
             items: [],
         },
         {
-            name: i18n('settings.settingsGroup.reset') || 'Reset Settings',
+            name: i18n('settingsSettingsGroupReset') || 'Reset Settings',
             items: [
                 {
                     key: 'reset',
                     value: '',
                     type: 'button',
-                    title: i18n('settings.reset.title') || 'Reset Settings',
+                    title: i18n('settingsResetTitle') || 'Reset Settings',
                     description:
-                        i18n('settings.reset.description') ||
+                        i18n('settingsResetDescription') ||
                         'Reset all settings to default values',
                     button: {
-                        label: i18n('settings.reset.label') || 'Reset',
+                        label: i18n('settingsResetLabel') || 'Reset',
                         callback: async () => {
                             confirm(
-                                i18n('settings.reset.title') || 'Reset Settings',
-                                i18n('settings.reset.confirmMessage') ||
+                                i18n('settingsResetTitle') || 'Reset Settings',
+                                i18n('settingsResetConfirmMessage') ||
                                     'Are you sure you want to reset all settings to default values? This action cannot be undone.',
                                 async () => {
                                     // 确认回调
                                     settings = { ...getDefaultSettings() };
                                     updateGroupItems();
                                     await saveSettings();
-                                    await pushMsg(i18n('settings.reset.message'));
+                                    await pushMsg(i18n('settingsResetMessage'));
                                 },
                                 () => {
                                     // 取消回调（可选）
@@ -1385,7 +1385,7 @@ description: 描述这个 Skill 的功能
                 // 构建笔记本选项对象 { id: name }，只显示 closed=false 的笔记本
                 notebookOptions = {};
                 notebookOptions[''] =
-                    i18n('settings.exportNotebook.placeholder') || '-- 请选择笔记本 --';
+                    i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --';
                 notebooks.notebooks
                     .filter(notebook => notebook.closed === false)
                     .forEach(notebook => {
@@ -1393,13 +1393,13 @@ description: 描述这个 Skill 的功能
                     });
             } else {
                 notebookOptions = {
-                    '': i18n('settings.exportNotebook.placeholder') || '-- 请选择笔记本 --',
+                    '': i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --',
                 };
             }
         } catch (error) {
             console.error('Load notebooks error:', error);
             notebookOptions = {
-                '': i18n('settings.exportNotebook.placeholder') || '-- 请选择笔记本 --',
+                '': i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --',
             };
         }
     }
@@ -1416,7 +1416,7 @@ description: 描述这个 Skill 的功能
 
         soulDocValidation = {
             status: 'checking',
-            message: i18n('settings.soulDocId.validating') || '验证中...',
+            message: i18n('settingsSoulDocIdValidating') || '验证中...',
         };
 
         try {
@@ -1424,7 +1424,7 @@ description: 描述这个 Skill 的功能
             if (!block) {
                 soulDocValidation = {
                     status: 'invalid',
-                    message: i18n('settings.soulDocId.notFound') || '块不存在，请检查 ID 是否正确',
+                    message: i18n('settingsSoulDocIdNotFound') || '块不存在，请检查 ID 是否正确',
                 };
                 return;
             }
@@ -1433,7 +1433,7 @@ description: 描述这个 Skill 的功能
                 soulDocValidation = {
                     status: 'invalid',
                     message:
-                        i18n('settings.soulDocId.notDoc') ||
+                        i18n('settingsSoulDocIdNotDoc') ||
                         `该 ID 不是文档类型，当前类型: ${block.type}`,
                 };
                 return;
@@ -1442,13 +1442,13 @@ description: 描述这个 Skill 的功能
             soulDocValidation = {
                 status: 'valid',
                 message:
-                    i18n('settings.soulDocId.valid') || `✓ 有效文档: ${block.content || '未命名'}`,
+                    i18n('settingsSoulDocIdValid') || `✓ 有效文档: ${block.content || '未命名'}`,
             };
         } catch (error) {
             soulDocValidation = {
                 status: 'invalid',
                 message:
-                    i18n('settings.soulDocId.error') || '验证失败: ' + (error as Error).message,
+                    i18n('settingsSoulDocIdError') || '验证失败: ' + (error as Error).message,
             };
         }
     }
@@ -1496,14 +1496,14 @@ description: 描述这个 Skill 的功能
         {/each}
     </ul>
     <div class="config__tab-wrap">
-        {#if focusGroup === i18n('settings.settingsGroup.systemPrompt')}
+        {#if focusGroup === i18n('settingsSettingsGroupSystemPrompt')}
             <SettingPanel
                 group={currentGroup?.name || ''}
                 settingItems={currentGroup?.items || []}
                 display={true}
                 on:changed={onChanged}
             />
-        {:else if focusGroup === i18n('settings.settingsGroup.platformManagement')}
+        {:else if focusGroup === i18n('settingsSettingsGroupPlatformManagement')}
             <!-- 新的侧边栏布局：左侧为平台列表/操作，右侧为平台配置主区域 -->
             <div
                 class="platform-management-layout"
@@ -1515,24 +1515,24 @@ description: 描述这个 Skill 的功能
                 >
                     <div class="unified-platform-manager">
                         <div class="manager-header">
-                            <h5>{i18n('platform.management')}</h5>
+                            <h5>{i18n('platformManagement')}</h5>
                             <button
                                 class="b3-button b3-button--outline"
                                 on:click={() => (showAddPlatform = !showAddPlatform)}
                             >
-                                {showAddPlatform ? i18n('platform.cancel') : i18n('platform.add')}
+                                {showAddPlatform ? i18n('platformCancel') : i18n('platformAdd')}
                             </button>
                         </div>
 
                         {#if showAddPlatform}
                             <div class="add-platform-form">
                                 <div>
-                                    <div>{i18n('platform.name')}</div>
+                                    <div>{i18n('platformName')}</div>
                                     <input
                                         class="b3-text-field fn__flex-1"
                                         type="text"
                                         bind:value={newPlatformName}
-                                        placeholder={i18n('platform.namePlaceholder')}
+                                        placeholder={i18n('platformNamePlaceholder')}
                                         on:keydown={e => e.key === 'Enter' && addCustomPlatform()}
                                     />
                                 </div>
@@ -1541,7 +1541,7 @@ description: 描述这个 Skill 的功能
                                     on:click={addCustomPlatform}
                                     disabled={!newPlatformName.trim()}
                                 >
-                                    {i18n('platform.confirmAdd')}
+                                    {i18n('platformConfirmAdd')}
                                 </button>
                             </div>
                         {/if}
@@ -1554,7 +1554,7 @@ description: 描述这个 Skill 的功能
                                 class="b3-text-field fn__flex-1"
                                 type="text"
                                 bind:value={platformSearchQuery}
-                                placeholder={i18n('common.search') + '平台名称'}
+                                placeholder={i18n('commonSearch') + '平台名称'}
                             />
                         </div>
 
@@ -1607,7 +1607,7 @@ description: 描述这个 Skill 的功能
                                         openPlatformContextMenu(e, item.platform.id)}
                                     role="button"
                                     tabindex="0"
-                                    title={`${platformSearchQuery.trim() ? '搜索中暂不支持拖拽排序' : '拖动以排序'} · ${i18n('common.delete') || '删除'}：右键`}
+                                    title={`${platformSearchQuery.trim() ? '搜索中暂不支持拖拽排序' : '拖动以排序'} · ${i18n('commonDelete') || '删除'}：右键`}
                                 >
                                     <div class="platform-item__drag-handle">
                                         <svg class="b3-button__icon">
@@ -1620,8 +1620,8 @@ description: 描述这个 Skill 的功能
                                         </span>
                                         <span class="platform-item__type">
                                             {item.platform.type === 'built-in'
-                                                ? i18n('platform.type.builtin')
-                                                : i18n('platform.type.custom')}
+                                                ? i18n('platformTypeBuiltin')
+                                                : i18n('platformTypeCustom')}
                                         </span>
                                     </div>
                                     <label
@@ -1663,7 +1663,7 @@ description: 描述这个 Skill 的功能
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconTrashcan"></use>
                             </svg>
-                            <span>{i18n('common.delete') || '删除'}</span>
+                            <span>{i18n('commonDelete') || '删除'}</span>
                         </button>
                     </div>
                 {/if}
@@ -1680,10 +1680,10 @@ description: 描述这个 Skill 的功能
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconLeft"></use>
                             </svg>
-                            {i18n('common.back') || '返回'}
+                            {i18n('commonBack') || '返回'}
                         </button>
                         <span class="platform-main__mobile-title">
-                            {selectedProviderId ? selectedProviderName : (i18n('platform.select') || '选择平台')}
+                            {selectedProviderId ? selectedProviderName : (i18n('platformSelect') || '选择平台')}
                         </span>
                     </div>
                     {#if selectedProviderId}
@@ -1726,12 +1726,12 @@ description: 描述这个 Skill 的功能
                         {/if}
                     {:else}
                         <div class="no-selection">
-                            {i18n('platform.selectHint') || '请选择一个平台以查看或编辑其配置'}
+                            {i18n('platformSelectHint') || '请选择一个平台以查看或编辑其配置'}
                         </div>
                     {/if}
                 </main>
             </div>
-        {:else if focusGroup === (i18n('settings.settingsGroup.sessionManagement') || '会话管理')}
+        {:else if focusGroup === (i18n('settingsSettingsGroupSessionManagement') || '会话管理')}
             <div class="session-management-panel">
                 <SettingPanel
                     group={currentGroup?.name || ''}
@@ -1745,10 +1745,10 @@ description: 描述这个 Skill 的功能
                         <div class="config__item">
                             <div class="config__item-label">
                                 <div class="config__item-title">
-                                    {i18n('settings.autoRenameSession.modelTitle') || '重命名模型'}
+                                    {i18n('settingsAutoRenameSessionModelTitle') || '重命名模型'}
                                 </div>
                                 <div class="config__item-description">
-                                    {i18n('settings.autoRenameSession.modelDescription') ||
+                                    {i18n('settingsAutoRenameSessionModelDescription') ||
                                         '选择用于生成会话标题的AI模型'}
                                 </div>
                             </div>
@@ -1765,7 +1765,7 @@ description: 描述这个 Skill 的功能
                                     }}
                                 >
                                     <option value="">
-                                        {i18n('settings.autoRenameSession.selectProvider') ||
+                                        {i18n('settingsAutoRenameSessionSelectProvider') ||
                                             '-- 选择平台 --'}
                                     </option>
                                     {#each allProviderOptions as provider}
@@ -1782,7 +1782,7 @@ description: 描述这个 Skill 的功能
                                         on:change={saveSettings}
                                     >
                                         <option value="">
-                                            {i18n('settings.autoRenameSession.selectModel') ||
+                                            {i18n('settingsAutoRenameSessionSelectModel') ||
                                                 '-- 选择模型 --'}
                                         </option>
                                         {#if builtInProviderNames[settings.autoRenameProvider]}
@@ -1807,11 +1807,11 @@ description: 描述这个 Skill 的功能
                         <div class="config__item" style="margin-top: 16px;">
                             <div class="config__item-label">
                                 <div class="config__item-title">
-                                    {i18n('settings.autoRenameSession.promptTitle') ||
+                                    {i18n('settingsAutoRenameSessionPromptTitle') ||
                                         '自定义提示词'}
                                 </div>
                                 <div class="config__item-description">
-                                    {i18n('settings.autoRenameSession.promptDescription') ||
+                                    {i18n('settingsAutoRenameSessionPromptDescription') ||
                                         '自定义生成会话标题的提示词，使用 {message} 作为用户消息的占位符'}
                                 </div>
                             </div>
@@ -1821,8 +1821,7 @@ description: 描述这个 Skill 的功能
                                     rows="4"
                                     bind:value={settings.autoRenamePrompt}
                                     on:change={saveSettings}
-                                    placeholder={i18n(
-                                        'settings.autoRenameSession.promptPlaceholder'
+                                    placeholder={i18n('settingsAutoRenameSessionPromptPlaceholder'
                                     ) ||
                                         '请根据以下用户消息生成一个简洁的会话标题（不超过20个字，不要使用引号）：\n\n{message}'}
                                 ></textarea>
@@ -1831,16 +1830,16 @@ description: 描述这个 Skill 的功能
                     </div>
                 {/if}
             </div>
-        {:else if focusGroup === (i18n('settings.settingsGroup.soul') || 'SOUL 文档')}
+        {:else if focusGroup === (i18n('settingsSettingsGroupSoul') || 'SOUL 文档')}
             <!-- SOUL 文档设置特殊处理 -->
             <div class="soul-settings-panel">
                 <div class="config__item">
                     <div class="config__item-label">
                         <div class="config__item-title">
-                            {i18n('settings.soulDocId.title') || 'SOUL 文档 ID'}
+                            {i18n('settingsSoulDocIdTitle') || 'SOUL 文档 ID'}
                         </div>
                         <div class="config__item-description">
-                            {i18n('settings.soulDocId.description') ||
+                            {i18n('settingsSoulDocIdDescription') ||
                                 '设置 SOUL 数据存储的文档 ID'}
                         </div>
                     </div>
@@ -1853,7 +1852,7 @@ description: 描述这个 Skill 的功能
                                 await saveSettings();
                                 await validateSoulDocId();
                             }}
-                            placeholder={i18n('settings.soulDocId.placeholder') ||
+                            placeholder={i18n('settingsSoulDocIdPlaceholder') ||
                                 '输入文档块 ID，如 20260312120000-xxxxxxxx'}
                         />
                         <button
@@ -1862,8 +1861,8 @@ description: 描述这个 Skill 的功能
                             disabled={soulDocValidation.status === 'checking'}
                         >
                             {soulDocValidation.status === 'checking'
-                                ? i18n('settings.soulDocId.validating') || '验证中...'
-                                : i18n('settings.soulDocId.validate') || '验证'}
+                                ? i18n('settingsSoulDocIdValidating') || '验证中...'
+                                : i18n('settingsSoulDocIdValidate') || '验证'}
                         </button>
                     </div>
                     {#if soulDocValidation.message}

@@ -1,4 +1,3 @@
-import { i18n } from "./utils/i18n";
 import type { ChatInterfaceType } from "./ai-chat";
 import type { ThinkingEffort } from "./thinking-effort";
 import {
