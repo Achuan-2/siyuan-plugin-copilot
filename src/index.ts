@@ -27,6 +27,7 @@ import { getDefaultSettings } from "./defaultSettings";
 import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
 import AISidebar from "./ai-sidebar.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
+import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
 import { updateSettings, getSettings } from "./stores/settings";
 import { getModelCapabilities } from "./utils/modelCapabilities";
 import { matchHotKey, getCustomHotKey } from "./utils/hotkey";
@@ -40,6 +41,7 @@ const MAX_HISTORY_COUNT = 200;
 const AI_SIDEBAR_TYPE = "ai-chat-sidebar";
 export const AI_TAB_TYPE = "ai-chat-tab";
 export const WEBAPP_TAB_TYPE = "copilot-webapp";
+const COLLECTION_DOCK_TYPE = "webapp-collection";
 
 interface WebViewHistory {
     url: string;
@@ -52,6 +54,8 @@ interface WebViewHistory {
 
 export default class PluginSample extends Plugin {
     private aiSidebarApp: AISidebar;
+    private webAppCollectionApp: any = null;
+    private webAppCollectionApps: any[] = [];
     private chatDialogs: Map<string, { dialog: Dialog; app: ChatDialog }> = new Map();
     private webApps: Map<string, any> = new Map(); // 存储待打开的小程序数据
     private webViewHistory: WebViewHistory[] = []; // WebView 历史记录
@@ -523,6 +527,230 @@ export default class PluginSample extends Plugin {
         }
     }
 
+    /**
+     * 注册网页小程序集合 Dock
+     * 该 Dock 显示所有小程序（不区分是否注册到侧栏），以 Tab 形式切换
+     */
+    registerWebAppCollectionDock(webApps: any[], openedAppIds?: string[]) {
+        const apps = webApps || [];
+        const openedIds = openedAppIds || [];
+        this.webAppCollectionApps = apps;
+
+        // 已经注册过：更新 props
+        if (this.registeredDocks.has(COLLECTION_DOCK_TYPE)) {
+            if (this.webAppCollectionApp) {
+                this.webAppCollectionApp.$set({
+                    webApps: this.webAppCollectionApps,
+                    openedAppIds: openedIds
+                });
+            }
+            return;
+        }
+
+        // 没有小程序时跳过
+        if (apps.length === 0) {
+            return;
+        }
+
+        const pluginInstance = this;
+
+        this.addDock({
+            config: {
+                position: "RightBottom",
+                size: { width: 400, height: 0 },
+                icon: "iconCopilotWebApp",
+                title: i18n("settings.webAppCollectionDock.title") || "网页小程序",
+                show: false,
+            },
+            data: {
+                text: i18n("settings.webAppCollectionDock.title") || "网页小程序"
+            },
+            type: COLLECTION_DOCK_TYPE,
+            init: (dock) => {
+                this.webAppCollectionApp = new WebAppCollectionDock({
+                    target: dock.element,
+                    props: {
+                        plugin: pluginInstance,
+                        webApps: this.webAppCollectionApps,
+                        openedAppIds: openedIds
+                    }
+                });
+            },
+            destroy: () => {
+                if (this.webAppCollectionApp) {
+                    this.webAppCollectionApp.$destroy();
+                    this.webAppCollectionApp = null;
+                }
+            }
+        });
+
+        this.registeredDocks.add(COLLECTION_DOCK_TYPE);
+    }
+
+    /**
+     * 移除网页小程序集合 Dock
+     */
+    removeWebAppCollectionDock() {
+        const type = COLLECTION_DOCK_TYPE;
+        const type2 = this.name + type;
+
+        if (!this.registeredDocks.has(type)) {
+            return;
+        }
+
+        // 手动销毁 Svelte 组件，避免内存泄漏
+        if (this.webAppCollectionApp) {
+            this.webAppCollectionApp.$destroy();
+            this.webAppCollectionApp = null;
+        }
+
+        const dock = (this as any).docks?.[type2];
+        const position = dock?.config?.position || "RightBottom";
+        const layout = (window as any).siyuan?.layout;
+
+        if (position.startsWith("Left")) {
+            layout?.leftDock?.remove(type2);
+        } else if (position.startsWith("Right")) {
+            layout?.rightDock?.remove(type2);
+        } else if (position.startsWith("Bottom")) {
+            layout?.bottomDock?.remove(type2);
+        }
+
+        document.querySelectorAll(`span.dock__item[data-type="${type2}"]`).forEach((el) => {
+            el.remove();
+        });
+
+        this.registeredDocks.delete(type);
+    }
+
+    /**
+     * 收起集合 dock（如果布局恢复时它是展开状态）
+     */
+    collapseWebAppCollectionDockIfActive() {
+        const type2 = this.name + COLLECTION_DOCK_TYPE;
+        const dockBtn = document.querySelector(`span.dock__item[data-type="${type2}"]`) as HTMLElement;
+        if (dockBtn?.classList.contains("dock__item--active")) {
+            dockBtn.click();
+        }
+    }
+
+    /**
+     * 根据设置同步网页小程序集合 Dock：
+     * - 开启时注册集合 Dock
+     * - 关闭时移除集合 Dock
+     */
+    syncWebAppCollectionDock(webApps: any[], enabled?: boolean, openedAppIds?: string[]) {
+        if (enabled) {
+            const validIds = new Set((webApps || []).map(app => app.id));
+            const filteredIds = (openedAppIds || [])
+                .filter(id => validIds.has(id));
+            this.registerWebAppCollectionDock(webApps, filteredIds);
+        } else {
+            this.removeWebAppCollectionDock();
+        }
+    }
+
+    /**
+     * 切换网页小程序集合 Dock 的显示/隐藏
+     */
+    async toggleWebAppCollectionDock() {
+        const type2 = this.name + COLLECTION_DOCK_TYPE;
+        const dockBtn = document.querySelector(`span.dock__item[data-type="${type2}"]`) as HTMLElement;
+        if (dockBtn) {
+            dockBtn.click();
+            return;
+        }
+
+        // Dock 按钮尚未渲染（可能设置了但 dock 未注册），先注册再点击
+        const settings = await this.loadSettings();
+        const webApps = settings.webApps || [];
+        const openedAppIds = settings.openedWebAppIds || [];
+        this.registerWebAppCollectionDock(webApps, openedAppIds);
+        setTimeout(() => {
+            const btn = document.querySelector(`span.dock__item[data-type="${type2}"]`) as HTMLElement;
+            btn?.click();
+        }, 0);
+    }
+
+    /**
+     * 在集合 Dock 中打开指定小程序
+     */
+    async openWebAppInCollectionDock(appId: string) {
+        if (!appId) return;
+
+        const settings = await this.loadSettings();
+        const webApps = settings.webApps || [];
+        const app = webApps.find((a: any) => a.id === appId);
+        if (!app) return;
+
+        // 更新已打开页签
+        const openedAppIds = new Set(settings.openedWebAppIds || []);
+        openedAppIds.add(appId);
+        settings.openedWebAppIds = Array.from(openedAppIds);
+        await this.saveSettings(settings);
+
+        // 确保集合 Dock 已注册
+        if (!this.registeredDocks.has(COLLECTION_DOCK_TYPE)) {
+            this.registerWebAppCollectionDock(webApps, settings.openedWebAppIds);
+        } else if (this.webAppCollectionApp) {
+            this.webAppCollectionApp.$set({
+                webApps: this.webAppCollectionApps,
+                openedAppIds: settings.openedWebAppIds
+            });
+        }
+
+        // 通知组件打开该小程序
+        if (this.webAppCollectionApp && typeof this.webAppCollectionApp.openApp === 'function') {
+            this.webAppCollectionApp.openApp(appId);
+        }
+
+        // 展开集合 Dock
+        const type2 = this.name + COLLECTION_DOCK_TYPE;
+        const dockBtn = document.querySelector(`span.dock__item[data-type="${type2}"]`) as HTMLElement;
+        if (dockBtn && !dockBtn.classList.contains('dock__item--active')) {
+            dockBtn.click();
+        }
+    }
+
+    /**
+     * 关闭集合 Dock 中的指定小程序页签
+     */
+    async closeWebAppInCollectionDock(appId: string) {
+        if (!appId) return;
+
+        const settings = await this.loadSettings();
+        const openedAppIds = new Set(settings.openedWebAppIds || []);
+        if (!openedAppIds.has(appId)) return;
+
+        openedAppIds.delete(appId);
+        settings.openedWebAppIds = Array.from(openedAppIds);
+        await this.saveSettings(settings);
+
+        if (this.webAppCollectionApp) {
+            this.webAppCollectionApp.$set({
+                webApps: this.webAppCollectionApps,
+                openedAppIds: settings.openedWebAppIds
+            });
+        }
+    }
+
+    /**
+     * 设置集合 Dock 中打开的页签顺序
+     */
+    async setOpenedWebAppIds(ids: string[]) {
+        const uniqueIds = Array.from(new Set(ids));
+        const settings = await this.loadSettings();
+        settings.openedWebAppIds = uniqueIds;
+        await this.saveSettings(settings);
+
+        if (this.webAppCollectionApp) {
+            this.webAppCollectionApp.$set({
+                webApps: this.webAppCollectionApps,
+                openedAppIds: uniqueIds
+            });
+        }
+    }
+
     initWebAppView(element: HTMLElement, app: any, tabInstance?: any) {
         const pluginInstance = this;
         element.style.display = 'flex';
@@ -884,19 +1112,64 @@ export default class PluginSample extends Plugin {
                     urlInputWrapper.appendChild(suggestionList);
                     navbar.appendChild(urlInputWrapper);
 
-                    // 在默认浏览器打开按钮
-                    const openInBrowserBtn = document.createElement('button');
-                    openInBrowserBtn.className = 'b3-button b3-button--text';
-                    openInBrowserBtn.title = '在默认浏览器打开';
-                    openInBrowserBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>';
-                    navbar.appendChild(openInBrowserBtn);
+                    // 打开方式菜单（合并“在默认浏览器打开”和“在新标签页打开”）
+                    const openMenuContainer = document.createElement('div');
+                    openMenuContainer.className = 'webapp-view__open-menu-container';
 
-                    // 复制标签页按钮
-                    const duplicateTabBtn = document.createElement('button');
-                    duplicateTabBtn.className = 'b3-button b3-button--text';
-                    duplicateTabBtn.title = '在新标签页打开';
-                    duplicateTabBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>';
-                    navbar.appendChild(duplicateTabBtn);
+                    const openMenuBtn = document.createElement('button');
+                    openMenuBtn.className = 'b3-button b3-button--text';
+                    openMenuBtn.title = '打开方式';
+                    openMenuBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>';
+                    openMenuContainer.appendChild(openMenuBtn);
+
+                    const openMenu = document.createElement('div');
+                    openMenu.className = 'webapp-view__open-menu';
+                    openMenu.style.display = 'none';
+
+                    const createOpenMenuItem = (iconId: string, label: string, onClick: () => void) => {
+                        const item = document.createElement('button');
+                        item.className = 'b3-menu__item';
+                        item.innerHTML = `<svg class="b3-menu__icon"><use xlink:href="#${iconId}"></use></svg><span class="b3-menu__label">${label}</span>`;
+                        item.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onClick();
+                            toggleOpenMenu();
+                        });
+                        return item;
+                    };
+
+                    openMenu.appendChild(createOpenMenuItem('iconOpenWindow', '在默认浏览器打开', () => {
+                        openInDefaultBrowser();
+                    }));
+                    openMenu.appendChild(createOpenMenuItem('iconAdd', '在新标签页打开', () => {
+                        openUrlInNewTab(urlInput.value || app.url);
+                    }));
+                    openMenuContainer.appendChild(openMenu);
+                    navbar.appendChild(openMenuContainer);
+
+                    let showOpenMenu = false;
+                    const toggleOpenMenu = (event?: MouseEvent) => {
+                        event?.stopPropagation();
+                        showOpenMenu = !showOpenMenu;
+                        openMenu.style.display = showOpenMenu ? 'flex' : 'none';
+                        if (showOpenMenu) {
+                            document.addEventListener('click', closeOpenMenuOnOutside);
+                        } else {
+                            document.removeEventListener('click', closeOpenMenuOnOutside);
+                        }
+                    };
+                    const closeOpenMenuOnOutside = (event: MouseEvent) => {
+                        if (!openMenuContainer.contains(event.target as Node)) {
+                            toggleOpenMenu();
+                        }
+                    };
+
+                    openMenuBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleOpenMenu(e);
+                    });
 
                     // 全屏按钮
                     const fullscreenBtn = document.createElement('button');
@@ -1435,47 +1708,6 @@ export default class PluginSample extends Plugin {
                         }
                     };
 
-                    openInBrowserBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openInDefaultBrowser();
-                    });
-
-                    // 复制标签页按钮点击事件
-                    duplicateTabBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const currentUrl = urlInput.value || app.url;
-
-                        // 从URL中提取域名作为初始标题
-                        let initialTitle = 'Web Link';
-                        try {
-                            const urlObj = new URL(currentUrl);
-                            initialTitle = urlObj.hostname || initialTitle;
-                        } catch (err) {
-                            console.warn('Failed to parse URL:', err);
-                        }
-
-                        // 使用当前 Tab 的 icon，如果没有则使用默认 icon
-                        const currentIcon = tabInstance?.tab?.icon || "iconCopilotWebApp";
-
-                        openTab({
-                            app: pluginInstance.app,
-                            custom: {
-                                icon: currentIcon,
-                                title: initialTitle,
-                                data: {
-                                    app: {
-                                        url: currentUrl,
-                                        name: initialTitle,
-                                        id: "weblink_" + Date.now()
-                                    }
-                                },
-                                id: pluginInstance.name + WEBAPP_TAB_TYPE
-                            }
-                        });
-                    });
-
                     // 监听 console 消息处理 webview 内部的快捷键和链接点击
                     webview.addEventListener('console-message', (e: any) => {
                         const msg = e.message || '';
@@ -1784,6 +2016,15 @@ export default class PluginSample extends Plugin {
                         this.collapseWebAppDockIfActive(app.id);
                     }
                 }
+
+                // 注册或同步网页小程序集合 Dock（与单独侧栏 Dock 互不影响）
+                this.syncWebAppCollectionDock(
+                    settings.webApps,
+                    settings.webAppCollectionDock,
+                    settings.openedWebAppIds
+                );
+                // 避免思源从持久化布局恢复时自动展开集合 Dock
+                this.collapseWebAppCollectionDockIfActive();
             }
 
             // 注册已缓存的域名 favicon（如果有），从独立的缓存文件加载

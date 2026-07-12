@@ -1374,6 +1374,13 @@
 
         // 同步 dock：新增/保留勾选的注册，删除/取消勾选的移除
         plugin.syncWebAppDocks(webApps);
+
+        // 同步网页小程序集合 Dock（显示所有小程序，与单独侧栏 Dock 互不影响）
+        plugin.syncWebAppCollectionDock(
+            webApps,
+            settings.webAppCollectionDock,
+            settings.openedWebAppIds
+        );
     }
 
     // 打开小程序

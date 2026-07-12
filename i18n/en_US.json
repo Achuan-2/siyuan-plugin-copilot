@@ -165,6 +165,10 @@
             "title": "Open Links in WebView",
             "description": "When clicking https links in SiYuan notes, open them in built-in WebView tabs instead of external browser"
         },
+        "webAppCollectionDock": {
+            "title": "Web App Collection Sidebar",
+            "description": "Add a web app collection panel to the sidebar, opening all web apps as tabs"
+        },
         "soulDocId": {
             "title": "SOUL Document ID",
             "description": "Set the document ID for SOUL data storage. SOUL tools can only perform CRUD operations within this document.",

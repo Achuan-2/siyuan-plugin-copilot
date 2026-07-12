@@ -164,6 +164,10 @@
             "title": "在思源内部打开网页链接",
             "description": "点击笔记中的网页链接时，在内置网页标签页中打开，而不是外部浏览器"
         },
+        "webAppCollectionDock": {
+            "title": "小程序集合侧栏",
+            "description": "在侧边栏中添加一个网页小程序集合面板，以标签页形式打开所有小程序"
+        },
         "soulDocId": {
             "title": "SOUL 文档 ID",
             "description": "设置 SOUL 数据存储的文档 ID",

@@ -215,6 +215,8 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
 
     // WebApp 相关设置
     openLinksInWebView: false, // 是否在 webview 中打开外部链接
+    webAppCollectionDock: false, // 是否将侧栏小程序合并为一个集合 Dock
+    openedWebAppIds: [] as string[], // 集合 Dock 中当前打开的页签
 
     // Python 解释器路径设置
     pythonPath: '' as string,  // Python 可执行文件路径，用于运行 Python 代码

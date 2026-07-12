@@ -1153,6 +1153,15 @@ description: 描述这个 Skill 的功能
                         '点击思源笔记中的 https 链接时，在内置 WebView 标签页中打开，而不是外部浏览器',
                 },
                 {
+                    key: 'webAppCollectionDock',
+                    value: settings.webAppCollectionDock,
+                    type: 'checkbox',
+                    title: i18n('settings.webAppCollectionDock.title') || '小程序集合侧栏',
+                    description:
+                        i18n('settings.webAppCollectionDock.description') ||
+                        '在侧边栏中添加一个网页小程序集合面板，以标签页形式打开所有小程序',
+                },
+                {
                     key: 'searchEngine',
                     value: settings.searchEngine,
                     type: 'select',
@@ -1243,6 +1252,15 @@ description: 描述这个 Skill 的功能
         if (detail.key in settings) {
             settings[detail.key] = detail.value;
             saveSettings();
+
+            // 切换小程序集合侧栏设置时，立即同步集合 Dock
+            if (detail.key === 'webAppCollectionDock') {
+                plugin.syncWebAppCollectionDock(
+                    settings.webApps || [],
+                    settings.webAppCollectionDock,
+                    settings.openedWebAppIds
+                );
+            }
         }
     };
 
