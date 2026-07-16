@@ -2479,11 +2479,21 @@
                 }
 
                 // 更新当前选择（如果设置中有保存）
-                if (newSettings.currentProvider) {
-                    currentProvider = newSettings.currentProvider;
-                }
-                if (newSettings.currentModelId) {
-                    currentModelId = newSettings.currentModelId;
+                // 生图模式使用单独保存的模型，避免被问答模式的模型覆盖
+                if (chatMode === 'draw') {
+                    if (newSettings.drawProvider) {
+                        currentProvider = newSettings.drawProvider;
+                    }
+                    if (newSettings.drawModelId) {
+                        currentModelId = newSettings.drawModelId;
+                    }
+                } else {
+                    if (newSettings.currentProvider) {
+                        currentProvider = newSettings.currentProvider;
+                    }
+                    if (newSettings.currentModelId) {
+                        currentModelId = newSettings.currentModelId;
+                    }
                 }
 
                 // 更新多模型选择，过滤掉无效的模型
@@ -4139,6 +4149,15 @@
         const imageAttachments = currentAttachments.filter(att => att.type === 'image');
         if (imageAttachments.length !== currentAttachments.length) {
             currentAttachments = imageAttachments;
+        }
+
+        // 优先恢复已保存的生图模型，避免切换回画图模式时被问答模式模型覆盖
+        const savedDrawConfig = getProviderAndModelConfig(settings.drawProvider, settings.drawModelId);
+        if (savedDrawConfig && modelSupportsImageGeneration(savedDrawConfig.modelConfig)) {
+            currentProvider = settings.drawProvider;
+            currentModelId = settings.drawModelId;
+            drawModeNoModelWarned = false;
+            return;
         }
 
         const currentConfig = getProviderAndModelConfig(currentProvider, currentModelId);
