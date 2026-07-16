@@ -43,24 +43,22 @@ export default defineConfig({
             ],
         }),
 
-        // Auto copy to SiYuan plugins directory in dev mode
-        ...(isDev ? [
-            {
-                name: 'auto-copy-to-siyuan',
-                writeBundle() {
-                    try {
-                        // Run the copy script after build
-                        execSync('node --no-warnings ./scripts/make_dev_copy.js', {
-                            stdio: 'inherit',
-                            cwd: process.cwd()
-                        });
-                    } catch (error) {
-                        console.warn('Auto copy to SiYuan failed:', error.message);
-                        console.warn('You can manually run: pnpm run make-link-win');
-                    }
+        // Auto copy to SiYuan plugins directory after build
+        {
+            name: 'auto-copy-to-siyuan',
+            writeBundle() {
+                try {
+                    // Run the copy script after build, using the current output directory
+                    execSync(`node --no-warnings ./scripts/make_dev_copy.js --source ${outputDir}`, {
+                        stdio: 'inherit',
+                        cwd: process.cwd()
+                    });
+                } catch (error) {
+                    console.warn('Auto copy to SiYuan failed:', error instanceof Error ? error.message : String(error));
+                    console.warn('You can manually run: pnpm run make_dev_copy');
                 }
             }
-        ] : []),
+        },
 
     ],
 

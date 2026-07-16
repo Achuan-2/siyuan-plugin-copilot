@@ -8,7 +8,11 @@
  */
 import fs from 'fs';
 import path from 'path';
+import minimist from 'minimist';
 import { log, error, getSiYuanDir, chooseTarget, getThisPluginName, copyDirectory } from './utils.js';
+
+const args = minimist(process.argv.slice(2));
+const sourceDirName = args.source || args.s || 'dev';
 
 let targetDir = `D:\\Notes\\Siyuan\\Achuan-2\\data\\plugins`;
 // let targetDir =`C:\\Users\\wangmin\\Documents\\siyuan_plugins_test\\data\\plugins`;
@@ -45,17 +49,17 @@ if (!fs.existsSync(targetDir)) {
 }
 
 /**
- * 2. The dev directory, which contains the compiled plugin code
+ * 2. The source directory, which contains the compiled plugin code
  */
-const devDir = `${process.cwd()}/dev`;
-if (!fs.existsSync(devDir)) {
-    error(`Failed! Dev directory not exists: "${devDir}"`);
-    error('Please run "pnpm run build" or "pnpm run dev" first to generate the dev directory');
+const sourceDir = path.resolve(process.cwd(), sourceDirName);
+if (!fs.existsSync(sourceDir)) {
+    error(`Failed! Source directory not exists: "${sourceDir}"`);
+    error('Please run "pnpm run build" or "pnpm run dev" first to generate the output directory');
     process.exit(1);
 }
 
 /**
- * 3. The target directory to copy dev directory contents
+ * 3. The target directory to copy source directory contents
  */
 const name = getThisPluginName();
 if (name === null) {
@@ -75,8 +79,8 @@ if (!fs.existsSync(targetPath)) {
 }
 
 /**
- * 5. Copy/update all contents from dev directory to target directory
+ * 5. Copy/update all contents from source directory to target directory
  * This will only update changed files instead of deleting everything
  */
-copyDirectory(devDir, targetPath);
+copyDirectory(sourceDir, targetPath);
 log(`>>> Successfully synchronized all files to SiYuan plugins directory!`);
