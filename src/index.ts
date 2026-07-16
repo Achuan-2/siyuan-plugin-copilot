@@ -751,7 +751,7 @@ export default class PluginSample extends Plugin {
         }
     }
 
-    initWebAppView(element: HTMLElement, app: any, tabInstance?: any) {
+    initWebAppView(element: HTMLElement, app: any, tabInstance?: any, showFullscreenButton: boolean = true) {
         const pluginInstance = this;
         element.style.display = 'flex';
                 element.style.flexDirection = 'column';
@@ -1171,13 +1171,15 @@ export default class PluginSample extends Plugin {
                         toggleOpenMenu(e);
                     });
 
-                    // 全屏按钮
-                    const fullscreenBtn = document.createElement('button');
-                    fullscreenBtn.className = 'b3-button b3-button--text';
-                    fullscreenBtn.title = '全屏 (Alt+Y)';
-                    fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
-                    navbar.appendChild(fullscreenBtn);
-
+                    let fullscreenBtn: HTMLButtonElement | null = null;
+                    if (showFullscreenButton) {
+                        // 全屏按钮
+                        fullscreenBtn = document.createElement('button');
+                        fullscreenBtn.className = 'b3-button b3-button--text';
+                        fullscreenBtn.title = '全屏 (Alt+Y)';
+                        fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
+                        navbar.appendChild(fullscreenBtn);
+                    }
 
                     container.appendChild(navbar);
 
@@ -1639,48 +1641,49 @@ export default class PluginSample extends Plugin {
                         }
                     });
 
-                    // 全屏状态标志
                     let isFullscreen = false;
+                    let toggleFullscreen: (() => void) | null = null;
+                    if (showFullscreenButton) {
+                        // 切换全屏函数
+                        toggleFullscreen = () => {
+                            isFullscreen = !isFullscreen;
 
-                    // 切换全屏函数
-                    const toggleFullscreen = () => {
-                        isFullscreen = !isFullscreen;
+                            if (isFullscreen) {
+                                // 进入全屏
+                                container.style.position = 'fixed';
+                                container.style.top = '0';
+                                container.style.left = '0';
+                                container.style.right = '0';
+                                container.style.bottom = '0';
+                                container.style.width = '100vw';
+                                container.style.height = '100vh';
+                                container.style.zIndex = '9999';
+                                container.style.background = 'var(--b3-theme-background)';
+                                fullscreenBtn!.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconContract"></use></svg>';
+                                fullscreenBtn!.title = '退出全屏 (Esc 或 Alt+Y)';
+                            } else {
+                                // 退出全屏
+                                container.style.position = '';
+                                container.style.top = '';
+                                container.style.left = '';
+                                container.style.right = '';
+                                container.style.bottom = '';
+                                container.style.width = '';
+                                container.style.height = '';
+                                container.style.zIndex = '';
+                                container.style.background = '';
+                                fullscreenBtn!.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
+                                fullscreenBtn!.title = '全屏 (Alt+Y)';
+                            }
+                        };
 
-                        if (isFullscreen) {
-                            // 进入全屏
-                            container.style.position = 'fixed';
-                            container.style.top = '0';
-                            container.style.left = '0';
-                            container.style.right = '0';
-                            container.style.bottom = '0';
-                            container.style.width = '100vw';
-                            container.style.height = '100vh';
-                            container.style.zIndex = '9999';
-                            container.style.background = 'var(--b3-theme-background)';
-                            fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconContract"></use></svg>';
-                            fullscreenBtn.title = '退出全屏 (Esc 或 Alt+Y)';
-                        } else {
-                            // 退出全屏
-                            container.style.position = '';
-                            container.style.top = '';
-                            container.style.left = '';
-                            container.style.right = '';
-                            container.style.bottom = '';
-                            container.style.width = '';
-                            container.style.height = '';
-                            container.style.zIndex = '';
-                            container.style.background = '';
-                            fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
-                            fullscreenBtn.title = '全屏 (Alt+Y)';
-                        }
-                    };
-
-                    // 全屏按钮点击事件
-                    fullscreenBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleFullscreen();
-                    });
+                        // 全屏按钮点击事件
+                        fullscreenBtn!.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFullscreen?.();
+                        });
+                    }
 
                     // 在默认浏览器中打开按钮点击事件
                     const openInDefaultBrowser = () => {
@@ -1736,18 +1739,18 @@ export default class PluginSample extends Plugin {
                                 } catch (err) {
                                     console.warn('前进失败:', err);
                                 }
-                            } else if (key === 'alt-y') {
-                                // Alt+Y 切换全屏
-                                toggleFullscreen();
                             } else if (key === 'ctrl-f') {
                                 // Ctrl+F 搜索
                                 showSearchBar();
+                            } else if (showFullscreenButton && key === 'alt-y') {
+                                // Alt+Y 切换全屏
+                                toggleFullscreen?.();
                             } else if (key === 'escape') {
-                                // Esc 退出全屏 或 关闭搜索
+                                // Esc 关闭搜索
                                 if (searchBar.style.display !== 'none') {
                                     hideSearchBar();
-                                } else if (isFullscreen) {
-                                    toggleFullscreen();
+                                } else if (showFullscreenButton && isFullscreen) {
+                                    toggleFullscreen?.();
                                 }
                             }
                             return;
@@ -1787,14 +1790,15 @@ export default class PluginSample extends Plugin {
                                             console.log('__SIYUAN_COPILOT_HOTKEY__:alt-right');
                                             return false;
                                         }
+                                        ${showFullscreenButton ? `
                                         // Alt+Y 全屏
                                         if (e.altKey && (e.key === 'y' || e.key === 'Y')) {
                                             e.preventDefault();
                                             e.stopPropagation();
                                             console.log('__SIYUAN_COPILOT_HOTKEY__:alt-y');
                                             return false;
-                                        }
-                                        // Esc 退出全屏 或 关闭搜索
+                                        }` : ''}
+                                        // Esc 关闭搜索
                                         if (e.key === 'Escape') {
                                             e.preventDefault();
                                             e.stopPropagation();

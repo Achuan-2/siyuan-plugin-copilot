@@ -59,7 +59,7 @@
         slot.style.flex = '1';
         wrapper.appendChild(slot);
 
-        plugin.initWebAppView(slot, app);
+        plugin.initWebAppView(slot, app, undefined, false);
 
         contentArea.appendChild(wrapper);
         slotMap.set(app.id, slot);
