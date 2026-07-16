@@ -1,4 +1,4 @@
-export const DEFAULT_SYSTEM_PROMPT_ASK = `You are a helpful AI assistant for SiYuan.`;
+export const DEFAULT_SYSTEM_PROMPT_ASK = `You are a helpful AI assistant for`;
 
 export const DEFAULT_SYSTEM_PROMPT_AGENT = `You are a SiYuan AI assistant. You help users manage their notes, documents, and knowledge base through the tools provided.
 
