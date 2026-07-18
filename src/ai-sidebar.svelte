@@ -77,13 +77,13 @@
         type ToolExecutionCallbacks,
     } from './tools';
 
-    import { Editor } from '@tiptap/core';
-    import StarterKit from '@tiptap/starter-kit';
-    import Placeholder from '@tiptap/extension-placeholder';
-    import { Node, mergeAttributes } from '@tiptap/core';
-    import { Extension } from '@tiptap/core';
-    import Suggestion from '@tiptap/suggestion';
-    import { PluginKey } from '@tiptap/pm/state';
+    import {
+        Protyle,
+        type IProtyle,
+        type IHintData,
+        type IHintExtend,
+    } from 'siyuan';
+    import * as siyuanModule from 'siyuan';
 
 
     // Agent 模式工具使用强制规则（统一常量）
@@ -410,7 +410,6 @@
     let isThinkingPhase = false; // 是否在思考阶段
     let settings: any = {};
     let messagesContainer: HTMLElement;
-    let textareaElement: HTMLTextAreaElement;
     let inputContainer: HTMLElement;
     let fileInputElement: HTMLInputElement;
     let isInitialLoading = true;
@@ -461,453 +460,179 @@
     let isDragOver = false;
     let searchTimeout: number | null = null;
 
-    // Tiptap variables and suggestion state
-    // Convert ProseMirror node tree to Markdown
-    function serializeNodeToMarkdown(node: any): string {
-        if (!node) return '';
-
-        if (node.isText) {
-            let text = node.text || '';
-            if (node.marks) {
-                for (const mark of node.marks) {
-                    if (mark.type.name === 'bold') {
-                        text = `**${text}**`;
-                    } else if (mark.type.name === 'italic') {
-                        text = `*${text}*`;
-                    } else if (mark.type.name === 'code') {
-                        text = `\`${text}\``;
-                    } else if (mark.type.name === 'strike') {
-                        text = `~~${text}~~`;
-                    }
-                }
-            }
-            return text;
-        }
-
-        switch (node.type.name) {
-            case 'doc': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('\n\n');
-            }
-            case 'paragraph': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('');
-            }
-            case 'heading': {
-                const level = node.attrs.level || 1;
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return '#'.repeat(level) + ' ' + children.join('');
-            }
-            case 'bulletList': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeListItem(child, '* '));
-                });
-                return children.join('\n');
-            }
-            case 'orderedList': {
-                const children: string[] = [];
-                let index = node.attrs.start || 1;
-                node.forEach((child: any) => {
-                    children.push(serializeListItem(child, `${index}. `));
-                    index++;
-                });
-                return children.join('\n');
-            }
-            case 'blockquote': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.map(line => `> ${line}`).join('\n');
-            }
-            case 'codeBlock': {
-                const language = node.attrs.language || '';
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return `\`\`\`${language}\n${children.join('')}\n\`\`\``;
-            }
-            case 'horizontalRule': {
-                return '---';
-            }
-            case 'hardBreak': {
-                return '\n';
-            }
-            case 'contextDocument': {
-                return `@<${node.attrs.title}>`;
-            }
-            case 'contextImage': {
-                return `[图片: ${node.attrs.name}]`;
-            }
-            default: {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('');
-            }
-        }
-    }
-
-    function serializeListItem(listItemNode: any, prefix: string): string {
-        const children: string[] = [];
-        listItemNode.forEach((child: any) => {
-            children.push(serializeNodeToMarkdown(child));
-        });
-        const content = children.join('\n');
-        const lines = content.split('\n');
-        const indent = ' '.repeat(prefix.length);
-        const formattedLines = lines.map((line, idx) => {
-            if (idx === 0) return prefix + line;
-            return indent + line;
-        });
-        return formattedLines.join('\n');
-    }
-
-    function getMarkdownFromEditor(editorInstance: any): string {
-        if (!editorInstance) return '';
-        return serializeNodeToMarkdown(editorInstance.state.doc);
-    }
-
-    let editor: Editor;
+    // Protyle editor variables and helpers
+    let protyle: Protyle;
+    let protyleInternal: IProtyle;
+    let wysiwygElement: HTMLElement;
     let editorElement: HTMLElement;
-    let showSuggestions = false;
-    let suggestionType: 'doc' | 'skill' | null = null;
-    let suggestionQuery = '';
-    let suggestionList: any[] = [];
-    let suggestionSelectedIndex = 0;
-    let suggestionStyle = '';
-    let suggestionCommand: any = null;
+    let contentObserver: MutationObserver;
+    let hintRefImpl: any;
 
-    // Custom Tiptap Extensions
-    const ContextDocument = Node.create({
-        name: 'contextDocument',
-        group: 'inline',
-        inline: true,
-        selectable: true,
-        atom: true,
-
-        addAttributes() {
-            return {
-                id: { default: null },
-                title: { default: '文档' },
-                type: { default: 'doc' }, // 'doc' | 'block'
-                content: { default: '' }
-            };
-        },
-
-        parseHTML() {
-            return [
-                {
-                    tag: 'span[data-context-document]'
-                }
-            ];
-        },
-
-        renderHTML({ HTMLAttributes }) {
-            return [
-                'span',
-                mergeAttributes(HTMLAttributes, {
-                    'data-context-document': '',
-                    class: 'context-document-tag',
-                    contenteditable: 'false'
-                }),
-                ['span', { class: 'context-document-tag__icon' }, HTMLAttributes.type === 'doc' ? '📄' : '🧩'],
-                ['span', { class: 'context-document-tag__title' }, HTMLAttributes.title || ''],
-                ['span', { class: 'context-document-tag__remove' }, '×']
-            ];
-        },
-
-        renderText({ node }) {
-            return `@<${node.attrs.title}>`;
-        },
-
-        addProseMirrorPlugins() {
-            return [
-                Suggestion({
-                    pluginKey: new PluginKey('contextDocumentSuggestion'),
-                    editor: this.editor,
-                    char: '@',
-                    allowSpaces: true,
-                    command: ({ editor, range, props }) => {
-                        editor
-                            .chain()
-                            .focus()
-                            .insertContentAt(range, [
-                                {
-                                    type: this.name,
-                                    attrs: {
-                                        id: props.id,
-                                        title: props.title,
-                                        type: props.type || 'doc',
-                                        content: props.content || ''
-                                    }
-                                },
-                                {
-                                    type: 'text',
-                                    text: ' '
-                                }
-                            ])
-                            .run();
-                    },
-                    render: () => {
-                        return {
-                            onStart: (props) => {
-                                handleSuggestionStart('@', props);
-                            },
-                            onUpdate: (props) => {
-                                handleSuggestionUpdate(props);
-                            },
-                            onKeyDown: (props) => {
-                                return handleSuggestionKeyDown(props);
-                            },
-                            onExit: () => {
-                                handleSuggestionExit();
-                            }
-                        };
-                    }
-                })
-            ];
-        }
-    });
-
-    const ContextImage = Node.create({
-        name: 'contextImage',
-        group: 'inline',
-        inline: true,
-        selectable: true,
-        atom: true,
-
-        addAttributes() {
-            return {
-                tempId: { default: null },
-                src: { default: '' },
-                name: { default: '图片' },
-                path: { default: '' },
-                mimeType: { default: 'image/png' }
-            };
-        },
-
-        parseHTML() {
-            return [
-                {
-                    tag: 'span[data-context-image]'
-                }
-            ];
-        },
-
-        renderHTML({ HTMLAttributes }) {
-            return [
-                'span',
-                mergeAttributes(HTMLAttributes, {
-                    'data-context-image': '',
-                    class: 'context-image-tag',
-                    contenteditable: 'false'
-                }),
-                ['img', { class: 'context-image-tag__thumb', src: HTMLAttributes.src || '' }],
-                ['span', { class: 'context-image-tag__name' }, HTMLAttributes.name || ''],
-                ['span', { class: 'context-image-tag__remove' }, '×']
-            ];
-        },
-
-        renderText({ node }) {
-            return `[图片: ${node.attrs.name}]`;
-        }
-    });
-
-    const SkillSuggestion = Extension.create({
-        name: 'skillSuggestion',
-
-        addProseMirrorPlugins() {
-            return [
-                Suggestion({
-                    pluginKey: new PluginKey('skillSuggestionKey'),
-                    editor: this.editor,
-                    char: '/',
-                    allowSpaces: false,
-                    command: ({ editor, range, props }) => {
-                        editor
-                            .chain()
-                            .focus()
-                            .insertContentAt(range, [
-                                {
-                                    type: 'text',
-                                    text: `/${props.id} `
-                                }
-                            ])
-                            .run();
-                    },
-                    render: () => {
-                        return {
-                            onStart: (props) => {
-                                handleSuggestionStart('/', props);
-                            },
-                            onUpdate: (props) => {
-                                handleSuggestionUpdate(props);
-                            },
-                            onKeyDown: (props) => {
-                                return handleSuggestionKeyDown(props);
-                            },
-                            onExit: () => {
-                                handleSuggestionExit();
-                            }
-                        };
-                    }
-                })
-            ];
-        }
-    });
-
-    // 建议下拉框事件处理
-    function handleSuggestionStart(char: string, props: any) {
-        showSuggestions = true;
-        suggestionType = char === '@' ? 'doc' : 'skill';
-        suggestionQuery = props.query;
-        suggestionSelectedIndex = 0;
-        suggestionCommand = props.command;
-        
-        if (suggestionType === 'doc') {
-            searchKeyword = props.query;
-            searchDocuments().then(() => {
-                suggestionList = searchResults;
-                updateSuggestionPosition(props.clientRect);
-            });
-        } else {
-            loadAllSkills().then(skills => {
-                suggestionList = (skills || []).filter(skill =>
-                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase())
-                );
-                updateSuggestionPosition(props.clientRect);
-            });
-        }
+    function escapeHtml(unsafe: string): string {
+        return unsafe
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
-    function handleSuggestionUpdate(props: any) {
-        suggestionQuery = props.query;
-        suggestionSelectedIndex = 0;
-        suggestionCommand = props.command;
-        
-        if (suggestionType === 'doc') {
-            searchKeyword = props.query;
-            searchDocuments().then(() => {
-                suggestionList = searchResults;
-                updateSuggestionPosition(props.clientRect);
-            });
-        } else {
-            loadAllSkills().then(skills => {
-                suggestionList = (skills || []).filter(skill =>
-                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.description.toLowerCase().includes(suggestionQuery.toLowerCase())
-                );
-                updateSuggestionPosition(props.clientRect);
-            });
-        }
+    function contextDocumentHTML(id: string, title: string, type: string = 'doc'): string {
+        const icon = type === 'doc' ? '📄' : '🧩';
+        return `<span data-type="block-ref" data-id="${id}" data-subtype="d" data-context-type="${type}" class="context-document-tag" contenteditable="false"><span class="context-document-tag__icon">${icon}</span><span class="context-document-tag__title">${escapeHtml(title)}</span><span class="context-document-tag__remove">×</span></span>`;
     }
 
-    function handleSuggestionKeyDown(props: any) {
-        const { event } = props;
-        if (!showSuggestions) return false;
+    function contextImageHTML(tempId: string, src: string, name: string): string {
+        return `<span data-context-image="" data-temp-id="${tempId}" data-src="${src}" data-name="${escapeHtml(name)}" class="context-image-tag" contenteditable="false"><img class="context-image-tag__thumb" src="${src}"><span class="context-image-tag__name">${escapeHtml(name)}</span><span class="context-image-tag__remove">×</span></span>`;
+    }
 
-        if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            suggestionSelectedIndex = (suggestionSelectedIndex - 1 + suggestionList.length) % suggestionList.length;
-            return true;
+    const hintSkill = (key: string, p: IProtyle): IHintData[] => {
+        if (p.hint) {
+            p.hint.genLoading(p);
         }
-
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            suggestionSelectedIndex = (suggestionSelectedIndex + 1) % suggestionList.length;
-            return true;
-        }
-
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            if (suggestionList.length > 0) {
-                selectSuggestion(suggestionList[suggestionSelectedIndex]);
-                return true;
+        loadAllSkills().then(skills => {
+            const q = key.toLowerCase();
+            const dataList: IHintData[] = (skills || [])
+                .filter(skill =>
+                    !q ||
+                    skill.id.toLowerCase().includes(q) ||
+                    skill.name.toLowerCase().includes(q) ||
+                    (skill.description || '').toLowerCase().includes(q)
+                )
+                .map(skill => ({
+                    value: skill.name + ' ',
+                    html: '<div class="b3-list-item__first"><span class="b3-list-item__text">' +
+                        escapeHtml(skill.name) + '</span></div>' +
+                        (skill.description ? '<div class="b3-list-item__meta b3-list-item__showall">' + escapeHtml(skill.description) + '</div>' : ''),
+                }));
+            if (dataList.length === 0) {
+                dataList.push({ value: '', html: window.siyuan.languages.emptyContent });
             }
-        }
+            if (p.hint) {
+                p.hint.genHTML(dataList, p, false, 'hint');
+            }
+        });
+        return [];
+    };
 
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            showSuggestions = false;
-            return true;
-        }
-
-        return false;
+    function getMarkdownFromProtyle(): string {
+        if (!protyleInternal?.lute || !wysiwygElement) return '';
+        return protyleInternal.lute.BlockDOM2StdMd(wysiwygElement.innerHTML).trim();
     }
 
-    function handleSuggestionExit() {
-        showSuggestions = false;
-        suggestionList = [];
-    }
-
-    function updateSuggestionPosition(clientRectFn: any) {
-        if (!clientRectFn) return;
-        const rect = clientRectFn();
-        if (!rect) return;
-        const popupHeight = 220;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
-        
-        if (spaceBelow < popupHeight && spaceAbove > spaceBelow) {
-            suggestionStyle = `position: fixed; bottom: ${window.innerHeight - rect.top + 4}px; left: ${rect.left}px; z-index: 9999;`;
-        } else {
-            suggestionStyle = `position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px; z-index: 9999;`;
+    function setProtyleContent(markdown: string) {
+        if (!protyleInternal?.lute || !wysiwygElement) return;
+        if (!markdown.trim()) {
+            clearProtyle();
+            return;
         }
+        wysiwygElement.innerHTML = protyleInternal.lute.Md2BlockDOM(markdown);
+        syncContextFromProtyle();
     }
 
-    // 选择建议项
-    async function selectSuggestion(item: any) {
-        if (!suggestionCommand) return;
-        
-        if (suggestionType === 'doc') {
-            let content = '';
+    function createEmptyParagraph(): HTMLElement {
+        // 优先用 Lute 生成标准空段落，确保与 Protyle 内部结构一致
+        if (protyleInternal?.lute) {
             try {
-                if (!(chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0))) {
-                    const data = await exportMdContent(item.id, false, false, 2, 0, false);
-                    content = data?.content || '';
+                const html = protyleInternal.lute.Md2BlockDOM('');
+                if (html) {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    const parsed = temp.firstElementChild as HTMLElement | null;
+                    if (parsed) {
+                        return parsed;
+                    }
                 }
             } catch (e) {
-                console.error(e);
+                // ignore, fall through
             }
-            suggestionCommand({
-                id: item.id,
-                title: item.content || item.title || i18n('commonUntitled'),
-                type: 'doc',
-                content: content
-            });
-        } else {
-            suggestionCommand({
-                id: item.id
-            });
         }
-        showSuggestions = false;
+
+        const emptyP = document.createElement('div');
+        let nodeId = '';
+        try {
+            const luteClass = (window as any).siyuan?.lute || (protyleInternal?.lute as any)?.constructor;
+            if (luteClass?.NewNodeID) {
+                nodeId = luteClass.NewNodeID();
+            }
+        } catch (e) {
+            // ignore
+        }
+        if (!nodeId) {
+            // fallback ID matching Siyuan format: YYYYMMDDHHMMSS-7alphanum
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const randomSuffix = Math.random().toString(36).slice(2, 9);
+            nodeId = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${randomSuffix}`;
+        }
+        emptyP.setAttribute('data-node-id', nodeId);
+        emptyP.setAttribute('data-type', 'NodeParagraph');
+        emptyP.className = 'p';
+        const spellcheck = (window as any).siyuan?.config?.editor?.spellcheck ?? 'false';
+        emptyP.innerHTML = `<div contenteditable="true" spellcheck="${spellcheck}">${Constants.ZWSP}<wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div>`;
+        return emptyP;
+    }
+
+    function clearProtyle() {
+        if (!protyleInternal || !wysiwygElement) return;
+        wysiwygElement.innerHTML = '';
+        const emptyP = createEmptyParagraph();
+        emptyP.firstElementChild!.classList.add('protyle-wysiwyg--empty');
+        emptyP.firstElementChild!.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+        wysiwygElement.appendChild(emptyP);
+        protyleInternal.undo?.clear();
+        updatePlaceholder();
+        syncContextFromProtyle();
+    }
+
+    function updatePlaceholder() {
+        if (!wysiwygElement) return;
+        const isEmpty = (wysiwygElement.textContent || '')
+            .replace(new RegExp(Constants.ZWSP, 'g'), '')
+            .trim() === '';
+        const paragraphContent = wysiwygElement.querySelector('.p > div[contenteditable="true"]');
+        if (paragraphContent) {
+            paragraphContent.classList.toggle('protyle-wysiwyg--empty', isEmpty);
+            if (isEmpty) {
+                paragraphContent.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+            } else {
+                paragraphContent.removeAttribute('placeholder');
+            }
+        }
+    }
+
+    function syncContextFromProtyle() {
+        if (!wysiwygElement) return;
+        currentInput = getMarkdownFromProtyle();
+
+        const tempDocs: ContextDocument[] = [];
+        const presentImageSrcs = new Set<string>();
+        wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
+            tempDocs.push({
+                id: el.getAttribute('data-id') || '',
+                title: el.querySelector('.context-document-tag__title')?.textContent || el.textContent || '',
+                content: '',
+                type: el.getAttribute('data-context-type') || 'doc',
+            });
+        });
+        wysiwygElement.querySelectorAll('[data-context-image]').forEach((el) => {
+            const src = el.getAttribute('data-src');
+            if (src) {
+                presentImageSrcs.add(src);
+            }
+        });
+        contextDocuments = tempDocs;
+
+        currentAttachments = currentAttachments.filter(att => {
+            if (att.type === 'image') {
+                return presentImageSrcs.has(att.data);
+            }
+            return true;
+        });
     }
 
     let hasInlineDocs = false;
-    $: if (editor) {
-        let count = 0;
-        try {
-            editor.state.doc.descendants(node => {
-                if (node.type.name === 'contextDocument') count++;
-            });
-        } catch(e) {}
-        hasInlineDocs = count > 0;
-    }
+    $: hasInlineDocs = contextDocuments.length > 0;
 
 
     // 提示词管理
@@ -2342,128 +2067,166 @@
             currentInput = initialMessage;
         }
 
-        // 初始化 Tiptap 外部编辑器
-        editor = new Editor({
-            element: editorElement,
-            extensions: [
-                StarterKit.configure({
-                    // 拖拽时不显示 drop cursor，块/文档默认插入到输入框末尾
-                    dropcursor: false,
-                }),
-                ContextDocument,
-                ContextImage,
-                SkillSuggestion,
-                Placeholder.configure({
-                    placeholder: i18n('aiSidebarInputPlaceholder'),
-                })
-            ],
-            content: currentInput,
-            onUpdate({ editor }) {
-                currentInput = getMarkdownFromEditor(editor);
-                // 实时同步更新 contextDocuments 数组
-                const tempDocs: ContextDocument[] = [];
-                const presentImageSrcs = new Set<string>();
-                editor.state.doc.descendants((node) => {
-                    if (node.type.name === 'contextDocument') {
-                        tempDocs.push({
-                            id: node.attrs.id,
-                            title: node.attrs.title,
-                            content: node.attrs.content || '',
-                            type: node.attrs.type || 'doc',
-                        });
-                    } else if (node.type.name === 'contextImage') {
-                        if (node.attrs.src) {
-                            presentImageSrcs.add(node.attrs.src);
-                        }
-                    }
-                });
-                contextDocuments = tempDocs;
+        // 初始化 Protyle 编辑器
+        hintRefImpl = (siyuanModule as any).hintRef || (window as any).siyuan?.hintRef;
 
-                // 同步附件列表：如果附件是图片，且其 data (blobUrl) 不在编辑器中，说明被删除了
-                currentAttachments = currentAttachments.filter(att => {
-                    if (att.type === 'image') {
-                        return presentImageSrcs.has(att.data);
-                    }
-                    return true;
-                });
+        const hintExtend: IHintExtend[] = [
+            { key: '/', hint: hintSkill },
+            { key: '、', hint: hintSkill },
+        ];
+        if (hintRefImpl) {
+            hintExtend.unshift(
+                { key: '((', hint: hintRefImpl },
+                { key: '【【', hint: hintRefImpl },
+                { key: '（（', hint: hintRefImpl },
+                { key: '[[', hint: hintRefImpl }
+            );
+        }
+
+        const app = window.siyuan.ws.app;
+        protyle = new Protyle(app, editorElement, {
+            lite: true,
+            blockId: '',
+            render: {
+                gutter: false,
+                breadcrumb: false,
+                scroll: false,
+                background: false,
+                title: false,
             },
-            editorProps: {
-                attributes: {
-                    class: 'ai-sidebar__input',
-                    spellcheck: 'false',
-                },
-                handleKeyDown(view, event) {
-                    if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
+            hint: {
+                extend: hintExtend,
+            },
+        });
+
+        protyleInternal = protyle.protyle;
+        wysiwygElement = protyleInternal.wysiwyg!.element;
+
+        wysiwygElement.innerHTML = '';
+        const emptyP = createEmptyParagraph();
+        emptyP.firstElementChild!.classList.add('protyle-wysiwyg--empty');
+        emptyP.firstElementChild!.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+        wysiwygElement.appendChild(emptyP);
+        updatePlaceholder();
+
+        contentObserver = new MutationObserver(() => {
+            updatePlaceholder();
+            syncContextFromProtyle();
+        });
+        contentObserver.observe(wysiwygElement, { childList: true, characterData: true, subtree: true });
+
+        wysiwygElement.addEventListener('keydown', (event: KeyboardEvent) => {
+            if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
+                event.stopPropagation();
+            }
+
+            const hintEl = protyleInternal.hint?.element;
+            if (hintEl && !hintEl.classList.contains('fn__none')) {
+                if (event.key === 'Enter' || event.key.indexOf('Arrow') > -1) {
+                    if (protyleInternal.hint!.select(event, protyleInternal)) {
+                        event.preventDefault();
                         event.stopPropagation();
                     }
+                }
+                return;
+            }
 
-                    const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
-
-                    if (sendMode === 'ctrl+enter') {
-                        if (event.key === 'Enter' && event.ctrlKey) {
-                            event.preventDefault();
-                            if (isLoading) {
-                                abortMessage();
-                            } else {
-                                sendMessage();
-                            }
-                            return true;
-                        }
+            const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
+            if (sendMode === 'ctrl+enter') {
+                if (event.key === 'Enter' && event.ctrlKey && !event.shiftKey) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (isLoading) {
+                        abortMessage();
                     } else {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                            if (showSuggestions) {
-                                return false; 
-                            }
-                            event.preventDefault();
-                            if (isLoading) {
-                                abortMessage();
-                            } else {
-                                sendMessage();
-                            }
-                            return true;
-                        }
+                        sendMessage();
                     }
-                    return false;
-                },
-                handleDrop(view, event, slice, moved) {
-                    const types = Array.from(event.dataTransfer?.types || []);
-                    const isSiyuanDrop = types.some(
-                        type =>
-                            type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
-                            type.startsWith(Constants.SIYUAN_DROP_FILE) ||
-                            type === Constants.SIYUAN_DROP_TAB
-                    );
-                    if (isSiyuanDrop) {
-                        // 阻止 ProseMirror/Tiptap 默认 drop 处理，避免插入多余空行/内容
-                        event.preventDefault();
-                        return true;
+                    return;
+                }
+            } else {
+                if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (isLoading) {
+                        abortMessage();
+                    } else {
+                        sendMessage();
                     }
-                    return false;
-                },
-                handlePaste(view, event) {
-                    handlePaste(event);
-                    return false;
-                },
-                handleClick(view, pos, event) {
-                    const target = event.target as HTMLElement;
-                    if (target.classList.contains('context-document-tag__remove') || target.classList.contains('context-image-tag__remove')) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const tagElement = target.closest('.context-document-tag') || target.closest('.context-image-tag');
-                        if (tagElement) {
-                            const nodePos = view.posAtDOM(tagElement, 0);
-                            view.dispatch(view.state.tr.delete(nodePos, nodePos + 1));
-                            return true;
-                        }
-                    }
-                    return false;
+                    return;
+                }
+            }
+        }, true);
+
+        // 块/文档拖拽由插件自己处理，插入块引用；避免 Protyle 默认创建副本
+        wysiwygElement.addEventListener('drop', async (event: DragEvent) => {
+            const types = Array.from(event.dataTransfer?.types || []);
+            const hasFiles = event.dataTransfer.files && event.dataTransfer.files.length > 0;
+            const isSiyuanBlockDrop = types.some(
+                type =>
+                    type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                    (type.startsWith(Constants.SIYUAN_DROP_FILE) && !hasFiles)
+            );
+            if (!isSiyuanBlockDrop) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            isDragOver = false;
+
+            let blockIds: string[] = [];
+
+            const gutterType = types.find(type => type.startsWith(Constants.SIYUAN_DROP_GUTTER));
+            if (gutterType) {
+                const meta = gutterType.replace(Constants.SIYUAN_DROP_GUTTER, '');
+                const info = meta.split(Constants.ZWSP);
+                const blockIdStr = info[2] || '';
+                blockIds = blockIdStr
+                    .split(',')
+                    .map(id => id.trim())
+                    .filter(id => id && id !== '/');
+            } else if (types.some(type => type.startsWith(Constants.SIYUAN_DROP_FILE))) {
+                const ele: HTMLElement = (window as any).siyuan?.dragElement;
+                if (ele && ele.innerText) {
+                    blockIds = ele.innerText
+                        .split(',')
+                        .map(id => id.trim())
+                        .filter(id => id && id !== '/');
+                    (window as any).siyuan.dragElement = undefined;
+                }
+            }
+
+            if (blockIds.length > 0) {
+                for (const blockId of blockIds) {
+                    await addItemByBlockId(blockId, false);
+                }
+            }
+        }, true);
+
+        wysiwygElement.addEventListener('paste', (event: ClipboardEvent) => {
+            handlePaste(event);
+        }, true);
+
+        wysiwygElement.addEventListener('click', (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('context-document-tag__remove') || target.classList.contains('context-image-tag__remove')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const tagElement = target.closest('.context-document-tag') || target.closest('.context-image-tag');
+                if (tagElement && tagElement.parentElement) {
+                    tagElement.remove();
+                    syncContextFromProtyle();
                 }
             }
         });
 
+        if (currentInput.trim()) {
+            setProtyleContent(currentInput);
+        }
+
         if (mode === 'dialog' && initialMessage) {
             await tick();
-            editor?.commands.focus();
+            protyle?.focus();
         }
 
 
@@ -2552,8 +2315,11 @@
     });
 
     onDestroy(async () => {
-        if (editor) {
-            editor.destroy();
+        if (contentObserver) {
+            contentObserver.disconnect();
+        }
+        if (protyle) {
+            protyle.destroy();
         }
         // 取消订阅
         if (unsubscribe) {
@@ -2645,20 +2411,6 @@
         }
     }
 
-    // 自动调整textarea高度
-    function autoResizeTextarea() {
-        if (textareaElement) {
-            textareaElement.style.height = 'auto';
-            textareaElement.style.height = Math.min(textareaElement.scrollHeight, 200) + 'px';
-        }
-    }
-
-    // 监听输入变化
-    $: {
-        currentInput;
-        tick().then(autoResizeTextarea);
-    }
-
     // 当消息、多模型响应或选择页签/答案变化时，高亮代码块
     $: {
         // 保持对变量的引用以便 Svelte 触发依赖
@@ -2735,23 +2487,8 @@
         };
         currentAttachments = [...currentAttachments, attachment];
 
-        if (editor) {
-            editor.chain().focus().insertContent([
-                {
-                    type: 'contextImage',
-                    attrs: {
-                        tempId: tempId,
-                        src: blobUrl,
-                        name: file.name,
-                        path: '',
-                        mimeType: file.type
-                    }
-                },
-                {
-                    type: 'text',
-                    text: ' '
-                }
-            ]).run();
+        if (protyle) {
+            protyle.insert(contextImageHTML(tempId, blobUrl, file.name) + Constants.ZWSP);
         }
 
         isUploadingFile = true;
@@ -2764,30 +2501,21 @@
                     att.data === blobUrl ? { ...att, path: assetPath } : att
                 );
 
-                if (editor) {
-                    editor.state.doc.descendants((node, pos) => {
-                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
-                            editor.commands.command(({ tr }) => {
-                                tr.setNodeMarkup(pos, undefined, {
-                                    ...node.attrs,
-                                    path: assetPath
-                                });
-                                return true;
-                            });
-                            return false;
-                        }
-                    });
+                if (wysiwygElement) {
+                    const imgEl = wysiwygElement.querySelector(`[data-context-image][data-temp-id="${tempId}"]`);
+                    if (imgEl) {
+                        imgEl.setAttribute('data-path', assetPath);
+                    }
                 }
             } catch (error) {
                 console.error('Add image error:', error);
                 currentAttachments = currentAttachments.filter(att => att.data !== blobUrl);
-                if (editor) {
-                    editor.state.doc.descendants((node, pos) => {
-                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
-                            editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
-                            return false;
-                        }
-                    });
+                if (wysiwygElement) {
+                    const imgEl = wysiwygElement.querySelector(`[data-context-image][data-temp-id="${tempId}"]`);
+                    if (imgEl && imgEl.parentElement) {
+                        imgEl.remove();
+                        syncContextFromProtyle();
+                    }
                 }
                 pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
             }
@@ -2913,13 +2641,16 @@
         const attachment = currentAttachments[index];
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
 
-        // 如果被删除的附件是图片，且 Tiptap 编辑里有对应的节点，同步从编辑器中删除
-        if (attachment && attachment.type === 'image' && editor) {
-            editor.state.doc.descendants((node, pos) => {
-                if (node.type.name === 'contextImage' && (node.attrs.src === attachment.data || node.attrs.path === attachment.path)) {
-                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
+        // 如果被删除的附件是图片，且 Protyle 编辑里有对应的节点，同步从编辑器中删除
+        if (attachment && attachment.type === 'image' && wysiwygElement) {
+            wysiwygElement.querySelectorAll('[data-context-image]').forEach((el) => {
+                const src = el.getAttribute('data-src');
+                const path = el.getAttribute('data-path');
+                if (src === attachment.data || path === attachment.path) {
+                    el.remove();
                 }
             });
+            syncContextFromProtyle();
         }
     }
 
@@ -4192,9 +3923,9 @@
     // 多模型发送消息
     async function sendMultiModelMessage() {
         // 保存用户输入和附件
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
 
-        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
+        // currentAttachments 已通过 MutationObserver 与编辑器中的 contextImage 节点保持同步，
         // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const userAttachments = [...currentAttachments];
         const userContextDocuments = [...contextDocuments];
@@ -4249,8 +3980,8 @@
             messages = [...messages, userMessage];
         }
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = [];
@@ -6023,7 +5754,7 @@
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
         if (!userContent) {
             pushErrMsg('请输入画图提示词');
             isLoading = false;
@@ -6071,8 +5802,8 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = [];
@@ -6358,16 +6089,14 @@
         // edit模式：使用 getBlockKramdown 获取 kramdown 格式（包含块ID信息）
         // agent模式：文档块只传递ID，普通块获取kramdown
         const editorDocs: { id: string; title: string; type: string; content?: string }[] = [];
-        if (editor) {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument') {
-                    editorDocs.push({
-                        id: node.attrs.id,
-                        title: node.attrs.title,
-                        type: node.attrs.type || 'doc',
-                        content: node.attrs.content || ''
-                    });
-                }
+        if (wysiwygElement) {
+            wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
+                editorDocs.push({
+                    id: el.getAttribute('data-id') || '',
+                    title: el.querySelector('.context-document-tag__title')?.textContent || el.textContent || '',
+                    type: el.getAttribute('data-context-type') || 'doc',
+                    content: ''
+                });
             });
         }
 
@@ -6421,9 +6150,9 @@
             }
         }
         // 用户消息只保存原始输入（不包含文档内容）
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
 
-        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
+        // currentAttachments 已通过 MutationObserver 与编辑器中的 contextImage 节点保持同步，
         // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const combinedAttachments = [...currentAttachments];
 
@@ -6439,8 +6168,8 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = []; // 发送后清空全局上下文
@@ -7848,35 +7577,6 @@
         selectedTabIndex = 0;
 
         pushMsg(i18n('aiSidebarSuccessClearSuccess'));
-    }
-
-    // 处理键盘事件
-    function handleKeydown(e: KeyboardEvent) {
-        const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
-
-        if (sendMode === 'ctrl+enter') {
-            // Ctrl+Enter 发送模式
-            if (e.key === 'Enter' && e.ctrlKey) {
-                e.preventDefault();
-                if (isLoading) {
-                    abortMessage();
-                } else {
-                    sendMessage();
-                }
-                return;
-            }
-        } else {
-            // Enter 发送模式（Shift+Enter 换行）
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (isLoading) {
-                    abortMessage();
-                } else {
-                    sendMessage();
-                }
-                return;
-            }
-        }
     }
 
     // 使用思源内置的Lute渲染markdown为HTML
@@ -9380,56 +9080,17 @@
         }
     }
 
-    // 将 contextDocument 节点插入编辑器，空编辑器时避免留下空段落
+    // 将 contextDocument 节点插入编辑器
     function insertContextDocumentToEditor(attrs: Record<string, any>) {
-        if (!editor) return;
-        if (editor.isEmpty) {
-            // 空编辑器时直接替换整个文档为一个包含 contextDocument 的段落，彻底避免空行
-            const schema = editor.state.schema;
-            const paragraph = schema.nodes.paragraph;
-            const contextDocument = schema.nodes.contextDocument;
-            if (!paragraph || !contextDocument) {
-                // 兜底：使用链式命令
-                editor
-                    .chain()
-                    .focus()
-                    .insertContentAt(1, [
-                        { type: 'contextDocument', attrs },
-                        { type: 'text', text: ' ' }
-                    ])
-                    .run();
-                return;
-            }
-            const tr = editor.state.tr;
-            const node = paragraph.create(null, [
-                contextDocument.create(attrs),
-                schema.text(' ')
-            ]);
-            tr.replaceWith(0, editor.state.doc.content.size, node);
-            editor.view.dispatch(tr);
-            editor.commands.focus('end');
-        } else {
-            editor
-                .chain()
-                .focus()
-                .insertContent({ type: 'contextDocument', attrs })
-                .insertContent(' ')
-                .run();
-        }
+        if (!protyle) return;
+        protyle.insert(contextDocumentHTML(attrs.id, attrs.title, attrs.type) + Constants.ZWSP);
     }
 
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
-        if (!editor) return;
+        if (!protyle) return;
 
-        let exists = false;
-        try {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
-                    exists = true;
-                }
-            });
-        } catch (e) {}
+        const exists = wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${docId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessDocumentExists'));
@@ -9582,16 +9243,9 @@
 
     // 添加块到上下文（而不是整个文档）
     async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean) {
-        if (!editor) return;
+        if (!protyle) return;
 
-        let exists = false;
-        try {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === blockId) {
-                    exists = true;
-                }
-            });
-        } catch (e) {}
+        const exists = wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessBlockExists'));
@@ -9655,12 +9309,11 @@
 
     // 删除上下文文档
     function removeContextDocument(docId: string) {
-        if (editor) {
-            editor.state.doc.descendants((node, pos) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
-                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
-                }
+        if (wysiwygElement) {
+            wysiwygElement.querySelectorAll(`[data-type~="block-ref"][data-id="${docId}"]`).forEach((el) => {
+                el.remove();
             });
+            syncContextFromProtyle();
         }
     }
 
@@ -9706,64 +9359,32 @@
         if (event.dataTransfer.types.includes('application/multi-model-sort')) {
             return;
         }
+
+        const types = Array.from(event.dataTransfer.types || []);
+        const hasFiles = event.dataTransfer.files && event.dataTransfer.files.length > 0;
+        const isSiyuanBlockDrop = types.some(
+            type =>
+                type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                (type.startsWith(Constants.SIYUAN_DROP_FILE) && !hasFiles)
+        );
+
+        // 块/文档拖拽交给 Protyle 原生处理（插入块引用），参考 AgentComposer
+        if (isSiyuanBlockDrop) {
+            isDragOver = false;
+            return;
+        }
+
         event.preventDefault();
         isDragOver = false;
 
         // 处理标准文件拖放
-        const files = event.dataTransfer.files;
-        if (files && files.length > 0) {
-            await addFilesInBatches(Array.from(files));
+        if (hasFiles) {
+            await addFilesInBatches(Array.from(event.dataTransfer.files));
             return;
         }
 
-        const type = event.dataTransfer.types[0];
-        if (!type) return;
-
-        if (type.startsWith(Constants.SIYUAN_DROP_GUTTER)) {
-            const meta = type.replace(Constants.SIYUAN_DROP_GUTTER, '');
-            const info = meta.split(Constants.ZWSP);
-            console.log('Dropped gutter info:', info);
-            const blockIdStr = info[2];
-            const blockIds = blockIdStr
-                .split(',')
-                .map(id => id.trim())
-                .filter(id => id && id !== '/');
-            // 批量添加到上下文
-            if (blockIds.length > 0) {
-                for (const blockid of blockIds) {
-                    await addItemByBlockId(blockid, false);
-                }
-            }
-        } else if (type.startsWith(Constants.SIYUAN_DROP_FILE)) {
-            // 支持单选和多选拖放
-            const ele: HTMLElement = (window as any).siyuan?.dragElement;
-            if (ele && ele.innerText) {
-                // 获取块ID字符串，可能是单个ID或逗号分隔的多个ID
-                const blockIdStr = ele.innerText;
-
-                // 分割成多个块ID（多选时用逗号分隔）
-                const blockIds = blockIdStr
-                    .split(',')
-                    .map(id => id.trim())
-                    .filter(id => id && id !== '/');
-
-                // 批量添加到上下文
-                if (blockIds.length > 0) {
-                    for (const blockid of blockIds) {
-                        await addItemByBlockId(blockid, false);
-                        // 恢复文档树节点的透明度
-                        const item: HTMLElement = document.querySelector(
-                            `.file-tree.sy__tree li[data-node-id="${blockid}"]`
-                        );
-                        if (item) {
-                            item.style.opacity = '1';
-                        }
-                    }
-                }
-
-                (window as any).siyuan.dragElement = undefined;
-            }
-        } else if (event.dataTransfer.types.includes(Constants.SIYUAN_DROP_TAB)) {
+        // 处理标签页拖放
+        if (types.includes(Constants.SIYUAN_DROP_TAB)) {
             const data = event.dataTransfer.getData(Constants.SIYUAN_DROP_TAB);
             const payload = JSON.parse(data);
 
@@ -11300,15 +10921,37 @@
             suppressPromptClickOnce = false;
             return;
         }
-        const oldText = editor ? getMarkdownFromEditor(editor) : currentInput;
+        const oldText = protyle ? getMarkdownFromProtyle() : currentInput;
         const newText = prompt.content + '\n' + oldText;
         currentInput = newText;
         isPromptSelectorOpen = false;
         
-        if (editor) {
-            editor.commands.setContent(newText);
-            editor.commands.focus();
-            editor.commands.setTextSelection(prompt.content.length);
+        if (protyle) {
+            setProtyleContent(newText);
+            protyle.focus();
+            // 将光标定位到提示词内容末尾
+            setTimeout(() => {
+                if (!wysiwygElement) return;
+                const selection = window.getSelection();
+                if (!selection) return;
+                const walker = document.createTreeWalker(wysiwygElement, NodeFilter.SHOW_TEXT);
+                let offset = 0;
+                const targetOffset = prompt.content.length;
+                let node: Node | null;
+                while ((node = walker.nextNode())) {
+                    const textNode = node as Text;
+                    const nextOffset = offset + (textNode.textContent?.length || 0);
+                    if (nextOffset >= targetOffset) {
+                        const range = document.createRange();
+                        range.setStart(textNode, Math.max(0, targetOffset - offset));
+                        range.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        break;
+                    }
+                    offset = nextOffset;
+                }
+            }, 0);
         }
     }
 
@@ -16484,37 +16127,6 @@
             />
         </div>
 
-        <!-- Tiptap Suggestions Popup -->
-        {#if showSuggestions}
-            <div class="ai-sidebar__suggestion-popup" style={suggestionStyle}>
-                {#if suggestionList.length > 0}
-                    {#each suggestionList as item, index}
-                        <!-- svelte-ignore a11y-click-events-have-key-events -->
-                        <div
-                            class="ai-sidebar__suggestion-item"
-                            class:ai-sidebar__suggestion-item--selected={index === suggestionSelectedIndex}
-                            on:mousedown|preventDefault|stopPropagation={() => selectSuggestion(item)}
-                        >
-                            {#if suggestionType === 'doc'}
-                                <span class="ai-sidebar__suggestion-icon">📄</span>
-                                <span class="ai-sidebar__suggestion-text">{item.content || item.title || 'Untitled'}</span>
-                            {:else}
-                                <span class="ai-sidebar__suggestion-icon">⚡</span>
-                                <div class="ai-sidebar__suggestion-content">
-                                    <div class="ai-sidebar__suggestion-title">/{item.id} <span class="ai-sidebar__suggestion-name">({item.name})</span></div>
-                                    <div class="ai-sidebar__suggestion-desc">{item.description || ''}</div>
-                                </div>
-                            {/if}
-                        </div>
-                    {/each}
-                {:else}
-                    <div class="ai-sidebar__suggestion-empty">
-                        {suggestionType === 'doc' ? '未找到相关文档' : '未找到相关 Skill'}
-                    </div>
-                {/if}
-            </div>
-        {/if}
-
         <!-- 提示词选择器下拉菜单 -->
         {#if isPromptSelectorOpen}
             <div class="ai-sidebar__prompt-selector">
@@ -18310,54 +17922,6 @@
         &:hover {
             border-color: var(--b3-theme-primary-light);
         }
-    }
-
-    :global(.ai-sidebar__input) {
-        flex: 1;
-        resize: none;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 16px;
-        padding-right: 76px; /* 为发送按钮和上下文指示器留出空间 */
-        font-family: var(--b3-font-family);
-        font-size: 14px;
-        line-height: 1.5;
-        background: transparent;
-        color: var(--b3-theme-on-background);
-        min-height: 80px;
-        max-height: 200px;
-        overflow-y: auto;
-
-        &:focus {
-            outline: none;
-        }
-
-        &:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        &::placeholder {
-            color: var(--b3-theme-on-surface-light);
-        }
-
-    }
-
-    :global(.ai-sidebar__input ul) {
-        list-style-type: disc !important;
-        padding-left: 20px !important;
-        margin: 8px 0 !important;
-    }
-
-    :global(.ai-sidebar__input ol) {
-        list-style-type: decimal !important;
-        padding-left: 20px !important;
-        margin: 8px 0 !important;
-    }
-
-    :global(.ai-sidebar__input li) {
-        margin: 4px 0 !important;
-        display: list-item !important;
     }
 
     .ai-sidebar__context-indicator {
@@ -20680,11 +20244,6 @@
             padding: 6px 10px;
         }
 
-        :global(.ai-sidebar__input) {
-            padding: 10px 14px;
-            padding-right: 70px;
-        }
-
         .ai-sidebar__context-indicator {
             right: 44px;
             bottom: 12px;
@@ -20711,12 +20270,6 @@
         .ai-message__content {
             font-size: 13px;
             padding: 8px 10px;
-        }
-
-        :global(.ai-sidebar__input) {
-            font-size: 13px;
-            padding: 8px 12px;
-            padding-right: 64px;
         }
 
         .ai-sidebar__context-indicator {
@@ -20922,14 +20475,6 @@
         font-size: 15px !important;
         line-height: 1.7 !important;
         padding: 16px 18px !important;
-    }
-
-    .ai-sidebar--fullscreen :global(.ai-sidebar__input) {
-        font-size: 15px !important;
-        padding: 14px 18px !important;
-        padding-right: 52px !important;
-        min-height: 50px !important;
-        max-height: 300px !important;
     }
 
     .ai-sidebar--fullscreen .ai-sidebar__send-btn {
@@ -21157,101 +20702,25 @@
         color: var(--b3-theme-error) !important;
     }
 
-    /* ProseMirror Placeholder */
-    :global(.ProseMirror p.is-editor-empty:first-child::before) {
-        color: var(--b3-theme-on-surface-light);
-        content: attr(data-placeholder);
-        float: left;
-        height: 0;
-        pointer-events: none;
-    }
-
-    /* Tiptap Suggestion Popup */
-    .ai-sidebar__suggestion-popup {
-        background-color: var(--b3-menu-background);
-        border: 1px solid var(--b3-border-color);
-        border-radius: 8px;
-        box-shadow: var(--b3-dialog-shadow);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        max-height: 200px;
-        width: 280px;
-        padding: 4px;
-    }
-
-    .ai-sidebar__suggestion-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        color: var(--b3-theme-on-surface);
-
-        &.ai-sidebar__suggestion-item--selected, &:hover, &:focus {
-            background-color: var(--b3-list-hover);
-            color: var(--b3-theme-primary);
-        }
-    }
-
-    .ai-sidebar__suggestion-icon {
-        flex-shrink: 0;
-        font-size: 14px;
-    }
-
-    .ai-sidebar__suggestion-text {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ai-sidebar__suggestion-content {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .ai-sidebar__suggestion-title {
-        font-weight: 500;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ai-sidebar__suggestion-name {
-        font-weight: normal;
-        font-size: 11px;
-        color: var(--b3-theme-on-surface-light);
-    }
-
-    .ai-sidebar__suggestion-desc {
-        font-size: 11px;
-        color: var(--b3-theme-on-surface-light);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        margin-top: 2px;
-    }
-
-    .ai-sidebar__suggestion-empty {
-        padding: 8px;
-        text-align: center;
-        color: var(--b3-theme-on-surface-light);
-        font-size: 12px;
-    }
-
-    /* Style override for Tiptap editor wrapper */
+    /* Protyle editor wrapper */
     .ai-sidebar__editor-wrapper {
         flex: 1;
         min-width: 0;
         display: flex;
-        
-        :global(.ProseMirror) {
-            outline: none;
-            width: 100%;
-        }
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg) {
+        outline: none;
+        width: 100%;
+        padding: 6px 8px;
+        box-sizing: border-box;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [contenteditable="true"]) {
+        outline: none;
     }
 </style>
