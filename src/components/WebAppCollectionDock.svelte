@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { i18n } from '../utils/i18n';
+    import WebAppManager from './WebAppManager.svelte';
 
     export let plugin: any;
     export let webApps: any[] = [];
@@ -11,6 +12,8 @@
     let isFullscreen = false;
     let showAppMenu = false;
     let appMenuButton: HTMLButtonElement;
+    let isWebAppManagerOpen = false;
+    let editingWebAppId: string | null = null;
     // 拖拽排序状态
     let draggedAppId: string | null = null;
     let dragOverAppId: string | null = null;
@@ -223,6 +226,41 @@
         showAppMenu = false;
     }
 
+    function openWebAppManager() {
+        closeAppMenu();
+        editingWebAppId = null;
+        isWebAppManagerOpen = true;
+    }
+
+    async function saveWebApps(event: CustomEvent<{ webApps: any[] }>) {
+        webApps = event.detail.webApps;
+        const settings = await plugin.loadSettings();
+        settings.webApps = webApps;
+        await plugin.saveSettings(settings);
+
+        // 为每个小程序注册图标
+        for (const app of webApps) {
+            if (app.icon && app.icon.startsWith('data:image')) {
+                plugin.registerWebAppIcon(app.id, app.icon);
+            }
+        }
+
+        // 同步 dock：新增/保留勾选的注册，删除/取消勾选的移除
+        plugin.syncWebAppDocks(webApps);
+
+        // 同步网页小程序集合 Dock
+        plugin.syncWebAppCollectionDock(
+            webApps,
+            settings.webAppCollectionDock,
+            settings.openedWebAppIds
+        );
+    }
+
+    function openWebApp(event: CustomEvent<{ app: any }>) {
+        const app = event.detail.app;
+        plugin.openWebAppInCollectionDock?.(app.id);
+    }
+
     function handleOpenAppFromMenu(app: any) {
         closeAppMenu();
         plugin.openWebAppInCollectionDock?.(app.id);
@@ -290,6 +328,13 @@
 
             {#if showAppMenu}
                 <div class="webapp-collection__app-menu">
+                    <button class="b3-menu__item" on:click={openWebAppManager}>
+                        <svg class="b3-menu__icon">
+                            <use xlink:href="#iconSettings"></use>
+                        </svg>
+                        <span class="b3-menu__label">管理小程序</span>
+                    </button>
+                    <div class="b3-menu__separator"></div>
                     {#each webApps || [] as app (app.id)}
                         <button
                             class="b3-menu__item webapp-collection__app-menu-item"
@@ -382,6 +427,15 @@
         </div>
         <div class="webapp-collection__content" bind:this={contentArea}></div>
     </div>
+
+    <WebAppManager
+        bind:isOpen={isWebAppManagerOpen}
+        {plugin}
+        bind:editAppId={editingWebAppId}
+        bind:webApps
+        on:save={saveWebApps}
+        on:open={openWebApp}
+    />
 </div>
 
 <style lang="scss">
