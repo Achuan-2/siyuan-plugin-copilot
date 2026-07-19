@@ -467,6 +467,11 @@
     let editorElement: HTMLElement;
     let contentObserver: MutationObserver;
     let hintRefImpl: any;
+    // 当前由插件提供的 hint 类型（'@' 文档 / '/' 技能），用于拦截 hint 的选择行为；
+    // 思源源生的 ((、[[ 等块引用 hint 为 null，走思源默认处理
+    let activeHintKind: 'doc' | 'skill' | null = null;
+    // '@' hint 当前展示的文档列表（原始 SQL 行），用于选择后取标题
+    let docHintItems: any[] = [];
 
     function escapeHtml(unsafe: string): string {
         return unsafe
@@ -477,16 +482,8 @@
             .replace(/'/g, '&#039;');
     }
 
-    function contextDocumentHTML(id: string, title: string, type: string = 'doc'): string {
-        const icon = type === 'doc' ? '📄' : '🧩';
-        return `<span data-type="block-ref" data-id="${id}" data-subtype="d" data-context-type="${type}" class="context-document-tag" contenteditable="false"><span class="context-document-tag__icon">${icon}</span><span class="context-document-tag__title">${escapeHtml(title)}</span><span class="context-document-tag__remove">×</span></span>`;
-    }
-
-    function contextImageHTML(tempId: string, src: string, name: string): string {
-        return `<span data-context-image="" data-temp-id="${tempId}" data-src="${src}" data-name="${escapeHtml(name)}" class="context-image-tag" contenteditable="false"><img class="context-image-tag__thumb" src="${src}"><span class="context-image-tag__name">${escapeHtml(name)}</span><span class="context-image-tag__remove">×</span></span>`;
-    }
-
     const hintSkill = (key: string, p: IProtyle): IHintData[] => {
+        activeHintKind = 'skill';
         if (p.hint) {
             p.hint.genLoading(p);
         }
@@ -500,9 +497,11 @@
                     (skill.description || '').toLowerCase().includes(q)
                 )
                 .map(skill => ({
-                    value: skill.name + ' ',
-                    html: '<div class="b3-list-item__first"><span class="b3-list-item__text">' +
-                        escapeHtml(skill.name) + '</span></div>' +
+                    value: '/' + skill.id + ' ',
+                    html: '<div class="b3-list-item__first"><span class="b3-list-item__text">/' +
+                        escapeHtml(skill.id) +
+                        (skill.name ? ' <span style="color:var(--b3-theme-on-surface-light)">(' + escapeHtml(skill.name) + ')</span>' : '') +
+                        '</span></div>' +
                         (skill.description ? '<div class="b3-list-item__meta b3-list-item__showall">' + escapeHtml(skill.description) + '</div>' : ''),
                 }));
             if (dataList.length === 0) {
@@ -515,9 +514,203 @@
         return [];
     };
 
+    // '@' 提示：快速选择当前文档或搜索文档
+    const hintDoc = (key: string, p: IProtyle): IHintData[] => {
+        activeHintKind = 'doc';
+        if (p.hint) {
+            p.hint.genLoading(p);
+        }
+        searchDocsForAtHint(key).then(blocks => {
+            docHintItems = blocks;
+            const dataList: IHintData[] = blocks.map(block => ({
+                id: block.id,
+                value: '',
+                html:
+                    '<div class="b3-list-item__first"><span class="b3-list-item__graphic"><svg><use xlink:href="#iconFile"></use></svg></span>' +
+                    '<span class="b3-list-item__text">' +
+                    escapeHtml(block.content || block.fcontent || i18n('commonUntitled')) +
+                    '</span></div>' +
+                    (block.hpath
+                        ? '<div class="b3-list-item__meta b3-list-item__showall">' + escapeHtml(block.hpath) + '</div>'
+                        : ''),
+            }));
+            if (dataList.length === 0) {
+                dataList.push({ value: '', html: window.siyuan.languages.emptyContent });
+            }
+            if (p.hint) {
+                p.hint.genHTML(dataList, p, false, 'hint');
+            }
+        });
+        return [];
+    };
+
+    // '@' 提示的文档搜索：空关键词返回当前文档，否则按内容搜索文档块
+    async function searchDocsForAtHint(keyword: string): Promise<any[]> {
+        try {
+            if (!keyword.trim()) {
+                const currentProtyle = getActiveEditor(false)?.protyle;
+                const blockId = currentProtyle?.block?.id;
+                if (!blockId) return [];
+                const blocks = await sql(
+                    `SELECT * FROM blocks WHERE id = '${blockId}' OR root_id = '${blockId}'`
+                );
+                if (blocks && blocks.length > 0) {
+                    const docBlock = blocks.find(b => b.type === 'd');
+                    if (docBlock) {
+                        return [docBlock];
+                    }
+                    const rootId = blocks[0].root_id;
+                    return (
+                        (await sql(`SELECT * FROM blocks WHERE id = '${rootId}' AND type = 'd'`)) || []
+                    );
+                }
+                return [];
+            }
+            const keywords = keyword
+                .trim()
+                .split(/\s+/)
+                .map(kw => kw.replace(/'/g, "''"));
+            const conditions = keywords.map(kw => `content LIKE '%${kw}%'`).join(' AND ');
+            return (
+                (await sql(
+                    `SELECT * FROM blocks WHERE ${conditions} AND type = 'd' ORDER BY updated DESC LIMIT 20`
+                )) || []
+            );
+        } catch (error) {
+            console.error('@ hint search error:', error);
+            return [];
+        }
+    }
+
+    // 选中 '@' 提示项：移除输入框中的 '@查询词'，并将文档加入上下文
+    function confirmDocHint(docId?: string) {
+        const hint = protyleInternal?.hint;
+        if (!hint) return;
+        if (!docId) {
+            docId =
+                hint.element
+                    .querySelector('.b3-list-item--focus')
+                    ?.getAttribute('data-id') || '';
+        }
+        removeDocHintQuery();
+        activeHintKind = null;
+        if (docId) {
+            const item = docHintItems.find(d => d.id === docId);
+            addDocumentToContext(
+                docId,
+                item?.content || item?.fcontent || i18n('commonUntitled')
+            );
+        }
+        docHintItems = [];
+    }
+
+    // 删除输入框中的 '@查询词' 文本并隐藏提示
+    function removeDocHintQuery() {
+        const hint = protyleInternal?.hint;
+        if (!hint) return;
+        // 参考思源 hint/index.ts 的 fill：lastIndex 为触发字符在文本节点中的偏移
+        const range: Range | undefined = protyleInternal.toolbar?.range;
+        if (
+            range &&
+            hint.lastIndex > -1 &&
+            range.startContainer.nodeType === 3 &&
+            range.startContainer === range.endContainer
+        ) {
+            const textNode = range.startContainer as Text;
+            const offset = Math.min(hint.lastIndex, textNode.textContent.length);
+            range.setStart(textNode, offset);
+            range.deleteContents();
+            range.collapse(true);
+        }
+        hint.element.classList.add('fn__none');
+        if (range) {
+            const selection = window.getSelection();
+            if (selection) {
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+    }
+
     function getMarkdownFromProtyle(): string {
         if (!protyleInternal?.lute || !wysiwygElement) return '';
         return protyleInternal.lute.BlockDOM2StdMd(wysiwygElement.innerHTML).trim();
+    }
+
+    // 发送前处理编辑器中取出的 markdown：
+    // blob 图片语法替换为 [图片: name] 文本标记（图片内容已通过附件上传）；
+    // 块引用语法 ((id 'title')) 替换为 @<title> 标记（上下文内容随消息单独附带）
+    function transformEditorMarkdownForSend(text: string): string {
+        return text
+            .replace(/!\[([^\]]*)\]\(blob:[^)\s]+\)/g, (_match, alt) => `[图片: ${alt}]`)
+            .replace(
+                /\(\((\d{14}-[0-9a-z]{7})(?:\s+(['"])(.*?)\2)?\)\)/g,
+                (_match, id, _quote, anchor) => `@<${anchor || id}>`
+            );
+    }
+
+    // 已增强的图片 chip 缓存（src -> span 元素）。
+    // Lute 重渲染块时会重建 img span，新建的 <img> 元素需重新解码图片导致闪烁；
+    // 复用缓存的同一元素（位图已解码）可避免闪烁。
+    const imgChipCache = new Map<string, HTMLElement>();
+
+    // 将编辑器中的原生 blob 图片增强为紧凑 chip（缩略图 + 文件名 + 删除按钮）。
+    // Lute 重渲染块时会重建 img span，因此需在每次 DOM 变化后对未增强的 span 重新增强。
+    function enhanceInlineImageChips() {
+        if (!wysiwygElement) return;
+        wysiwygElement
+            .querySelectorAll('[data-type="img"]:not(.ai-inline-img-chip)')
+            .forEach((span) => {
+                const img = span.querySelector('img');
+                const src = img?.getAttribute('src') || '';
+                if (!img || !src.startsWith('blob:')) return;
+                // 重渲染重建的 span：直接换回缓存的旧元素，避免图片重新解码造成闪烁
+                const cached = imgChipCache.get(src);
+                if (cached && !cached.isConnected) {
+                    span.replaceWith(cached);
+                    return;
+                }
+                span.classList.add('ai-inline-img-chip');
+                // 移除 lazy 加载，避免解码延迟
+                img.removeAttribute('loading');
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ai-inline-img-chip__name';
+                nameEl.textContent = img.getAttribute('alt') || '图片';
+                const removeEl = document.createElement('span');
+                removeEl.className = 'ai-inline-img-chip__remove';
+                removeEl.textContent = '×';
+                img.parentElement?.append(nameEl, removeEl);
+                imgChipCache.set(src, span as HTMLElement);
+            });
+        // 清理已不在编辑器中的 chip 缓存
+        if (imgChipCache.size > 0) {
+            const presentSrcs = new Set<string>();
+            wysiwygElement.querySelectorAll('[data-type="img"] img').forEach((el) => {
+                const src = el.getAttribute('src');
+                if (src) {
+                    presentSrcs.add(src);
+                }
+            });
+            imgChipCache.forEach((_el, src) => {
+                if (!presentSrcs.has(src)) {
+                    imgChipCache.delete(src);
+                }
+            });
+        }
+    }
+
+    // 为块引用（@ 文档/块 chip 以及 (( 插入的原生引用）标注上下文类型，
+    // 供 CSS 区分 📄/🧩 图标。只设置属性，不改动 DOM 结构（避免被 Lute 重渲染并入锚文本）。
+    function enhanceInlineDocChips() {
+        if (!wysiwygElement) return;
+        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((span) => {
+            const id = span.getAttribute('data-id');
+            const wantType =
+                contextDocuments.find(doc => doc.id === id)?.type === 'block' ? 'block' : 'doc';
+            if (span.getAttribute('data-ai-doc-type') !== wantType) {
+                span.setAttribute('data-ai-doc-type', wantType);
+            }
+        });
     }
 
     function setProtyleContent(markdown: string) {
@@ -527,7 +720,7 @@
             return;
         }
         wysiwygElement.innerHTML = protyleInternal.lute.Md2BlockDOM(markdown);
-        syncContextFromProtyle();
+        syncInputFromProtyle();
     }
 
     function createEmptyParagraph(): HTMLElement {
@@ -582,7 +775,7 @@
         wysiwygElement.appendChild(emptyP);
         protyleInternal.undo?.clear();
         updatePlaceholder();
-        syncContextFromProtyle();
+        syncInputFromProtyle();
     }
 
     function updatePlaceholder() {
@@ -601,34 +794,33 @@
         }
     }
 
-    function syncContextFromProtyle() {
+    // 从编辑器同步输入状态：
+    // 1. currentInput 同步为编辑器纯文本 markdown；
+    // 2. 图片附件与编辑器中的内联 blob 图片保持同步（内联图片被删除时移除对应附件）；
+    // 3. 上下文文档与编辑器中的块引用 chip 保持同步（chip 被删除时移除对应上下文）。
+    function syncInputFromProtyle() {
         if (!wysiwygElement) return;
         currentInput = getMarkdownFromProtyle();
 
-        const tempDocs: ContextDocument[] = [];
         const presentImageSrcs = new Set<string>();
-        wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
-            tempDocs.push({
-                id: el.getAttribute('data-id') || '',
-                title: el.querySelector('.context-document-tag__title')?.textContent || el.textContent || '',
-                content: '',
-                type: el.getAttribute('data-context-type') || 'doc',
-            });
-        });
-        wysiwygElement.querySelectorAll('[data-context-image]').forEach((el) => {
-            const src = el.getAttribute('data-src');
+        wysiwygElement.querySelectorAll('img[src^="blob:"]').forEach((el) => {
+            const src = el.getAttribute('src');
             if (src) {
                 presentImageSrcs.add(src);
             }
         });
-        contextDocuments = tempDocs;
+        currentAttachments = currentAttachments.filter(
+            att => att.type !== 'image' || presentImageSrcs.has(att.data)
+        );
 
-        currentAttachments = currentAttachments.filter(att => {
-            if (att.type === 'image') {
-                return presentImageSrcs.has(att.data);
+        const presentDocIds = new Set<string>();
+        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((el) => {
+            const id = el.getAttribute('data-id');
+            if (id) {
+                presentDocIds.add(id);
             }
-            return true;
         });
+        contextDocuments = contextDocuments.filter(doc => presentDocIds.has(doc.id));
     }
 
     let hasInlineDocs = false;
@@ -2069,17 +2261,25 @@
 
         // 初始化 Protyle 编辑器
         hintRefImpl = (siyuanModule as any).hintRef || (window as any).siyuan?.hintRef;
+        // 思源原生块引用 hint 走默认处理，重置插件 hint 类型标记
+        const hintRefWrapped = hintRefImpl
+            ? (key: string, p: IProtyle, source?: any): IHintData[] => {
+                  activeHintKind = null;
+                  return hintRefImpl(key, p, source);
+              }
+            : null;
 
         const hintExtend: IHintExtend[] = [
+            { key: '@', hint: hintDoc },
             { key: '/', hint: hintSkill },
             { key: '、', hint: hintSkill },
         ];
-        if (hintRefImpl) {
+        if (hintRefWrapped) {
             hintExtend.unshift(
-                { key: '((', hint: hintRefImpl },
-                { key: '【【', hint: hintRefImpl },
-                { key: '（（', hint: hintRefImpl },
-                { key: '[[', hint: hintRefImpl }
+                { key: '((', hint: hintRefWrapped },
+                { key: '【【', hint: hintRefWrapped },
+                { key: '（（', hint: hintRefWrapped },
+                { key: '[[', hint: hintRefWrapped }
             );
         }
 
@@ -2111,9 +2311,19 @@
 
         contentObserver = new MutationObserver(() => {
             updatePlaceholder();
-            syncContextFromProtyle();
+            enhanceInlineImageChips();
+            enhanceInlineDocChips();
+            syncInputFromProtyle();
         });
         contentObserver.observe(wysiwygElement, { childList: true, characterData: true, subtree: true });
+
+        // 思源只在输入 ": ( 【 （ [ { 「 『 # / 、" 时开启扩展提示（enableExtend），
+        // '@' 不在其列，这里在输入 '@' 时手动开启，使 hint.render 能匹配到 '@' 扩展
+        wysiwygElement.addEventListener('beforeinput', (event: InputEvent) => {
+            if (event.data === '@' && protyleInternal?.hint) {
+                protyleInternal.hint.enableExtend = true;
+            }
+        }, true);
 
         wysiwygElement.addEventListener('keydown', (event: KeyboardEvent) => {
             if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
@@ -2122,6 +2332,21 @@
 
             const hintEl = protyleInternal.hint?.element;
             if (hintEl && !hintEl.classList.contains('fn__none')) {
+                // '@' 文档提示由插件自行处理选择行为（思源 hint.fill 不支持自定义触发字符的插入）
+                if (activeHintKind === 'doc') {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        confirmDocHint();
+                    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        // 复用思源 hint 的上下导航
+                        if (protyleInternal.hint!.select(event, protyleInternal)) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                    }
+                    return;
+                }
                 if (event.key === 'Enter' || event.key.indexOf('Arrow') > -1) {
                     if (protyleInternal.hint!.select(event, protyleInternal)) {
                         event.preventDefault();
@@ -2157,68 +2382,80 @@
             }
         }, true);
 
-        // 块/文档拖拽由插件自己处理，插入块引用；避免 Protyle 默认创建副本
-        wysiwygElement.addEventListener('drop', async (event: DragEvent) => {
-            const types = Array.from(event.dataTransfer?.types || []);
-            const hasFiles = event.dataTransfer.files && event.dataTransfer.files.length > 0;
-            const isSiyuanBlockDrop = types.some(
-                type =>
-                    type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
-                    (type.startsWith(Constants.SIYUAN_DROP_FILE) && !hasFiles)
-            );
-            if (!isSiyuanBlockDrop) {
+        // 鼠标点击 '@' 提示项：拦截思源 hint 的 click（其 fill 对 '@' 不生效），由插件处理
+        protyleInternal.hint?.element.addEventListener('click', (event: MouseEvent) => {
+            if (activeHintKind !== 'doc') return;
+            const hintEl = protyleInternal.hint?.element;
+            if (!hintEl || hintEl.classList.contains('fn__none')) return;
+            const btnElement = (event.target as HTMLElement).closest('button');
+            if (!btnElement) return;
+            event.preventDefault();
+            event.stopPropagation();
+            confirmDocHint(btnElement.getAttribute('data-id') || '');
+        }, true);
+
+        // 点击内联图片 chip 的删除按钮：移除图片（附件由 MutationObserver 同步移除）。
+        // 捕获阶段拦截，避免触发思源原生图片菜单。
+        wysiwygElement.addEventListener('click', (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('ai-inline-img-chip__remove')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const imgSpan = target.closest('[data-type="img"]');
+                if (imgSpan) {
+                    imgSpan.remove();
+                    syncInputFromProtyle();
+                }
                 return;
             }
+            // 块引用 chip：点击右侧 × 区域（CSS ::after 绘制）时删除引用；
+            // 其余区域保持思源原生行为（点击打开文档）
+            const refSpan = target.closest('[data-type~="block-ref"]') as HTMLElement | null;
+            if (refSpan && wysiwygElement.contains(refSpan)) {
+                const rect = refSpan.getBoundingClientRect();
+                if (rect.width > 0 && event.clientX >= rect.right - 16) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    refSpan.remove();
+                    syncInputFromProtyle();
+                }
+            }
+        }, true);
 
+        // 拦截编辑器区域的拖放（注册在 .protyle 根元素捕获阶段，先于思源原生 drop/dragover 处理）：
+        // 思源块/文档/图片块 → 上下文或图片附件；操作系统文件 → 附件；标签页 → 网页附件。
+        // 其余内容（如网页 HTML）交给思源原生处理。
+        const shouldInterceptDrop = (event: DragEvent): boolean => {
+            const types = Array.from(event.dataTransfer?.types || []);
+            const hasOsFiles = types.includes('Files');
+            const isSiyuanBlockDrop =
+                !hasOsFiles &&
+                types.some(
+                    type =>
+                        type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                        type.startsWith(Constants.SIYUAN_DROP_FILE)
+                );
+            return isSiyuanBlockDrop || hasOsFiles || types.includes(Constants.SIYUAN_DROP_TAB);
+        };
+        // 阻止思源 dragover 显示块放置指示器（drop 被我们拦截后指示器不会被清理）
+        editorElement.addEventListener('dragover', (event: DragEvent) => {
+            if (!shouldInterceptDrop(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            isDragOver = true;
+        }, true);
+        editorElement.addEventListener('drop', (event: DragEvent) => {
+            if (!shouldInterceptDrop(event)) return;
             event.preventDefault();
             event.stopPropagation();
             isDragOver = false;
-
-            let blockIds: string[] = [];
-
-            const gutterType = types.find(type => type.startsWith(Constants.SIYUAN_DROP_GUTTER));
-            if (gutterType) {
-                const meta = gutterType.replace(Constants.SIYUAN_DROP_GUTTER, '');
-                const info = meta.split(Constants.ZWSP);
-                const blockIdStr = info[2] || '';
-                blockIds = blockIdStr
-                    .split(',')
-                    .map(id => id.trim())
-                    .filter(id => id && id !== '/');
-            } else if (types.some(type => type.startsWith(Constants.SIYUAN_DROP_FILE))) {
-                const ele: HTMLElement = (window as any).siyuan?.dragElement;
-                if (ele && ele.innerText) {
-                    blockIds = ele.innerText
-                        .split(',')
-                        .map(id => id.trim())
-                        .filter(id => id && id !== '/');
-                    (window as any).siyuan.dragElement = undefined;
-                }
-            }
-
-            if (blockIds.length > 0) {
-                for (const blockId of blockIds) {
-                    await addItemByBlockId(blockId, false);
-                }
-            }
+            handleDrop(event);
         }, true);
 
-        wysiwygElement.addEventListener('paste', (event: ClipboardEvent) => {
+        // 粘贴图片/文件时阻止思源原生粘贴处理（上传为插件附件）；纯文本走思源原生粘贴
+        editorElement.addEventListener('paste', (event: ClipboardEvent) => {
             handlePaste(event);
         }, true);
-
-        wysiwygElement.addEventListener('click', (event: MouseEvent) => {
-            const target = event.target as HTMLElement;
-            if (target.classList.contains('context-document-tag__remove') || target.classList.contains('context-image-tag__remove')) {
-                event.preventDefault();
-                event.stopPropagation();
-                const tagElement = target.closest('.context-document-tag') || target.closest('.context-image-tag');
-                if (tagElement && tagElement.parentElement) {
-                    tagElement.remove();
-                    syncContextFromProtyle();
-                }
-            }
-        });
 
         if (currentInput.trim()) {
             setProtyleContent(currentInput);
@@ -2445,9 +2682,10 @@
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
 
-            // 处理图片
+            // 处理图片：阻止思源原生粘贴处理，上传为插件附件
             if (item.type.startsWith('image/')) {
                 event.preventDefault();
+                event.stopPropagation();
                 const file = item.getAsFile();
                 if (file) {
                     await addImageAttachment(file);
@@ -2455,9 +2693,10 @@
                 return;
             }
 
-            // 处理文件
+            // 处理文件：阻止思源原生粘贴处理，上传为插件附件
             if (item.kind === 'file') {
                 event.preventDefault();
+                event.stopPropagation();
                 const file = item.getAsFile();
                 if (file) {
                     await addFileAttachment(file);
@@ -2476,7 +2715,6 @@
 
         // 先立即显示预览，资源保存在后台进行，减少拖拽后的卡顿感
         const blobUrl = URL.createObjectURL(file);
-        const tempId = 'img_' + Math.random().toString(36).substring(2, 9);
 
         const attachment: MessageAttachment = {
             type: 'image',
@@ -2487,36 +2725,23 @@
         };
         currentAttachments = [...currentAttachments, attachment];
 
-        if (protyle) {
-            protyle.insert(contextImageHTML(tempId, blobUrl, file.name) + Constants.ZWSP);
+        // 在编辑器中内联显示原生图片（blob URL 可经 Lute 渲染且能存活于 SpinBlockDOM 重渲染），
+        // 附件仍上传到插件资源目录；发送时 blob 图片语法会被替换为文本标记
+        if (protyle && protyleInternal?.lute) {
+            const alt = file.name.replace(/[\[\]]/g, '');
+            protyle.insert(protyleInternal.lute.Md2BlockDOM(`![${alt}](${blobUrl})`));
         }
 
         isUploadingFile = true;
         const saveTask = (async () => {
             try {
                 const assetPath = await saveAsset(file, file.name);
-                
-                // 同时更新附件列表和编辑器节点属性
                 currentAttachments = currentAttachments.map(att =>
                     att.data === blobUrl ? { ...att, path: assetPath } : att
                 );
-
-                if (wysiwygElement) {
-                    const imgEl = wysiwygElement.querySelector(`[data-context-image][data-temp-id="${tempId}"]`);
-                    if (imgEl) {
-                        imgEl.setAttribute('data-path', assetPath);
-                    }
-                }
             } catch (error) {
                 console.error('Add image error:', error);
                 currentAttachments = currentAttachments.filter(att => att.data !== blobUrl);
-                if (wysiwygElement) {
-                    const imgEl = wysiwygElement.querySelector(`[data-context-image][data-temp-id="${tempId}"]`);
-                    if (imgEl && imgEl.parentElement) {
-                        imgEl.remove();
-                        syncContextFromProtyle();
-                    }
-                }
                 pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
             }
         })();
@@ -2641,16 +2866,12 @@
         const attachment = currentAttachments[index];
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
 
-        // 如果被删除的附件是图片，且 Protyle 编辑里有对应的节点，同步从编辑器中删除
+        // 图片附件：同步删除编辑器中的内联图片
         if (attachment && attachment.type === 'image' && wysiwygElement) {
-            wysiwygElement.querySelectorAll('[data-context-image]').forEach((el) => {
-                const src = el.getAttribute('data-src');
-                const path = el.getAttribute('data-path');
-                if (src === attachment.data || path === attachment.path) {
-                    el.remove();
-                }
+            wysiwygElement.querySelectorAll(`img[src="${attachment.data}"]`).forEach((img) => {
+                const imgSpan = img.closest('[data-type="img"]');
+                (imgSpan || img).remove();
             });
-            syncContextFromProtyle();
         }
     }
 
@@ -3922,13 +4143,25 @@
 
     // 多模型发送消息
     async function sendMultiModelMessage() {
-        // 保存用户输入和附件
-        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
+        // 保存用户输入和附件（blob 图片、块引用语法替换为文本标记，内容已通过附件/上下文上传）
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
-        // currentAttachments 已通过 MutationObserver 与编辑器中的 contextImage 节点保持同步，
-        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const userAttachments = [...currentAttachments];
+        // 上下文文档以数组为准，并合并编辑器中通过 (( 插入的原生块引用
         const userContextDocuments = [...contextDocuments];
+        if (wysiwygElement) {
+            wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
+                const id = el.getAttribute('data-id') || '';
+                if (id && !userContextDocuments.some(doc => doc.id === id)) {
+                    userContextDocuments.push({
+                        id: id,
+                        title: el.textContent || '',
+                        content: '',
+                        type: 'doc',
+                    });
+                }
+            });
+        }
 
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
         if (userContextDocuments.length > 0) {
@@ -5754,7 +5987,7 @@
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
         if (!userContent) {
             pushErrMsg('请输入画图提示词');
             isLoading = false;
@@ -6009,7 +6242,7 @@
 
     // 发送消息
     async function sendMessage() {
-        if ((!currentInput.trim() && currentAttachments.length === 0) || isLoading) return;
+        if ((!currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0) || isLoading) return;
 
         // 【修复】立即设置加载状态，防止并发点击触发多次发送
         isLoading = true;
@@ -6088,15 +6321,25 @@
         // ask模式：使用 exportMdContent 获取 Markdown 格式
         // edit模式：使用 getBlockKramdown 获取 kramdown 格式（包含块ID信息）
         // agent模式：文档块只传递ID，普通块获取kramdown
-        const editorDocs: { id: string; title: string; type: string; content?: string }[] = [];
+        // 上下文文档以上下文数组为准（chips 形式），并合并编辑器中通过 (( 插入的原生块引用
+        const editorDocs: { id: string; title: string; type: string; content?: string }[] =
+            contextDocuments.map(doc => ({
+                id: doc.id,
+                title: doc.title,
+                type: doc.type || 'doc',
+                content: doc.content || '',
+            }));
         if (wysiwygElement) {
             wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
-                editorDocs.push({
-                    id: el.getAttribute('data-id') || '',
-                    title: el.querySelector('.context-document-tag__title')?.textContent || el.textContent || '',
-                    type: el.getAttribute('data-context-type') || 'doc',
-                    content: ''
-                });
+                const id = el.getAttribute('data-id') || '';
+                if (id && !editorDocs.some(doc => doc.id === id)) {
+                    editorDocs.push({
+                        id: id,
+                        title: el.textContent || '',
+                        type: 'doc',
+                        content: ''
+                    });
+                }
             });
         }
 
@@ -6149,11 +6392,9 @@
                 }
             }
         }
-        // 用户消息只保存原始输入（不包含文档内容）
-        const userContent = (protyle ? getMarkdownFromProtyle() : currentInput).trim();
+        // 用户消息只保存原始输入（不包含文档内容；blob 图片、块引用语法替换为文本标记）
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
-        // currentAttachments 已通过 MutationObserver 与编辑器中的 contextImage 节点保持同步，
-        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const combinedAttachments = [...currentAttachments];
 
         const userMessage: Message = {
@@ -9080,17 +9321,12 @@
         }
     }
 
-    // 将 contextDocument 节点插入编辑器
-    function insertContextDocumentToEditor(attrs: Record<string, any>) {
-        if (!protyle) return;
-        protyle.insert(contextDocumentHTML(attrs.id, attrs.title, attrs.type) + Constants.ZWSP);
-    }
-
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
-        if (!protyle) return;
-
-        const exists = wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${docId}"]`) !== null;
+        // 已在上下文数组中，或编辑器中已通过 (( 插入该文档引用
+        const exists =
+            contextDocuments.some(doc => doc.id === docId) ||
+            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${docId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessDocumentExists'));
@@ -9104,12 +9340,22 @@
                 content = data?.content || '';
             }
 
-            insertContextDocumentToEditor({
-                id: docId,
-                title: docTitle,
-                content: content,
-                type: 'doc'
-            });
+            contextDocuments = [
+                ...contextDocuments,
+                {
+                    id: docId,
+                    title: docTitle,
+                    content: content,
+                    type: 'doc',
+                },
+            ];
+
+            // 在编辑器中内联显示文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
+            if (protyle) {
+                protyle.insert(
+                    `<span data-type="block-ref" data-id="${docId}" data-subtype="s">${escapeHtml(docTitle)}</span>`
+                );
+            }
 
             isSearchDialogOpen = false;
             searchKeyword = '';
@@ -9213,7 +9459,7 @@
 
             const safeTargetBlockId = targetBlockId.replace(/'/g, "''");
             const blocks = await sql(`
-                SELECT b.id, b.type, b.content, b.root_id, d.content AS root_doc_content
+                SELECT b.id, b.type, b.content, b.markdown, b.root_id, d.content AS root_doc_content
                 FROM blocks b
                 LEFT JOIN blocks d ON d.id = b.root_id AND d.type = 'd'
                 WHERE b.id = '${safeTargetBlockId}'
@@ -9229,10 +9475,19 @@
                     docTitle = block.content || i18n('commonUntitled');
                     await addDocumentToContext(docId, docTitle);
                 } else {
-                    // 普通块：文档标题已在联查中拿到
-                    docTitle = block.root_doc_content || i18n('commonUntitled');
-                    // 添加该块的内容
-                    await addBlockToContext(targetBlockId, docTitle, false);
+                    // 思源没有独立的图片块（图片位于段落块中）：
+                    // 块内容只含图片（可多张）且没有文字时，识别为图片并上传为图片附件
+                    const imageAssetPaths = extractImageOnlyAssetPaths(block.markdown || '');
+                    if (imageAssetPaths.length > 0) {
+                        for (const assetPath of imageAssetPaths) {
+                            await addImageAssetAsAttachment(assetPath);
+                        }
+                    } else {
+                        // 普通块：文档标题已在联查中拿到
+                        docTitle = block.root_doc_content || i18n('commonUntitled');
+                        // 添加该块的内容
+                        await addBlockToContext(targetBlockId, docTitle, false);
+                    }
                 }
             }
         } catch (error) {
@@ -9241,11 +9496,46 @@
         }
     }
 
+    // 判断块的 markdown 是否只包含图片（可多张，无文字），
+    // 是则返回全部 assets 图片路径；含文字、无图片或含非 assets 图片时返回空数组
+    function extractImageOnlyAssetPaths(markdown: string): string[] {
+        const imgRe = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+        const paths: string[] = [];
+        let match: RegExpExecArray | null;
+        while ((match = imgRe.exec(markdown)) !== null) {
+            if (!match[1].startsWith('assets/')) {
+                return [];
+            }
+            paths.push(match[1]);
+        }
+        if (paths.length === 0) {
+            return [];
+        }
+        // 移除全部图片语法后不能残留文字内容
+        return markdown.replace(imgRe, '').trim() === '' ? paths : [];
+    }
+
+    // 将 assets 中的图片资源上传为图片附件（走统一的图片附件流程）
+    async function addImageAssetAsAttachment(assetRelPath: string) {
+        try {
+            const blob = await getFileBlob('/data/' + assetRelPath);
+            if (!blob) {
+                throw new Error('read image asset failed: ' + assetRelPath);
+            }
+            const name = assetRelPath.split('/').pop() || 'image.png';
+            const file = new File([blob], name, { type: blob.type || 'image/png' });
+            await addImageAttachment(file);
+        } catch (error) {
+            console.error('Add image block error:', error);
+            pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
+        }
+    }
+
     // 添加块到上下文（而不是整个文档）
     async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean) {
-        if (!protyle) return;
-
-        const exists = wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
+        const exists =
+            contextDocuments.some(doc => doc.id === blockId) ||
+            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessBlockExists'));
@@ -9295,25 +9585,25 @@
                 }
             }
 
-            insertContextDocumentToEditor({
-                id: blockId,
-                title: displayTitle,
-                content: content,
-                type: isDoc ? 'doc' : 'block'
-            });
+            contextDocuments = [
+                ...contextDocuments,
+                {
+                    id: blockId,
+                    title: displayTitle,
+                    content: content,
+                    type: isDoc ? 'doc' : 'block',
+                },
+            ];
+
+            // 在编辑器中内联显示块/文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
+            if (protyle) {
+                protyle.insert(
+                    `<span data-type="block-ref" data-id="${blockId}" data-subtype="s">${escapeHtml(displayTitle)}</span>`
+                );
+            }
         } catch (error) {
             console.error('Add block error:', error);
             pushErrMsg(i18n('aiSidebarErrorsAddBlockContentFailed'));
-        }
-    }
-
-    // 删除上下文文档
-    function removeContextDocument(docId: string) {
-        if (wysiwygElement) {
-            wysiwygElement.querySelectorAll(`[data-type~="block-ref"][data-id="${docId}"]`).forEach((el) => {
-                el.remove();
-            });
-            syncContextFromProtyle();
         }
     }
 
@@ -9362,17 +9652,13 @@
 
         const types = Array.from(event.dataTransfer.types || []);
         const hasFiles = event.dataTransfer.files && event.dataTransfer.files.length > 0;
-        const isSiyuanBlockDrop = types.some(
-            type =>
-                type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
-                (type.startsWith(Constants.SIYUAN_DROP_FILE) && !hasFiles)
-        );
-
-        // 块/文档拖拽交给 Protyle 原生处理（插入块引用），参考 AgentComposer
-        if (isSiyuanBlockDrop) {
-            isDragOver = false;
-            return;
-        }
+        const isSiyuanBlockDrop =
+            !types.includes('Files') &&
+            types.some(
+                type =>
+                    type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                    type.startsWith(Constants.SIYUAN_DROP_FILE)
+            );
 
         event.preventDefault();
         isDragOver = false;
@@ -9380,6 +9666,46 @@
         // 处理标准文件拖放
         if (hasFiles) {
             await addFilesInBatches(Array.from(event.dataTransfer.files));
+            return;
+        }
+
+        // 思源块/文档/图片块拖放：块加入上下文，图片块上传为图片附件
+        if (isSiyuanBlockDrop) {
+            let blockIds: string[] = [];
+
+            const gutterType = types.find(type => type.startsWith(Constants.SIYUAN_DROP_GUTTER));
+            if (gutterType) {
+                const meta = gutterType.replace(Constants.SIYUAN_DROP_GUTTER, '');
+                const info = meta.split(Constants.ZWSP);
+                const blockIdStr = info[2] || '';
+                blockIds = blockIdStr
+                    .split(',')
+                    .map(id => id.trim())
+                    .filter(id => id && id !== '/');
+            } else if (types.some(type => type.startsWith(Constants.SIYUAN_DROP_FILE))) {
+                // 支持单选和多选拖放
+                const ele: HTMLElement = (window as any).siyuan?.dragElement;
+                if (ele && ele.innerText) {
+                    blockIds = ele.innerText
+                        .split(',')
+                        .map(id => id.trim())
+                        .filter(id => id && id !== '/');
+                }
+            }
+
+            for (const blockId of blockIds) {
+                await addItemByBlockId(blockId, false);
+                // 恢复文档树节点的透明度
+                const item: HTMLElement = document.querySelector(
+                    `.file-tree.sy__tree li[data-node-id="${blockId}"]`
+                );
+                if (item) {
+                    item.style.opacity = '1';
+                }
+            }
+            if ((window as any).siyuan?.dragElement) {
+                (window as any).siyuan.dragElement = undefined;
+            }
             return;
         }
 
@@ -15722,7 +16048,7 @@
         {/if}
     </div>
 
-    <!-- 上下文文档和附件列表：只显示非图片文件/网页附件，文档和图片已在编辑器内联显示 -->
+    <!-- 附件列表：只显示非图片文件/网页附件，文档/块和图片已内联显示在编辑器中 -->
     {#if currentAttachments.some(att => att.type !== 'image')}
         <div
             class="ai-sidebar__context-docs"
@@ -16033,7 +16359,7 @@
                     class:b3-button--primary={!isLoading}
                     class:ai-sidebar__send-btn--abort={isLoading}
                     on:click={isLoading ? abortMessage : sendMessage}
-                    disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0}
+                    disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
                     title={isLoading ? '中断生成' : '发送消息'}
                 >
                     {#if isLoading}
@@ -20593,115 +20919,6 @@
         }
     }
 
-    /* Tiptap Inline Tag styles */
-    :global(.context-document-tag) {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: var(--b3-theme-surface-light);
-        border: 1px solid var(--b3-border-color);
-        color: var(--b3-theme-on-surface);
-        border-radius: 12px;
-        padding: 2px 8px;
-        margin: 2px 4px;
-        font-size: 12px;
-        user-select: none;
-        vertical-align: middle;
-        cursor: pointer;
-        line-height: 1.2;
-
-        .context-document-tag__icon {
-            font-size: 11px;
-        }
-
-        .context-document-tag__title {
-            max-width: 120px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .context-document-tag__remove {
-            cursor: pointer;
-            margin-left: 2px;
-            color: var(--b3-theme-on-surface-light);
-            font-weight: bold;
-            font-size: 12px;
-
-            &:hover {
-                color: var(--b3-theme-error);
-            }
-        }
-
-        &:hover {
-            background: var(--b3-theme-background-light);
-        }
-    }
-
-    :global(.context-image-tag) {
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        background: var(--b3-theme-surface-light) !important;
-        border: 1px solid var(--b3-border-color) !important;
-        color: var(--b3-theme-on-surface) !important;
-        border-radius: 12px !important;
-        padding: 2px 8px !important;
-        margin: 2px 4px !important;
-        font-size: 12px !important;
-        user-select: none !important;
-        vertical-align: middle !important;
-        cursor: pointer !important;
-        line-height: 1.2 !important;
-        box-sizing: border-box !important;
-        height: 22px !important;
-    }
-
-    :global(.context-image-tag:hover) {
-        background: var(--b3-theme-background-light) !important;
-    }
-
-    :global(.context-image-tag__thumb) {
-        width: 16px !important;
-        height: 16px !important;
-        min-width: 16px !important;
-        min-height: 16px !important;
-        max-width: 16px !important;
-        max-height: 16px !important;
-        object-fit: cover !important;
-        border-radius: 4px !important;
-        background: var(--b3-theme-background-light) !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    :global(.context-image-tag__name) {
-        max-width: 120px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        line-height: 1.2 !important;
-    }
-
-    :global(.context-image-tag__remove) {
-        cursor: pointer !important;
-        margin-left: 2px !important;
-        color: var(--b3-theme-on-surface-light) !important;
-        font-weight: bold !important;
-        font-size: 12px !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        line-height: 1.2 !important;
-    }
-
-    :global(.context-image-tag__remove:hover) {
-        color: var(--b3-theme-error) !important;
-    }
-
     /* Protyle editor wrapper */
     .ai-sidebar__editor-wrapper {
         flex: 1;
@@ -20722,5 +20939,121 @@
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [contenteditable="true"]) {
         outline: none;
+    }
+
+    /* 内联图片 chip：将原生 img 压缩为缩略图 + 文件名 + 删除按钮的紧凑标签 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip) {
+        display: inline-flex;
+        align-items: center;
+        vertical-align: middle;
+        max-width: 220px;
+        height: 22px;
+        margin: 0 2px;
+        padding: 1px 6px;
+        box-sizing: border-box;
+        background: var(--b3-theme-surface-light);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 12px;
+        overflow: hidden;
+        user-select: none;
+        line-height: 1.2;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip > span:has(> img)) {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip img) {
+        width: 16px;
+        height: 16px;
+        min-width: 16px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* 隐藏思源原生图片的操作图标/拖拽柄/网络图标记 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__drag),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__title),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .img__net) {
+        display: none !important;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__name) {
+        font-size: 12px;
+        color: var(--b3-theme-on-surface);
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove) {
+        font-size: 12px;
+        font-weight: bold;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove:hover) {
+        color: var(--b3-theme-error);
+    }
+
+    /* 内联文档/块 chip：原生块引用压缩为 图标 + 标题 + × 的紧凑标签。
+       图标和 × 用 CSS 伪元素绘制，避免往 span 内塞 DOM 被 Lute 重渲染并入锚文本 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]) {
+        display: inline-flex;
+        align-items: center;
+        vertical-align: middle;
+        max-width: 220px;
+        height: 22px;
+        margin: 0 2px;
+        padding: 1px 16px 1px 6px;
+        box-sizing: border-box;
+        background: var(--b3-theme-surface-light);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.2;
+        user-select: none;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        position: relative;
+        color: var(--b3-theme-on-surface);
+        text-decoration: none;
+        cursor: default;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::before) {
+        content: '📄';
+        font-size: 11px;
+        margin-right: 3px;
+        flex-shrink: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"][data-ai-doc-type="block"]::before) {
+        content: '🧩';
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::after) {
+        content: '×';
+        position: absolute;
+        right: 5px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-weight: bold;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover::after) {
+        color: var(--b3-theme-error);
     }
 </style>
