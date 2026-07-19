@@ -9485,8 +9485,8 @@
                     } else {
                         // 普通块：文档标题已在联查中拿到
                         docTitle = block.root_doc_content || i18n('commonUntitled');
-                        // 添加该块的内容
-                        await addBlockToContext(targetBlockId, docTitle, false);
+                        // 添加该块的内容（块自身内容用于生成 chip 标题预览）
+                        await addBlockToContext(targetBlockId, docTitle, false, block.content || '');
                     }
                 }
             }
@@ -9532,7 +9532,7 @@
     }
 
     // 添加块到上下文（而不是整个文档）
-    async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean) {
+    async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean, blockContent: string = '') {
         const exists =
             contextDocuments.some(doc => doc.id === blockId) ||
             wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
@@ -9547,10 +9547,10 @@
             if (isDocOverride === undefined) {
                 const blockInfo = await getBlockByID(blockId);
                 isDoc = blockInfo?.type === 'd'; // 'd' 表示文档块
+                blockContent = blockContent || blockInfo?.content || '';
             }
 
             let content = '';
-            let displayTitle = blockTitle;
 
             if (chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0)) {
                 if (isDoc) {
@@ -9559,30 +9559,20 @@
                     const blockData = await getBlockKramdown(blockId);
                     content = blockData?.kramdown || '';
                 }
-                
-                // 获取Markdown格式用于生成显示标题
-                try {
-                    const mdData = await exportMdContent(blockId, false, false, 2, 0, false);
-                    if (mdData && mdData.content) {
-                        const contentPreview = mdData.content.replace(/\n/g, ' ').trim();
-                        displayTitle =
-                            contentPreview.length > 20
-                                ? contentPreview.substring(0, 20) + '...'
-                                : contentPreview || (isDoc ? '文档内容' : '块内容');
-                    }
-                } catch (error) {
-                    console.warn('获取Markdown预览失败:', error);
-                }
             } else {
                 const data = await exportMdContent(blockId, false, false, 2, 0, false);
                 if (data && data.content) {
-                    const contentPreview = data.content.replace(/\n/g, ' ').trim();
-                    displayTitle =
-                        contentPreview.length > 20
-                            ? contentPreview.substring(0, 20) + '...'
-                            : contentPreview || blockTitle || (isDoc ? '文档内容' : '块内容');
                     content = data.content;
                 }
+            }
+
+            // 块 chip 只显示块自身内容预览（exportMdContent 会带上 # 文档标题，不可用）；
+            // 文档 chip 才使用文档标题
+            const contentPreview = blockContent.replace(/\n/g, ' ').trim();
+            let displayTitle =
+                contentPreview.length > 20 ? contentPreview.substring(0, 20) + '...' : contentPreview;
+            if (!displayTitle) {
+                displayTitle = isDoc ? blockTitle || '文档内容' : '块内容';
             }
 
             contextDocuments = [
