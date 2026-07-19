@@ -2422,14 +2422,60 @@
             }
         }, true);
 
-        // 移动端 touch 时主动聚焦 contenteditable，避免 WebView 中首次点击无法唤起输入法。
-        // passive 避免影响滚动；仅当触摸目标是可编辑区域且未聚焦时才聚焦。
+        // 移动端 touch 时主动聚焦 contenteditable 并放置光标，touchend 时通过原生桥唤起输入法。
+        // 背景：思源移动端（Android/鸿蒙）的软键盘由思源通过 JSAndroid.showKeyboard() 桥接唤起，
+        // 但仅对通过 canInput 检测的元素生效（要求 .protyle-wysiwyg 带 data-readonly="false"，
+        // 该属性仅在文档 onGet 后设置）。插件 lite 模式编辑器不满足条件，导致首次点击只有
+        // 边框高亮、无光标无键盘，需在文档里唤起过一次输入法后才正常。这里自行调用原生桥解决；
+        // 不设置 data-readonly 是为了避免触发思源移动端键盘工具栏对插件编辑器的误处理。
+        // passive 避免影响滚动。
+        let editorTouchPos: { x: number; y: number } | null = null;
         wysiwygElement.addEventListener('touchstart', (event: TouchEvent) => {
+            const touch = event.touches[0];
+            editorTouchPos = touch ? { x: touch.clientX, y: touch.clientY } : null;
             const target = event.target as HTMLElement;
             const editable = target.closest('[contenteditable="true"]') as HTMLElement | null;
-            if (editable && document.activeElement !== editable) {
+            if (!editable) return;
+            if (document.activeElement !== editable) {
                 editable.focus();
             }
+            // 程序化聚焦不会放置光标，需手动设置选区，否则光标不显示
+            const selection = window.getSelection();
+            if (
+                selection &&
+                (selection.rangeCount === 0 ||
+                    !editable.contains(selection.getRangeAt(0).startContainer))
+            ) {
+                let range: Range | null = null;
+                if (touch && document.caretRangeFromPoint) {
+                    const tapRange = document.caretRangeFromPoint(touch.clientX, touch.clientY);
+                    if (tapRange && editable.contains(tapRange.startContainer)) {
+                        range = tapRange;
+                    }
+                }
+                if (!range) {
+                    range = document.createRange();
+                    range.selectNodeContents(editable);
+                    range.collapse(false);
+                }
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }, { passive: true });
+
+        wysiwygElement.addEventListener('touchend', (event: TouchEvent) => {
+            const touch = event.changedTouches[0];
+            if (!touch || !editorTouchPos) return;
+            // 滑动手势不唤起输入法
+            const moved =
+                Math.abs(touch.clientX - editorTouchPos.x) > 10 ||
+                Math.abs(touch.clientY - editorTouchPos.y) > 10;
+            editorTouchPos = null;
+            if (moved) return;
+            const target = event.target as HTMLElement;
+            if (!target.closest('[contenteditable="true"]')) return;
+            const bridge = (window as any).JSAndroid || (window as any).JSHarmony;
+            bridge?.showKeyboard?.();
         }, { passive: true });
 
         // 拦截编辑器区域的拖放（注册在 .protyle 根元素捕获阶段，先于思源原生 drop/dragover 处理）：
