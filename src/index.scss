@@ -260,3 +260,35 @@
     white-space: nowrap;
   }
 }
+
+/* 重置 Copilot 输入框内 Protyle 编辑器的高度与边距，解决默认高度过高的问题 */
+.ai-sidebar__editor-wrapper {
+  min-height: 36px !important;
+  max-height: 180px !important;
+  overflow-y: auto !important;
+}
+
+.ai-sidebar__editor-wrapper .protyle {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ai-sidebar__editor-wrapper .protyle-content {
+  background: transparent !important;
+}
+
+.ai-sidebar__editor-wrapper .protyle-wysiwyg {
+  outline: none !important;
+  width: 100% !important;
+  padding: 6px 80px 6px 8px !important;
+  box-sizing: border-box !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  min-height: 24px !important;
+  max-height: 180px !important;
+  overflow-y: auto !important;
+}
+
+.ai-sidebar__editor-wrapper .protyle-wysiwyg [contenteditable="true"] {
+  outline: none !important;
+}

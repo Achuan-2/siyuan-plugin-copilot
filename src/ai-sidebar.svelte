@@ -2422,6 +2422,16 @@
             }
         }, true);
 
+        // 移动端 touch 时主动聚焦 contenteditable，避免 WebView 中首次点击无法唤起输入法。
+        // passive 避免影响滚动；仅当触摸目标是可编辑区域且未聚焦时才聚焦。
+        wysiwygElement.addEventListener('touchstart', (event: TouchEvent) => {
+            const target = event.target as HTMLElement;
+            const editable = target.closest('[contenteditable="true"]') as HTMLElement | null;
+            if (editable && document.activeElement !== editable) {
+                editable.focus();
+            }
+        }, { passive: true });
+
         // 拦截编辑器区域的拖放（注册在 .protyle 根元素捕获阶段，先于思源原生 drop/dragover 处理）：
         // 思源块/文档/图片块 → 上下文或图片附件；操作系统文件 → 附件；标签页 → 网页附件。
         // 其余内容（如网页 HTML）交给思源原生处理。
@@ -20916,19 +20926,37 @@
         display: flex;
         border-radius: 12px;
         overflow: hidden;
+        min-height: 36px;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle) {
+        background: transparent !important;
+        border: none !important;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-content) {
+        background: transparent !important;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg) {
         outline: none;
         width: 100%;
-        padding: 6px 8px;
+        padding: 6px 80px 6px 8px !important;
         box-sizing: border-box;
         font-size: 14px;
         line-height: 1.5;
+        min-height: 24px !important;
+        max-height: 180px !important;
+        overflow-y: auto !important;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [contenteditable="true"]) {
         outline: none;
+        -webkit-user-select: text;
+        user-select: text;
+        cursor: text;
     }
 
     /* 内联图片 chip：将原生 img 压缩为缩略图 + 文件名 + 删除按钮的紧凑标签 */
