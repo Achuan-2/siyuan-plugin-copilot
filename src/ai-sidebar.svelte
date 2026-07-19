@@ -77,13 +77,13 @@
         type ToolExecutionCallbacks,
     } from './tools';
 
-    import { Editor } from '@tiptap/core';
-    import StarterKit from '@tiptap/starter-kit';
-    import Placeholder from '@tiptap/extension-placeholder';
-    import { Node, mergeAttributes } from '@tiptap/core';
-    import { Extension } from '@tiptap/core';
-    import Suggestion from '@tiptap/suggestion';
-    import { PluginKey } from '@tiptap/pm/state';
+    import {
+        Protyle,
+        type IProtyle,
+        type IHintData,
+        type IHintExtend,
+    } from 'siyuan';
+    import * as siyuanModule from 'siyuan';
 
 
     // Agent 模式工具使用强制规则（统一常量）
@@ -410,7 +410,6 @@
     let isThinkingPhase = false; // 是否在思考阶段
     let settings: any = {};
     let messagesContainer: HTMLElement;
-    let textareaElement: HTMLTextAreaElement;
     let inputContainer: HTMLElement;
     let fileInputElement: HTMLInputElement;
     let isInitialLoading = true;
@@ -461,453 +460,371 @@
     let isDragOver = false;
     let searchTimeout: number | null = null;
 
-    // Tiptap variables and suggestion state
-    // Convert ProseMirror node tree to Markdown
-    function serializeNodeToMarkdown(node: any): string {
-        if (!node) return '';
-
-        if (node.isText) {
-            let text = node.text || '';
-            if (node.marks) {
-                for (const mark of node.marks) {
-                    if (mark.type.name === 'bold') {
-                        text = `**${text}**`;
-                    } else if (mark.type.name === 'italic') {
-                        text = `*${text}*`;
-                    } else if (mark.type.name === 'code') {
-                        text = `\`${text}\``;
-                    } else if (mark.type.name === 'strike') {
-                        text = `~~${text}~~`;
-                    }
-                }
-            }
-            return text;
-        }
-
-        switch (node.type.name) {
-            case 'doc': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('\n\n');
-            }
-            case 'paragraph': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('');
-            }
-            case 'heading': {
-                const level = node.attrs.level || 1;
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return '#'.repeat(level) + ' ' + children.join('');
-            }
-            case 'bulletList': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeListItem(child, '* '));
-                });
-                return children.join('\n');
-            }
-            case 'orderedList': {
-                const children: string[] = [];
-                let index = node.attrs.start || 1;
-                node.forEach((child: any) => {
-                    children.push(serializeListItem(child, `${index}. `));
-                    index++;
-                });
-                return children.join('\n');
-            }
-            case 'blockquote': {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.map(line => `> ${line}`).join('\n');
-            }
-            case 'codeBlock': {
-                const language = node.attrs.language || '';
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return `\`\`\`${language}\n${children.join('')}\n\`\`\``;
-            }
-            case 'horizontalRule': {
-                return '---';
-            }
-            case 'hardBreak': {
-                return '\n';
-            }
-            case 'contextDocument': {
-                return `@<${node.attrs.title}>`;
-            }
-            case 'contextImage': {
-                return `[图片: ${node.attrs.name}]`;
-            }
-            default: {
-                const children: string[] = [];
-                node.forEach((child: any) => {
-                    children.push(serializeNodeToMarkdown(child));
-                });
-                return children.join('');
-            }
-        }
-    }
-
-    function serializeListItem(listItemNode: any, prefix: string): string {
-        const children: string[] = [];
-        listItemNode.forEach((child: any) => {
-            children.push(serializeNodeToMarkdown(child));
-        });
-        const content = children.join('\n');
-        const lines = content.split('\n');
-        const indent = ' '.repeat(prefix.length);
-        const formattedLines = lines.map((line, idx) => {
-            if (idx === 0) return prefix + line;
-            return indent + line;
-        });
-        return formattedLines.join('\n');
-    }
-
-    function getMarkdownFromEditor(editorInstance: any): string {
-        if (!editorInstance) return '';
-        return serializeNodeToMarkdown(editorInstance.state.doc);
-    }
-
-    let editor: Editor;
+    // Protyle editor variables and helpers
+    let protyle: Protyle;
+    let protyleInternal: IProtyle;
+    let wysiwygElement: HTMLElement;
     let editorElement: HTMLElement;
-    let showSuggestions = false;
-    let suggestionType: 'doc' | 'skill' | null = null;
-    let suggestionQuery = '';
-    let suggestionList: any[] = [];
-    let suggestionSelectedIndex = 0;
-    let suggestionStyle = '';
-    let suggestionCommand: any = null;
+    let contentObserver: MutationObserver;
+    let hintRefImpl: any;
+    // 当前由插件提供的 hint 类型（'@' 文档 / '/' 技能），用于拦截 hint 的选择行为；
+    // 思源源生的 ((、[[ 等块引用 hint 为 null，走思源默认处理
+    let activeHintKind: 'doc' | 'skill' | null = null;
+    // '@' hint 当前展示的文档列表（原始 SQL 行），用于选择后取标题
+    let docHintItems: any[] = [];
 
-    // Custom Tiptap Extensions
-    const ContextDocument = Node.create({
-        name: 'contextDocument',
-        group: 'inline',
-        inline: true,
-        selectable: true,
-        atom: true,
+    function escapeHtml(unsafe: string): string {
+        return unsafe
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
 
-        addAttributes() {
-            return {
-                id: { default: null },
-                title: { default: '文档' },
-                type: { default: 'doc' }, // 'doc' | 'block'
-                content: { default: '' }
-            };
-        },
-
-        parseHTML() {
-            return [
-                {
-                    tag: 'span[data-context-document]'
-                }
-            ];
-        },
-
-        renderHTML({ HTMLAttributes }) {
-            return [
-                'span',
-                mergeAttributes(HTMLAttributes, {
-                    'data-context-document': '',
-                    class: 'context-document-tag',
-                    contenteditable: 'false'
-                }),
-                ['span', { class: 'context-document-tag__icon' }, HTMLAttributes.type === 'doc' ? '📄' : '🧩'],
-                ['span', { class: 'context-document-tag__title' }, HTMLAttributes.title || ''],
-                ['span', { class: 'context-document-tag__remove' }, '×']
-            ];
-        },
-
-        renderText({ node }) {
-            return `@<${node.attrs.title}>`;
-        },
-
-        addProseMirrorPlugins() {
-            return [
-                Suggestion({
-                    pluginKey: new PluginKey('contextDocumentSuggestion'),
-                    editor: this.editor,
-                    char: '@',
-                    allowSpaces: true,
-                    command: ({ editor, range, props }) => {
-                        editor
-                            .chain()
-                            .focus()
-                            .insertContentAt(range, [
-                                {
-                                    type: this.name,
-                                    attrs: {
-                                        id: props.id,
-                                        title: props.title,
-                                        type: props.type || 'doc',
-                                        content: props.content || ''
-                                    }
-                                },
-                                {
-                                    type: 'text',
-                                    text: ' '
-                                }
-                            ])
-                            .run();
-                    },
-                    render: () => {
-                        return {
-                            onStart: (props) => {
-                                handleSuggestionStart('@', props);
-                            },
-                            onUpdate: (props) => {
-                                handleSuggestionUpdate(props);
-                            },
-                            onKeyDown: (props) => {
-                                return handleSuggestionKeyDown(props);
-                            },
-                            onExit: () => {
-                                handleSuggestionExit();
-                            }
-                        };
-                    }
-                })
-            ];
+    const hintSkill = (key: string, p: IProtyle): IHintData[] => {
+        activeHintKind = 'skill';
+        if (p.hint) {
+            p.hint.genLoading(p);
         }
-    });
+        loadAllSkills().then(skills => {
+            const q = key.toLowerCase();
+            const dataList: IHintData[] = (skills || [])
+                .filter(skill =>
+                    !q ||
+                    skill.id.toLowerCase().includes(q) ||
+                    skill.name.toLowerCase().includes(q) ||
+                    (skill.description || '').toLowerCase().includes(q)
+                )
+                .map(skill => ({
+                    value: '/' + skill.id + ' ',
+                    html: '<div class="b3-list-item__first"><span class="b3-list-item__text">/' +
+                        escapeHtml(skill.id) +
+                        (skill.name ? ' <span style="color:var(--b3-theme-on-surface-light)">(' + escapeHtml(skill.name) + ')</span>' : '') +
+                        '</span></div>' +
+                        (skill.description ? '<div class="b3-list-item__meta b3-list-item__showall">' + escapeHtml(skill.description) + '</div>' : ''),
+                }));
+            if (dataList.length === 0) {
+                dataList.push({ value: '', html: window.siyuan.languages.emptyContent });
+            }
+            if (p.hint) {
+                p.hint.genHTML(dataList, p, false, 'hint');
+            }
+        });
+        return [];
+    };
 
-    const ContextImage = Node.create({
-        name: 'contextImage',
-        group: 'inline',
-        inline: true,
-        selectable: true,
-        atom: true,
-
-        addAttributes() {
-            return {
-                tempId: { default: null },
-                src: { default: '' },
-                name: { default: '图片' },
-                path: { default: '' },
-                mimeType: { default: 'image/png' }
-            };
-        },
-
-        parseHTML() {
-            return [
-                {
-                    tag: 'span[data-context-image]'
-                }
-            ];
-        },
-
-        renderHTML({ HTMLAttributes }) {
-            return [
-                'span',
-                mergeAttributes(HTMLAttributes, {
-                    'data-context-image': '',
-                    class: 'context-image-tag',
-                    contenteditable: 'false'
-                }),
-                ['img', { class: 'context-image-tag__thumb', src: HTMLAttributes.src || '' }],
-                ['span', { class: 'context-image-tag__name' }, HTMLAttributes.name || ''],
-                ['span', { class: 'context-image-tag__remove' }, '×']
-            ];
-        },
-
-        renderText({ node }) {
-            return `[图片: ${node.attrs.name}]`;
+    // '@' 提示：快速选择当前文档或搜索文档
+    const hintDoc = (key: string, p: IProtyle): IHintData[] => {
+        activeHintKind = 'doc';
+        if (p.hint) {
+            p.hint.genLoading(p);
         }
-    });
+        searchDocsForAtHint(key).then(blocks => {
+            docHintItems = blocks;
+            const dataList: IHintData[] = blocks.map(block => ({
+                id: block.id,
+                value: '',
+                html:
+                    '<div class="b3-list-item__first"><span class="b3-list-item__graphic"><svg><use xlink:href="#iconFile"></use></svg></span>' +
+                    '<span class="b3-list-item__text">' +
+                    escapeHtml(block.content || block.fcontent || i18n('commonUntitled')) +
+                    '</span></div>' +
+                    (block.hpath
+                        ? '<div class="b3-list-item__meta b3-list-item__showall">' + escapeHtml(block.hpath) + '</div>'
+                        : ''),
+            }));
+            if (dataList.length === 0) {
+                dataList.push({ value: '', html: window.siyuan.languages.emptyContent });
+            }
+            if (p.hint) {
+                p.hint.genHTML(dataList, p, false, 'hint');
+            }
+        });
+        return [];
+    };
 
-    const SkillSuggestion = Extension.create({
-        name: 'skillSuggestion',
-
-        addProseMirrorPlugins() {
-            return [
-                Suggestion({
-                    pluginKey: new PluginKey('skillSuggestionKey'),
-                    editor: this.editor,
-                    char: '/',
-                    allowSpaces: false,
-                    command: ({ editor, range, props }) => {
-                        editor
-                            .chain()
-                            .focus()
-                            .insertContentAt(range, [
-                                {
-                                    type: 'text',
-                                    text: `/${props.id} `
-                                }
-                            ])
-                            .run();
-                    },
-                    render: () => {
-                        return {
-                            onStart: (props) => {
-                                handleSuggestionStart('/', props);
-                            },
-                            onUpdate: (props) => {
-                                handleSuggestionUpdate(props);
-                            },
-                            onKeyDown: (props) => {
-                                return handleSuggestionKeyDown(props);
-                            },
-                            onExit: () => {
-                                handleSuggestionExit();
-                            }
-                        };
-                    }
-                })
-            ];
-        }
-    });
-
-    // 建议下拉框事件处理
-    function handleSuggestionStart(char: string, props: any) {
-        showSuggestions = true;
-        suggestionType = char === '@' ? 'doc' : 'skill';
-        suggestionQuery = props.query;
-        suggestionSelectedIndex = 0;
-        suggestionCommand = props.command;
-        
-        if (suggestionType === 'doc') {
-            searchKeyword = props.query;
-            searchDocuments().then(() => {
-                suggestionList = searchResults;
-                updateSuggestionPosition(props.clientRect);
-            });
-        } else {
-            loadAllSkills().then(skills => {
-                suggestionList = (skills || []).filter(skill =>
-                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase())
+    // '@' 提示的文档搜索：空关键词返回当前文档，否则按内容搜索文档块
+    async function searchDocsForAtHint(keyword: string): Promise<any[]> {
+        try {
+            if (!keyword.trim()) {
+                const currentProtyle = getActiveEditor(false)?.protyle;
+                const blockId = currentProtyle?.block?.id;
+                if (!blockId) return [];
+                const blocks = await sql(
+                    `SELECT * FROM blocks WHERE id = '${blockId}' OR root_id = '${blockId}'`
                 );
-                updateSuggestionPosition(props.clientRect);
-            });
+                if (blocks && blocks.length > 0) {
+                    const docBlock = blocks.find(b => b.type === 'd');
+                    if (docBlock) {
+                        return [docBlock];
+                    }
+                    const rootId = blocks[0].root_id;
+                    return (
+                        (await sql(`SELECT * FROM blocks WHERE id = '${rootId}' AND type = 'd'`)) || []
+                    );
+                }
+                return [];
+            }
+            const keywords = keyword
+                .trim()
+                .split(/\s+/)
+                .map(kw => kw.replace(/'/g, "''"));
+            const conditions = keywords.map(kw => `content LIKE '%${kw}%'`).join(' AND ');
+            return (
+                (await sql(
+                    `SELECT * FROM blocks WHERE ${conditions} AND type = 'd' ORDER BY updated DESC LIMIT 20`
+                )) || []
+            );
+        } catch (error) {
+            console.error('@ hint search error:', error);
+            return [];
         }
     }
 
-    function handleSuggestionUpdate(props: any) {
-        suggestionQuery = props.query;
-        suggestionSelectedIndex = 0;
-        suggestionCommand = props.command;
-        
-        if (suggestionType === 'doc') {
-            searchKeyword = props.query;
-            searchDocuments().then(() => {
-                suggestionList = searchResults;
-                updateSuggestionPosition(props.clientRect);
-            });
-        } else {
-            loadAllSkills().then(skills => {
-                suggestionList = (skills || []).filter(skill =>
-                    skill.id.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.name.toLowerCase().includes(suggestionQuery.toLowerCase()) ||
-                    skill.description.toLowerCase().includes(suggestionQuery.toLowerCase())
-                );
-                updateSuggestionPosition(props.clientRect);
-            });
+    // 选中 '@' 提示项：移除输入框中的 '@查询词'，并将文档加入上下文
+    function confirmDocHint(docId?: string) {
+        const hint = protyleInternal?.hint;
+        if (!hint) return;
+        if (!docId) {
+            docId =
+                hint.element
+                    .querySelector('.b3-list-item--focus')
+                    ?.getAttribute('data-id') || '';
         }
+        removeDocHintQuery();
+        activeHintKind = null;
+        if (docId) {
+            const item = docHintItems.find(d => d.id === docId);
+            addDocumentToContext(
+                docId,
+                item?.content || item?.fcontent || i18n('commonUntitled')
+            );
+        }
+        docHintItems = [];
     }
 
-    function handleSuggestionKeyDown(props: any) {
-        const { event } = props;
-        if (!showSuggestions) return false;
-
-        if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            suggestionSelectedIndex = (suggestionSelectedIndex - 1 + suggestionList.length) % suggestionList.length;
-            return true;
+    // 删除输入框中的 '@查询词' 文本并隐藏提示
+    function removeDocHintQuery() {
+        const hint = protyleInternal?.hint;
+        if (!hint) return;
+        // 参考思源 hint/index.ts 的 fill：lastIndex 为触发字符在文本节点中的偏移
+        const range: Range | undefined = protyleInternal.toolbar?.range;
+        if (
+            range &&
+            hint.lastIndex > -1 &&
+            range.startContainer.nodeType === 3 &&
+            range.startContainer === range.endContainer
+        ) {
+            const textNode = range.startContainer as Text;
+            const offset = Math.min(hint.lastIndex, textNode.textContent.length);
+            range.setStart(textNode, offset);
+            range.deleteContents();
+            range.collapse(true);
         }
-
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            suggestionSelectedIndex = (suggestionSelectedIndex + 1) % suggestionList.length;
-            return true;
-        }
-
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            if (suggestionList.length > 0) {
-                selectSuggestion(suggestionList[suggestionSelectedIndex]);
-                return true;
+        hint.element.classList.add('fn__none');
+        if (range) {
+            const selection = window.getSelection();
+            if (selection) {
+                selection.removeAllRanges();
+                selection.addRange(range);
             }
         }
+    }
 
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            showSuggestions = false;
-            return true;
+    function getMarkdownFromProtyle(): string {
+        if (!protyleInternal?.lute || !wysiwygElement) return '';
+        return protyleInternal.lute.BlockDOM2StdMd(wysiwygElement.innerHTML).trim();
+    }
+
+    // 发送前处理编辑器中取出的 markdown：
+    // blob 图片语法替换为 [图片: name] 文本标记（图片内容已通过附件上传）；
+    // 块引用语法 ((id 'title')) 替换为 @<title> 标记（上下文内容随消息单独附带）
+    function transformEditorMarkdownForSend(text: string): string {
+        return text
+            .replace(/!\[([^\]]*)\]\(blob:[^)\s]+\)/g, (_match, alt) => `[图片: ${alt}]`)
+            .replace(
+                /\(\((\d{14}-[0-9a-z]{7})(?:\s+(['"])(.*?)\2)?\)\)/g,
+                (_match, id, _quote, anchor) => `@<${anchor || id}>`
+            );
+    }
+
+    // 已增强的图片 chip 缓存（src -> span 元素）。
+    // Lute 重渲染块时会重建 img span，新建的 <img> 元素需重新解码图片导致闪烁；
+    // 复用缓存的同一元素（位图已解码）可避免闪烁。
+    const imgChipCache = new Map<string, HTMLElement>();
+
+    // 将编辑器中的原生 blob 图片增强为紧凑 chip（缩略图 + 文件名 + 删除按钮）。
+    // Lute 重渲染块时会重建 img span，因此需在每次 DOM 变化后对未增强的 span 重新增强。
+    function enhanceInlineImageChips() {
+        if (!wysiwygElement) return;
+        wysiwygElement
+            .querySelectorAll('[data-type="img"]:not(.ai-inline-img-chip)')
+            .forEach((span) => {
+                const img = span.querySelector('img');
+                const src = img?.getAttribute('src') || '';
+                if (!img || !src.startsWith('blob:')) return;
+                // 重渲染重建的 span：直接换回缓存的旧元素，避免图片重新解码造成闪烁
+                const cached = imgChipCache.get(src);
+                if (cached && !cached.isConnected) {
+                    span.replaceWith(cached);
+                    return;
+                }
+                span.classList.add('ai-inline-img-chip');
+                // 移除 lazy 加载，避免解码延迟
+                img.removeAttribute('loading');
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ai-inline-img-chip__name';
+                nameEl.textContent = img.getAttribute('alt') || '图片';
+                const removeEl = document.createElement('span');
+                removeEl.className = 'ai-inline-img-chip__remove';
+                removeEl.textContent = '×';
+                img.parentElement?.append(nameEl, removeEl);
+                imgChipCache.set(src, span as HTMLElement);
+            });
+        // 清理已不在编辑器中的 chip 缓存
+        if (imgChipCache.size > 0) {
+            const presentSrcs = new Set<string>();
+            wysiwygElement.querySelectorAll('[data-type="img"] img').forEach((el) => {
+                const src = el.getAttribute('src');
+                if (src) {
+                    presentSrcs.add(src);
+                }
+            });
+            imgChipCache.forEach((_el, src) => {
+                if (!presentSrcs.has(src)) {
+                    imgChipCache.delete(src);
+                }
+            });
         }
-
-        return false;
     }
 
-    function handleSuggestionExit() {
-        showSuggestions = false;
-        suggestionList = [];
+    // 为块引用（@ 文档/块 chip 以及 (( 插入的原生引用）标注上下文类型，
+    // 供 CSS 区分 📄/🧩 图标。只设置属性，不改动 DOM 结构（避免被 Lute 重渲染并入锚文本）。
+    function enhanceInlineDocChips() {
+        if (!wysiwygElement) return;
+        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((span) => {
+            const id = span.getAttribute('data-id');
+            const wantType =
+                contextDocuments.find(doc => doc.id === id)?.type === 'block' ? 'block' : 'doc';
+            if (span.getAttribute('data-ai-doc-type') !== wantType) {
+                span.setAttribute('data-ai-doc-type', wantType);
+            }
+        });
     }
 
-    function updateSuggestionPosition(clientRectFn: any) {
-        if (!clientRectFn) return;
-        const rect = clientRectFn();
-        if (!rect) return;
-        const popupHeight = 220;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
-        
-        if (spaceBelow < popupHeight && spaceAbove > spaceBelow) {
-            suggestionStyle = `position: fixed; bottom: ${window.innerHeight - rect.top + 4}px; left: ${rect.left}px; z-index: 9999;`;
-        } else {
-            suggestionStyle = `position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px; z-index: 9999;`;
+    function setProtyleContent(markdown: string) {
+        if (!protyleInternal?.lute || !wysiwygElement) return;
+        if (!markdown.trim()) {
+            clearProtyle();
+            return;
         }
+        wysiwygElement.innerHTML = protyleInternal.lute.Md2BlockDOM(markdown);
+        syncInputFromProtyle();
     }
 
-    // 选择建议项
-    async function selectSuggestion(item: any) {
-        if (!suggestionCommand) return;
-        
-        if (suggestionType === 'doc') {
-            let content = '';
+    function createEmptyParagraph(): HTMLElement {
+        // 优先用 Lute 生成标准空段落，确保与 Protyle 内部结构一致
+        if (protyleInternal?.lute) {
             try {
-                if (!(chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0))) {
-                    const data = await exportMdContent(item.id, false, false, 2, 0, false);
-                    content = data?.content || '';
+                const html = protyleInternal.lute.Md2BlockDOM('');
+                if (html) {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    const parsed = temp.firstElementChild as HTMLElement | null;
+                    if (parsed) {
+                        return parsed;
+                    }
                 }
             } catch (e) {
-                console.error(e);
+                // ignore, fall through
             }
-            suggestionCommand({
-                id: item.id,
-                title: item.content || item.title || i18n('commonUntitled'),
-                type: 'doc',
-                content: content
-            });
-        } else {
-            suggestionCommand({
-                id: item.id
-            });
         }
-        showSuggestions = false;
+
+        const emptyP = document.createElement('div');
+        let nodeId = '';
+        try {
+            const luteClass = (window as any).siyuan?.lute || (protyleInternal?.lute as any)?.constructor;
+            if (luteClass?.NewNodeID) {
+                nodeId = luteClass.NewNodeID();
+            }
+        } catch (e) {
+            // ignore
+        }
+        if (!nodeId) {
+            // fallback ID matching Siyuan format: YYYYMMDDHHMMSS-7alphanum
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const randomSuffix = Math.random().toString(36).slice(2, 9);
+            nodeId = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${randomSuffix}`;
+        }
+        emptyP.setAttribute('data-node-id', nodeId);
+        emptyP.setAttribute('data-type', 'NodeParagraph');
+        emptyP.className = 'p';
+        const spellcheck = (window as any).siyuan?.config?.editor?.spellcheck ?? 'false';
+        emptyP.innerHTML = `<div contenteditable="true" spellcheck="${spellcheck}">${Constants.ZWSP}<wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div>`;
+        return emptyP;
+    }
+
+    function clearProtyle() {
+        if (!protyleInternal || !wysiwygElement) return;
+        wysiwygElement.innerHTML = '';
+        const emptyP = createEmptyParagraph();
+        emptyP.firstElementChild!.classList.add('protyle-wysiwyg--empty');
+        emptyP.firstElementChild!.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+        wysiwygElement.appendChild(emptyP);
+        protyleInternal.undo?.clear();
+        updatePlaceholder();
+        syncInputFromProtyle();
+    }
+
+    function updatePlaceholder() {
+        if (!wysiwygElement) return;
+        const isEmpty = (wysiwygElement.textContent || '')
+            .replace(new RegExp(Constants.ZWSP, 'g'), '')
+            .trim() === '';
+        const paragraphContent = wysiwygElement.querySelector('.p > div[contenteditable="true"]');
+        if (paragraphContent) {
+            paragraphContent.classList.toggle('protyle-wysiwyg--empty', isEmpty);
+            if (isEmpty) {
+                paragraphContent.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+            } else {
+                paragraphContent.removeAttribute('placeholder');
+            }
+        }
+    }
+
+    // 从编辑器同步输入状态：
+    // 1. currentInput 同步为编辑器纯文本 markdown；
+    // 2. 图片附件与编辑器中的内联 blob 图片保持同步（内联图片被删除时移除对应附件）；
+    // 3. 上下文文档与编辑器中的块引用 chip 保持同步（chip 被删除时移除对应上下文）。
+    function syncInputFromProtyle() {
+        if (!wysiwygElement) return;
+        currentInput = getMarkdownFromProtyle();
+
+        const presentImageSrcs = new Set<string>();
+        wysiwygElement.querySelectorAll('img[src^="blob:"]').forEach((el) => {
+            const src = el.getAttribute('src');
+            if (src) {
+                presentImageSrcs.add(src);
+            }
+        });
+        currentAttachments = currentAttachments.filter(
+            att => att.type !== 'image' || presentImageSrcs.has(att.data)
+        );
+
+        const presentDocIds = new Set<string>();
+        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((el) => {
+            const id = el.getAttribute('data-id');
+            if (id) {
+                presentDocIds.add(id);
+            }
+        });
+        contextDocuments = contextDocuments.filter(doc => presentDocIds.has(doc.id));
     }
 
     let hasInlineDocs = false;
-    $: if (editor) {
-        let count = 0;
-        try {
-            editor.state.doc.descendants(node => {
-                if (node.type.name === 'contextDocument') count++;
-            });
-        } catch(e) {}
-        hasInlineDocs = count > 0;
-    }
+    $: hasInlineDocs = contextDocuments.length > 0;
 
 
     // 提示词管理
@@ -2342,128 +2259,211 @@
             currentInput = initialMessage;
         }
 
-        // 初始化 Tiptap 外部编辑器
-        editor = new Editor({
-            element: editorElement,
-            extensions: [
-                StarterKit.configure({
-                    // 拖拽时不显示 drop cursor，块/文档默认插入到输入框末尾
-                    dropcursor: false,
-                }),
-                ContextDocument,
-                ContextImage,
-                SkillSuggestion,
-                Placeholder.configure({
-                    placeholder: i18n('aiSidebarInputPlaceholder'),
-                })
-            ],
-            content: currentInput,
-            onUpdate({ editor }) {
-                currentInput = getMarkdownFromEditor(editor);
-                // 实时同步更新 contextDocuments 数组
-                const tempDocs: ContextDocument[] = [];
-                const presentImageSrcs = new Set<string>();
-                editor.state.doc.descendants((node) => {
-                    if (node.type.name === 'contextDocument') {
-                        tempDocs.push({
-                            id: node.attrs.id,
-                            title: node.attrs.title,
-                            content: node.attrs.content || '',
-                            type: node.attrs.type || 'doc',
-                        });
-                    } else if (node.type.name === 'contextImage') {
-                        if (node.attrs.src) {
-                            presentImageSrcs.add(node.attrs.src);
-                        }
-                    }
-                });
-                contextDocuments = tempDocs;
+        // 初始化 Protyle 编辑器
+        hintRefImpl = (siyuanModule as any).hintRef || (window as any).siyuan?.hintRef;
+        // 思源原生块引用 hint 走默认处理，重置插件 hint 类型标记
+        const hintRefWrapped = hintRefImpl
+            ? (key: string, p: IProtyle, source?: any): IHintData[] => {
+                  activeHintKind = null;
+                  return hintRefImpl(key, p, source);
+              }
+            : null;
 
-                // 同步附件列表：如果附件是图片，且其 data (blobUrl) 不在编辑器中，说明被删除了
-                currentAttachments = currentAttachments.filter(att => {
-                    if (att.type === 'image') {
-                        return presentImageSrcs.has(att.data);
-                    }
-                    return true;
-                });
+        const hintExtend: IHintExtend[] = [
+            { key: '@', hint: hintDoc },
+            { key: '/', hint: hintSkill },
+            { key: '、', hint: hintSkill },
+        ];
+        if (hintRefWrapped) {
+            hintExtend.unshift(
+                { key: '((', hint: hintRefWrapped },
+                { key: '【【', hint: hintRefWrapped },
+                { key: '（（', hint: hintRefWrapped },
+                { key: '[[', hint: hintRefWrapped }
+            );
+        }
+
+        const app = window.siyuan.ws.app;
+        protyle = new Protyle(app, editorElement, {
+            lite: true,
+            blockId: '',
+            render: {
+                gutter: false,
+                breadcrumb: false,
+                scroll: false,
+                background: false,
+                title: false,
             },
-            editorProps: {
-                attributes: {
-                    class: 'ai-sidebar__input',
-                    spellcheck: 'false',
-                },
-                handleKeyDown(view, event) {
-                    if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
+            hint: {
+                extend: hintExtend,
+            },
+        });
+
+        protyleInternal = protyle.protyle;
+        wysiwygElement = protyleInternal.wysiwyg!.element;
+
+        wysiwygElement.innerHTML = '';
+        const emptyP = createEmptyParagraph();
+        emptyP.firstElementChild!.classList.add('protyle-wysiwyg--empty');
+        emptyP.firstElementChild!.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
+        wysiwygElement.appendChild(emptyP);
+        updatePlaceholder();
+
+        contentObserver = new MutationObserver(() => {
+            updatePlaceholder();
+            enhanceInlineImageChips();
+            enhanceInlineDocChips();
+            syncInputFromProtyle();
+        });
+        contentObserver.observe(wysiwygElement, { childList: true, characterData: true, subtree: true });
+
+        // 思源只在输入 ": ( 【 （ [ { 「 『 # / 、" 时开启扩展提示（enableExtend），
+        // '@' 不在其列，这里在输入 '@' 时手动开启，使 hint.render 能匹配到 '@' 扩展
+        wysiwygElement.addEventListener('beforeinput', (event: InputEvent) => {
+            if (event.data === '@' && protyleInternal?.hint) {
+                protyleInternal.hint.enableExtend = true;
+            }
+        }, true);
+
+        wysiwygElement.addEventListener('keydown', (event: KeyboardEvent) => {
+            if ((event.key === 'z' || event.key === 'Z' || event.key === 'y' || event.key === 'Y') && (event.ctrlKey || event.metaKey)) {
+                event.stopPropagation();
+            }
+
+            const hintEl = protyleInternal.hint?.element;
+            if (hintEl && !hintEl.classList.contains('fn__none')) {
+                // '@' 文档提示由插件自行处理选择行为（思源 hint.fill 不支持自定义触发字符的插入）
+                if (activeHintKind === 'doc') {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        confirmDocHint();
+                    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        // 复用思源 hint 的上下导航
+                        if (protyleInternal.hint!.select(event, protyleInternal)) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                    }
+                    return;
+                }
+                if (event.key === 'Enter' || event.key.indexOf('Arrow') > -1) {
+                    if (protyleInternal.hint!.select(event, protyleInternal)) {
+                        event.preventDefault();
                         event.stopPropagation();
                     }
+                }
+                return;
+            }
 
-                    const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
-
-                    if (sendMode === 'ctrl+enter') {
-                        if (event.key === 'Enter' && event.ctrlKey) {
-                            event.preventDefault();
-                            if (isLoading) {
-                                abortMessage();
-                            } else {
-                                sendMessage();
-                            }
-                            return true;
-                        }
+            const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
+            if (sendMode === 'ctrl+enter') {
+                if (event.key === 'Enter' && event.ctrlKey && !event.shiftKey) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (isLoading) {
+                        abortMessage();
                     } else {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                            if (showSuggestions) {
-                                return false; 
-                            }
-                            event.preventDefault();
-                            if (isLoading) {
-                                abortMessage();
-                            } else {
-                                sendMessage();
-                            }
-                            return true;
-                        }
+                        sendMessage();
                     }
-                    return false;
-                },
-                handleDrop(view, event, slice, moved) {
-                    const types = Array.from(event.dataTransfer?.types || []);
-                    const isSiyuanDrop = types.some(
-                        type =>
-                            type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
-                            type.startsWith(Constants.SIYUAN_DROP_FILE) ||
-                            type === Constants.SIYUAN_DROP_TAB
-                    );
-                    if (isSiyuanDrop) {
-                        // 阻止 ProseMirror/Tiptap 默认 drop 处理，避免插入多余空行/内容
-                        event.preventDefault();
-                        return true;
+                    return;
+                }
+            } else {
+                if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (isLoading) {
+                        abortMessage();
+                    } else {
+                        sendMessage();
                     }
-                    return false;
-                },
-                handlePaste(view, event) {
-                    handlePaste(event);
-                    return false;
-                },
-                handleClick(view, pos, event) {
-                    const target = event.target as HTMLElement;
-                    if (target.classList.contains('context-document-tag__remove') || target.classList.contains('context-image-tag__remove')) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const tagElement = target.closest('.context-document-tag') || target.closest('.context-image-tag');
-                        if (tagElement) {
-                            const nodePos = view.posAtDOM(tagElement, 0);
-                            view.dispatch(view.state.tr.delete(nodePos, nodePos + 1));
-                            return true;
-                        }
-                    }
-                    return false;
+                    return;
                 }
             }
-        });
+        }, true);
+
+        // 鼠标点击 '@' 提示项：拦截思源 hint 的 click（其 fill 对 '@' 不生效），由插件处理
+        protyleInternal.hint?.element.addEventListener('click', (event: MouseEvent) => {
+            if (activeHintKind !== 'doc') return;
+            const hintEl = protyleInternal.hint?.element;
+            if (!hintEl || hintEl.classList.contains('fn__none')) return;
+            const btnElement = (event.target as HTMLElement).closest('button');
+            if (!btnElement) return;
+            event.preventDefault();
+            event.stopPropagation();
+            confirmDocHint(btnElement.getAttribute('data-id') || '');
+        }, true);
+
+        // 点击内联图片 chip 的删除按钮：移除图片（附件由 MutationObserver 同步移除）。
+        // 捕获阶段拦截，避免触发思源原生图片菜单。
+        wysiwygElement.addEventListener('click', (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('ai-inline-img-chip__remove')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const imgSpan = target.closest('[data-type="img"]');
+                if (imgSpan) {
+                    imgSpan.remove();
+                    syncInputFromProtyle();
+                }
+                return;
+            }
+            // 块引用 chip：点击右侧 × 区域（CSS ::after 绘制）时删除引用；
+            // 其余区域保持思源原生行为（点击打开文档）
+            const refSpan = target.closest('[data-type~="block-ref"]') as HTMLElement | null;
+            if (refSpan && wysiwygElement.contains(refSpan)) {
+                const rect = refSpan.getBoundingClientRect();
+                if (rect.width > 0 && event.clientX >= rect.right - 16) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    refSpan.remove();
+                    syncInputFromProtyle();
+                }
+            }
+        }, true);
+
+        // 拦截编辑器区域的拖放（注册在 .protyle 根元素捕获阶段，先于思源原生 drop/dragover 处理）：
+        // 思源块/文档/图片块 → 上下文或图片附件；操作系统文件 → 附件；标签页 → 网页附件。
+        // 其余内容（如网页 HTML）交给思源原生处理。
+        const shouldInterceptDrop = (event: DragEvent): boolean => {
+            const types = Array.from(event.dataTransfer?.types || []);
+            const hasOsFiles = types.includes('Files');
+            const isSiyuanBlockDrop =
+                !hasOsFiles &&
+                types.some(
+                    type =>
+                        type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                        type.startsWith(Constants.SIYUAN_DROP_FILE)
+                );
+            return isSiyuanBlockDrop || hasOsFiles || types.includes(Constants.SIYUAN_DROP_TAB);
+        };
+        // 阻止思源 dragover 显示块放置指示器（drop 被我们拦截后指示器不会被清理）
+        editorElement.addEventListener('dragover', (event: DragEvent) => {
+            if (!shouldInterceptDrop(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            isDragOver = true;
+        }, true);
+        editorElement.addEventListener('drop', (event: DragEvent) => {
+            if (!shouldInterceptDrop(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            isDragOver = false;
+            handleDrop(event);
+        }, true);
+
+        // 粘贴图片/文件时阻止思源原生粘贴处理（上传为插件附件）；纯文本走思源原生粘贴
+        editorElement.addEventListener('paste', (event: ClipboardEvent) => {
+            handlePaste(event);
+        }, true);
+
+        if (currentInput.trim()) {
+            setProtyleContent(currentInput);
+        }
 
         if (mode === 'dialog' && initialMessage) {
             await tick();
-            editor?.commands.focus();
+            protyle?.focus();
         }
 
 
@@ -2552,8 +2552,11 @@
     });
 
     onDestroy(async () => {
-        if (editor) {
-            editor.destroy();
+        if (contentObserver) {
+            contentObserver.disconnect();
+        }
+        if (protyle) {
+            protyle.destroy();
         }
         // 取消订阅
         if (unsubscribe) {
@@ -2645,20 +2648,6 @@
         }
     }
 
-    // 自动调整textarea高度
-    function autoResizeTextarea() {
-        if (textareaElement) {
-            textareaElement.style.height = 'auto';
-            textareaElement.style.height = Math.min(textareaElement.scrollHeight, 200) + 'px';
-        }
-    }
-
-    // 监听输入变化
-    $: {
-        currentInput;
-        tick().then(autoResizeTextarea);
-    }
-
     // 当消息、多模型响应或选择页签/答案变化时，高亮代码块
     $: {
         // 保持对变量的引用以便 Svelte 触发依赖
@@ -2693,9 +2682,10 @@
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
 
-            // 处理图片
+            // 处理图片：阻止思源原生粘贴处理，上传为插件附件
             if (item.type.startsWith('image/')) {
                 event.preventDefault();
+                event.stopPropagation();
                 const file = item.getAsFile();
                 if (file) {
                     await addImageAttachment(file);
@@ -2703,9 +2693,10 @@
                 return;
             }
 
-            // 处理文件
+            // 处理文件：阻止思源原生粘贴处理，上传为插件附件
             if (item.kind === 'file') {
                 event.preventDefault();
+                event.stopPropagation();
                 const file = item.getAsFile();
                 if (file) {
                     await addFileAttachment(file);
@@ -2724,7 +2715,6 @@
 
         // 先立即显示预览，资源保存在后台进行，减少拖拽后的卡顿感
         const blobUrl = URL.createObjectURL(file);
-        const tempId = 'img_' + Math.random().toString(36).substring(2, 9);
 
         const attachment: MessageAttachment = {
             type: 'image',
@@ -2735,60 +2725,23 @@
         };
         currentAttachments = [...currentAttachments, attachment];
 
-        if (editor) {
-            editor.chain().focus().insertContent([
-                {
-                    type: 'contextImage',
-                    attrs: {
-                        tempId: tempId,
-                        src: blobUrl,
-                        name: file.name,
-                        path: '',
-                        mimeType: file.type
-                    }
-                },
-                {
-                    type: 'text',
-                    text: ' '
-                }
-            ]).run();
+        // 在编辑器中内联显示原生图片（blob URL 可经 Lute 渲染且能存活于 SpinBlockDOM 重渲染），
+        // 附件仍上传到插件资源目录；发送时 blob 图片语法会被替换为文本标记
+        if (protyle && protyleInternal?.lute) {
+            const alt = file.name.replace(/[\[\]]/g, '');
+            protyle.insert(protyleInternal.lute.Md2BlockDOM(`![${alt}](${blobUrl})`));
         }
 
         isUploadingFile = true;
         const saveTask = (async () => {
             try {
                 const assetPath = await saveAsset(file, file.name);
-                
-                // 同时更新附件列表和编辑器节点属性
                 currentAttachments = currentAttachments.map(att =>
                     att.data === blobUrl ? { ...att, path: assetPath } : att
                 );
-
-                if (editor) {
-                    editor.state.doc.descendants((node, pos) => {
-                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
-                            editor.commands.command(({ tr }) => {
-                                tr.setNodeMarkup(pos, undefined, {
-                                    ...node.attrs,
-                                    path: assetPath
-                                });
-                                return true;
-                            });
-                            return false;
-                        }
-                    });
-                }
             } catch (error) {
                 console.error('Add image error:', error);
                 currentAttachments = currentAttachments.filter(att => att.data !== blobUrl);
-                if (editor) {
-                    editor.state.doc.descendants((node, pos) => {
-                        if (node.type.name === 'contextImage' && node.attrs.tempId === tempId) {
-                            editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
-                            return false;
-                        }
-                    });
-                }
                 pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
             }
         })();
@@ -2913,12 +2866,11 @@
         const attachment = currentAttachments[index];
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
 
-        // 如果被删除的附件是图片，且 Tiptap 编辑里有对应的节点，同步从编辑器中删除
-        if (attachment && attachment.type === 'image' && editor) {
-            editor.state.doc.descendants((node, pos) => {
-                if (node.type.name === 'contextImage' && (node.attrs.src === attachment.data || node.attrs.path === attachment.path)) {
-                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
-                }
+        // 图片附件：同步删除编辑器中的内联图片
+        if (attachment && attachment.type === 'image' && wysiwygElement) {
+            wysiwygElement.querySelectorAll(`img[src="${attachment.data}"]`).forEach((img) => {
+                const imgSpan = img.closest('[data-type="img"]');
+                (imgSpan || img).remove();
             });
         }
     }
@@ -4191,13 +4143,25 @@
 
     // 多模型发送消息
     async function sendMultiModelMessage() {
-        // 保存用户输入和附件
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        // 保存用户输入和附件（blob 图片、块引用语法替换为文本标记，内容已通过附件/上下文上传）
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
-        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
-        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const userAttachments = [...currentAttachments];
+        // 上下文文档以数组为准，并合并编辑器中通过 (( 插入的原生块引用
         const userContextDocuments = [...contextDocuments];
+        if (wysiwygElement) {
+            wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
+                const id = el.getAttribute('data-id') || '';
+                if (id && !userContextDocuments.some(doc => doc.id === id)) {
+                    userContextDocuments.push({
+                        id: id,
+                        title: el.textContent || '',
+                        content: '',
+                        type: 'doc',
+                    });
+                }
+            });
+        }
 
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
         if (userContextDocuments.length > 0) {
@@ -4249,8 +4213,8 @@
             messages = [...messages, userMessage];
         }
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = [];
@@ -6023,7 +5987,7 @@
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
         if (!userContent) {
             pushErrMsg('请输入画图提示词');
             isLoading = false;
@@ -6071,8 +6035,8 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = [];
@@ -6278,7 +6242,7 @@
 
     // 发送消息
     async function sendMessage() {
-        if ((!currentInput.trim() && currentAttachments.length === 0) || isLoading) return;
+        if ((!currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0) || isLoading) return;
 
         // 【修复】立即设置加载状态，防止并发点击触发多次发送
         isLoading = true;
@@ -6357,15 +6321,23 @@
         // ask模式：使用 exportMdContent 获取 Markdown 格式
         // edit模式：使用 getBlockKramdown 获取 kramdown 格式（包含块ID信息）
         // agent模式：文档块只传递ID，普通块获取kramdown
-        const editorDocs: { id: string; title: string; type: string; content?: string }[] = [];
-        if (editor) {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument') {
+        // 上下文文档以上下文数组为准（chips 形式），并合并编辑器中通过 (( 插入的原生块引用
+        const editorDocs: { id: string; title: string; type: string; content?: string }[] =
+            contextDocuments.map(doc => ({
+                id: doc.id,
+                title: doc.title,
+                type: doc.type || 'doc',
+                content: doc.content || '',
+            }));
+        if (wysiwygElement) {
+            wysiwygElement.querySelectorAll('[data-type~="block-ref"]').forEach((el) => {
+                const id = el.getAttribute('data-id') || '';
+                if (id && !editorDocs.some(doc => doc.id === id)) {
                     editorDocs.push({
-                        id: node.attrs.id,
-                        title: node.attrs.title,
-                        type: node.attrs.type || 'doc',
-                        content: node.attrs.content || ''
+                        id: id,
+                        title: el.textContent || '',
+                        type: 'doc',
+                        content: ''
                     });
                 }
             });
@@ -6420,11 +6392,9 @@
                 }
             }
         }
-        // 用户消息只保存原始输入（不包含文档内容）
-        const userContent = (editor ? getMarkdownFromEditor(editor) : currentInput).trim();
+        // 用户消息只保存原始输入（不包含文档内容；blob 图片、块引用语法替换为文本标记）
+        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
-        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
-        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const combinedAttachments = [...currentAttachments];
 
         const userMessage: Message = {
@@ -6439,8 +6409,8 @@
 
         messages = [...messages, userMessage];
         currentInput = '';
-        if (editor) {
-            editor.commands.setContent('');
+        if (protyle) {
+            clearProtyle();
         }
         currentAttachments = [];
         contextDocuments = []; // 发送后清空全局上下文
@@ -7848,35 +7818,6 @@
         selectedTabIndex = 0;
 
         pushMsg(i18n('aiSidebarSuccessClearSuccess'));
-    }
-
-    // 处理键盘事件
-    function handleKeydown(e: KeyboardEvent) {
-        const sendMode = settings.sendMessageShortcut || 'ctrl+enter';
-
-        if (sendMode === 'ctrl+enter') {
-            // Ctrl+Enter 发送模式
-            if (e.key === 'Enter' && e.ctrlKey) {
-                e.preventDefault();
-                if (isLoading) {
-                    abortMessage();
-                } else {
-                    sendMessage();
-                }
-                return;
-            }
-        } else {
-            // Enter 发送模式（Shift+Enter 换行）
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (isLoading) {
-                    abortMessage();
-                } else {
-                    sendMessage();
-                }
-                return;
-            }
-        }
     }
 
     // 使用思源内置的Lute渲染markdown为HTML
@@ -9380,56 +9321,12 @@
         }
     }
 
-    // 将 contextDocument 节点插入编辑器，空编辑器时避免留下空段落
-    function insertContextDocumentToEditor(attrs: Record<string, any>) {
-        if (!editor) return;
-        if (editor.isEmpty) {
-            // 空编辑器时直接替换整个文档为一个包含 contextDocument 的段落，彻底避免空行
-            const schema = editor.state.schema;
-            const paragraph = schema.nodes.paragraph;
-            const contextDocument = schema.nodes.contextDocument;
-            if (!paragraph || !contextDocument) {
-                // 兜底：使用链式命令
-                editor
-                    .chain()
-                    .focus()
-                    .insertContentAt(1, [
-                        { type: 'contextDocument', attrs },
-                        { type: 'text', text: ' ' }
-                    ])
-                    .run();
-                return;
-            }
-            const tr = editor.state.tr;
-            const node = paragraph.create(null, [
-                contextDocument.create(attrs),
-                schema.text(' ')
-            ]);
-            tr.replaceWith(0, editor.state.doc.content.size, node);
-            editor.view.dispatch(tr);
-            editor.commands.focus('end');
-        } else {
-            editor
-                .chain()
-                .focus()
-                .insertContent({ type: 'contextDocument', attrs })
-                .insertContent(' ')
-                .run();
-        }
-    }
-
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
-        if (!editor) return;
-
-        let exists = false;
-        try {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
-                    exists = true;
-                }
-            });
-        } catch (e) {}
+        // 已在上下文数组中，或编辑器中已通过 (( 插入该文档引用
+        const exists =
+            contextDocuments.some(doc => doc.id === docId) ||
+            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${docId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessDocumentExists'));
@@ -9443,12 +9340,22 @@
                 content = data?.content || '';
             }
 
-            insertContextDocumentToEditor({
-                id: docId,
-                title: docTitle,
-                content: content,
-                type: 'doc'
-            });
+            contextDocuments = [
+                ...contextDocuments,
+                {
+                    id: docId,
+                    title: docTitle,
+                    content: content,
+                    type: 'doc',
+                },
+            ];
+
+            // 在编辑器中内联显示文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
+            if (protyle) {
+                protyle.insert(
+                    `<span data-type="block-ref" data-id="${docId}" data-subtype="s">${escapeHtml(docTitle)}</span>`
+                );
+            }
 
             isSearchDialogOpen = false;
             searchKeyword = '';
@@ -9552,7 +9459,7 @@
 
             const safeTargetBlockId = targetBlockId.replace(/'/g, "''");
             const blocks = await sql(`
-                SELECT b.id, b.type, b.content, b.root_id, d.content AS root_doc_content
+                SELECT b.id, b.type, b.content, b.markdown, b.root_id, d.content AS root_doc_content
                 FROM blocks b
                 LEFT JOIN blocks d ON d.id = b.root_id AND d.type = 'd'
                 WHERE b.id = '${safeTargetBlockId}'
@@ -9568,10 +9475,19 @@
                     docTitle = block.content || i18n('commonUntitled');
                     await addDocumentToContext(docId, docTitle);
                 } else {
-                    // 普通块：文档标题已在联查中拿到
-                    docTitle = block.root_doc_content || i18n('commonUntitled');
-                    // 添加该块的内容
-                    await addBlockToContext(targetBlockId, docTitle, false);
+                    // 思源没有独立的图片块（图片位于段落块中）：
+                    // 块内容只含图片（可多张）且没有文字时，识别为图片并上传为图片附件
+                    const imageAssetPaths = extractImageOnlyAssetPaths(block.markdown || '');
+                    if (imageAssetPaths.length > 0) {
+                        for (const assetPath of imageAssetPaths) {
+                            await addImageAssetAsAttachment(assetPath);
+                        }
+                    } else {
+                        // 普通块：文档标题已在联查中拿到
+                        docTitle = block.root_doc_content || i18n('commonUntitled');
+                        // 添加该块的内容（块自身内容用于生成 chip 标题预览）
+                        await addBlockToContext(targetBlockId, docTitle, false, block.content || '');
+                    }
                 }
             }
         } catch (error) {
@@ -9580,18 +9496,46 @@
         }
     }
 
-    // 添加块到上下文（而不是整个文档）
-    async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean) {
-        if (!editor) return;
+    // 判断块的 markdown 是否只包含图片（可多张，无文字），
+    // 是则返回全部 assets 图片路径；含文字、无图片或含非 assets 图片时返回空数组
+    function extractImageOnlyAssetPaths(markdown: string): string[] {
+        const imgRe = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+        const paths: string[] = [];
+        let match: RegExpExecArray | null;
+        while ((match = imgRe.exec(markdown)) !== null) {
+            if (!match[1].startsWith('assets/')) {
+                return [];
+            }
+            paths.push(match[1]);
+        }
+        if (paths.length === 0) {
+            return [];
+        }
+        // 移除全部图片语法后不能残留文字内容
+        return markdown.replace(imgRe, '').trim() === '' ? paths : [];
+    }
 
-        let exists = false;
+    // 将 assets 中的图片资源上传为图片附件（走统一的图片附件流程）
+    async function addImageAssetAsAttachment(assetRelPath: string) {
         try {
-            editor.state.doc.descendants((node) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === blockId) {
-                    exists = true;
-                }
-            });
-        } catch (e) {}
+            const blob = await getFileBlob('/data/' + assetRelPath);
+            if (!blob) {
+                throw new Error('read image asset failed: ' + assetRelPath);
+            }
+            const name = assetRelPath.split('/').pop() || 'image.png';
+            const file = new File([blob], name, { type: blob.type || 'image/png' });
+            await addImageAttachment(file);
+        } catch (error) {
+            console.error('Add image block error:', error);
+            pushErrMsg(i18n('aiSidebarErrorsAddImageFailed'));
+        }
+    }
+
+    // 添加块到上下文（而不是整个文档）
+    async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean, blockContent: string = '') {
+        const exists =
+            contextDocuments.some(doc => doc.id === blockId) ||
+            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
 
         if (exists) {
             pushMsg(i18n('aiSidebarSuccessBlockExists'));
@@ -9603,10 +9547,10 @@
             if (isDocOverride === undefined) {
                 const blockInfo = await getBlockByID(blockId);
                 isDoc = blockInfo?.type === 'd'; // 'd' 表示文档块
+                blockContent = blockContent || blockInfo?.content || '';
             }
 
             let content = '';
-            let displayTitle = blockTitle;
 
             if (chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0)) {
                 if (isDoc) {
@@ -9615,52 +9559,41 @@
                     const blockData = await getBlockKramdown(blockId);
                     content = blockData?.kramdown || '';
                 }
-                
-                // 获取Markdown格式用于生成显示标题
-                try {
-                    const mdData = await exportMdContent(blockId, false, false, 2, 0, false);
-                    if (mdData && mdData.content) {
-                        const contentPreview = mdData.content.replace(/\n/g, ' ').trim();
-                        displayTitle =
-                            contentPreview.length > 20
-                                ? contentPreview.substring(0, 20) + '...'
-                                : contentPreview || (isDoc ? '文档内容' : '块内容');
-                    }
-                } catch (error) {
-                    console.warn('获取Markdown预览失败:', error);
-                }
             } else {
                 const data = await exportMdContent(blockId, false, false, 2, 0, false);
                 if (data && data.content) {
-                    const contentPreview = data.content.replace(/\n/g, ' ').trim();
-                    displayTitle =
-                        contentPreview.length > 20
-                            ? contentPreview.substring(0, 20) + '...'
-                            : contentPreview || blockTitle || (isDoc ? '文档内容' : '块内容');
                     content = data.content;
                 }
             }
 
-            insertContextDocumentToEditor({
-                id: blockId,
-                title: displayTitle,
-                content: content,
-                type: isDoc ? 'doc' : 'block'
-            });
+            // 块 chip 只显示块自身内容预览（exportMdContent 会带上 # 文档标题，不可用）；
+            // 文档 chip 才使用文档标题
+            const contentPreview = blockContent.replace(/\n/g, ' ').trim();
+            let displayTitle =
+                contentPreview.length > 20 ? contentPreview.substring(0, 20) + '...' : contentPreview;
+            if (!displayTitle) {
+                displayTitle = isDoc ? blockTitle || '文档内容' : '块内容';
+            }
+
+            contextDocuments = [
+                ...contextDocuments,
+                {
+                    id: blockId,
+                    title: displayTitle,
+                    content: content,
+                    type: isDoc ? 'doc' : 'block',
+                },
+            ];
+
+            // 在编辑器中内联显示块/文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
+            if (protyle) {
+                protyle.insert(
+                    `<span data-type="block-ref" data-id="${blockId}" data-subtype="s">${escapeHtml(displayTitle)}</span>`
+                );
+            }
         } catch (error) {
             console.error('Add block error:', error);
             pushErrMsg(i18n('aiSidebarErrorsAddBlockContentFailed'));
-        }
-    }
-
-    // 删除上下文文档
-    function removeContextDocument(docId: string) {
-        if (editor) {
-            editor.state.doc.descendants((node, pos) => {
-                if (node.type.name === 'contextDocument' && node.attrs.id === docId) {
-                    editor.commands.deleteRange({ from: pos, to: pos + node.nodeSize });
-                }
-            });
         }
     }
 
@@ -9706,64 +9639,68 @@
         if (event.dataTransfer.types.includes('application/multi-model-sort')) {
             return;
         }
+
+        const types = Array.from(event.dataTransfer.types || []);
+        const hasFiles = event.dataTransfer.files && event.dataTransfer.files.length > 0;
+        const isSiyuanBlockDrop =
+            !types.includes('Files') &&
+            types.some(
+                type =>
+                    type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
+                    type.startsWith(Constants.SIYUAN_DROP_FILE)
+            );
+
         event.preventDefault();
         isDragOver = false;
 
         // 处理标准文件拖放
-        const files = event.dataTransfer.files;
-        if (files && files.length > 0) {
-            await addFilesInBatches(Array.from(files));
+        if (hasFiles) {
+            await addFilesInBatches(Array.from(event.dataTransfer.files));
             return;
         }
 
-        const type = event.dataTransfer.types[0];
-        if (!type) return;
+        // 思源块/文档/图片块拖放：块加入上下文，图片块上传为图片附件
+        if (isSiyuanBlockDrop) {
+            let blockIds: string[] = [];
 
-        if (type.startsWith(Constants.SIYUAN_DROP_GUTTER)) {
-            const meta = type.replace(Constants.SIYUAN_DROP_GUTTER, '');
-            const info = meta.split(Constants.ZWSP);
-            console.log('Dropped gutter info:', info);
-            const blockIdStr = info[2];
-            const blockIds = blockIdStr
-                .split(',')
-                .map(id => id.trim())
-                .filter(id => id && id !== '/');
-            // 批量添加到上下文
-            if (blockIds.length > 0) {
-                for (const blockid of blockIds) {
-                    await addItemByBlockId(blockid, false);
-                }
-            }
-        } else if (type.startsWith(Constants.SIYUAN_DROP_FILE)) {
-            // 支持单选和多选拖放
-            const ele: HTMLElement = (window as any).siyuan?.dragElement;
-            if (ele && ele.innerText) {
-                // 获取块ID字符串，可能是单个ID或逗号分隔的多个ID
-                const blockIdStr = ele.innerText;
-
-                // 分割成多个块ID（多选时用逗号分隔）
-                const blockIds = blockIdStr
+            const gutterType = types.find(type => type.startsWith(Constants.SIYUAN_DROP_GUTTER));
+            if (gutterType) {
+                const meta = gutterType.replace(Constants.SIYUAN_DROP_GUTTER, '');
+                const info = meta.split(Constants.ZWSP);
+                const blockIdStr = info[2] || '';
+                blockIds = blockIdStr
                     .split(',')
                     .map(id => id.trim())
                     .filter(id => id && id !== '/');
-
-                // 批量添加到上下文
-                if (blockIds.length > 0) {
-                    for (const blockid of blockIds) {
-                        await addItemByBlockId(blockid, false);
-                        // 恢复文档树节点的透明度
-                        const item: HTMLElement = document.querySelector(
-                            `.file-tree.sy__tree li[data-node-id="${blockid}"]`
-                        );
-                        if (item) {
-                            item.style.opacity = '1';
-                        }
-                    }
+            } else if (types.some(type => type.startsWith(Constants.SIYUAN_DROP_FILE))) {
+                // 支持单选和多选拖放
+                const ele: HTMLElement = (window as any).siyuan?.dragElement;
+                if (ele && ele.innerText) {
+                    blockIds = ele.innerText
+                        .split(',')
+                        .map(id => id.trim())
+                        .filter(id => id && id !== '/');
                 }
+            }
 
+            for (const blockId of blockIds) {
+                await addItemByBlockId(blockId, false);
+                // 恢复文档树节点的透明度
+                const item: HTMLElement = document.querySelector(
+                    `.file-tree.sy__tree li[data-node-id="${blockId}"]`
+                );
+                if (item) {
+                    item.style.opacity = '1';
+                }
+            }
+            if ((window as any).siyuan?.dragElement) {
                 (window as any).siyuan.dragElement = undefined;
             }
-        } else if (event.dataTransfer.types.includes(Constants.SIYUAN_DROP_TAB)) {
+            return;
+        }
+
+        // 处理标签页拖放
+        if (types.includes(Constants.SIYUAN_DROP_TAB)) {
             const data = event.dataTransfer.getData(Constants.SIYUAN_DROP_TAB);
             const payload = JSON.parse(data);
 
@@ -11300,15 +11237,37 @@
             suppressPromptClickOnce = false;
             return;
         }
-        const oldText = editor ? getMarkdownFromEditor(editor) : currentInput;
+        const oldText = protyle ? getMarkdownFromProtyle() : currentInput;
         const newText = prompt.content + '\n' + oldText;
         currentInput = newText;
         isPromptSelectorOpen = false;
         
-        if (editor) {
-            editor.commands.setContent(newText);
-            editor.commands.focus();
-            editor.commands.setTextSelection(prompt.content.length);
+        if (protyle) {
+            setProtyleContent(newText);
+            protyle.focus();
+            // 将光标定位到提示词内容末尾
+            setTimeout(() => {
+                if (!wysiwygElement) return;
+                const selection = window.getSelection();
+                if (!selection) return;
+                const walker = document.createTreeWalker(wysiwygElement, NodeFilter.SHOW_TEXT);
+                let offset = 0;
+                const targetOffset = prompt.content.length;
+                let node: Node | null;
+                while ((node = walker.nextNode())) {
+                    const textNode = node as Text;
+                    const nextOffset = offset + (textNode.textContent?.length || 0);
+                    if (nextOffset >= targetOffset) {
+                        const range = document.createRange();
+                        range.setStart(textNode, Math.max(0, targetOffset - offset));
+                        range.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        break;
+                    }
+                    offset = nextOffset;
+                }
+            }, 0);
         }
     }
 
@@ -16079,7 +16038,7 @@
         {/if}
     </div>
 
-    <!-- 上下文文档和附件列表：只显示非图片文件/网页附件，文档和图片已在编辑器内联显示 -->
+    <!-- 附件列表：只显示非图片文件/网页附件，文档/块和图片已内联显示在编辑器中 -->
     {#if currentAttachments.some(att => att.type !== 'image')}
         <div
             class="ai-sidebar__context-docs"
@@ -16390,7 +16349,7 @@
                     class:b3-button--primary={!isLoading}
                     class:ai-sidebar__send-btn--abort={isLoading}
                     on:click={isLoading ? abortMessage : sendMessage}
-                    disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0}
+                    disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
                     title={isLoading ? '中断生成' : '发送消息'}
                 >
                     {#if isLoading}
@@ -16483,37 +16442,6 @@
                 {plugin}
             />
         </div>
-
-        <!-- Tiptap Suggestions Popup -->
-        {#if showSuggestions}
-            <div class="ai-sidebar__suggestion-popup" style={suggestionStyle}>
-                {#if suggestionList.length > 0}
-                    {#each suggestionList as item, index}
-                        <!-- svelte-ignore a11y-click-events-have-key-events -->
-                        <div
-                            class="ai-sidebar__suggestion-item"
-                            class:ai-sidebar__suggestion-item--selected={index === suggestionSelectedIndex}
-                            on:mousedown|preventDefault|stopPropagation={() => selectSuggestion(item)}
-                        >
-                            {#if suggestionType === 'doc'}
-                                <span class="ai-sidebar__suggestion-icon">📄</span>
-                                <span class="ai-sidebar__suggestion-text">{item.content || item.title || 'Untitled'}</span>
-                            {:else}
-                                <span class="ai-sidebar__suggestion-icon">⚡</span>
-                                <div class="ai-sidebar__suggestion-content">
-                                    <div class="ai-sidebar__suggestion-title">/{item.id} <span class="ai-sidebar__suggestion-name">({item.name})</span></div>
-                                    <div class="ai-sidebar__suggestion-desc">{item.description || ''}</div>
-                                </div>
-                            {/if}
-                        </div>
-                    {/each}
-                {:else}
-                    <div class="ai-sidebar__suggestion-empty">
-                        {suggestionType === 'doc' ? '未找到相关文档' : '未找到相关 Skill'}
-                    </div>
-                {/if}
-            </div>
-        {/if}
 
         <!-- 提示词选择器下拉菜单 -->
         {#if isPromptSelectorOpen}
@@ -18310,54 +18238,6 @@
         &:hover {
             border-color: var(--b3-theme-primary-light);
         }
-    }
-
-    :global(.ai-sidebar__input) {
-        flex: 1;
-        resize: none;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 16px;
-        padding-right: 76px; /* 为发送按钮和上下文指示器留出空间 */
-        font-family: var(--b3-font-family);
-        font-size: 14px;
-        line-height: 1.5;
-        background: transparent;
-        color: var(--b3-theme-on-background);
-        min-height: 80px;
-        max-height: 200px;
-        overflow-y: auto;
-
-        &:focus {
-            outline: none;
-        }
-
-        &:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        &::placeholder {
-            color: var(--b3-theme-on-surface-light);
-        }
-
-    }
-
-    :global(.ai-sidebar__input ul) {
-        list-style-type: disc !important;
-        padding-left: 20px !important;
-        margin: 8px 0 !important;
-    }
-
-    :global(.ai-sidebar__input ol) {
-        list-style-type: decimal !important;
-        padding-left: 20px !important;
-        margin: 8px 0 !important;
-    }
-
-    :global(.ai-sidebar__input li) {
-        margin: 4px 0 !important;
-        display: list-item !important;
     }
 
     .ai-sidebar__context-indicator {
@@ -20680,11 +20560,6 @@
             padding: 6px 10px;
         }
 
-        :global(.ai-sidebar__input) {
-            padding: 10px 14px;
-            padding-right: 70px;
-        }
-
         .ai-sidebar__context-indicator {
             right: 44px;
             bottom: 12px;
@@ -20711,12 +20586,6 @@
         .ai-message__content {
             font-size: 13px;
             padding: 8px 10px;
-        }
-
-        :global(.ai-sidebar__input) {
-            font-size: 13px;
-            padding: 8px 12px;
-            padding-right: 64px;
         }
 
         .ai-sidebar__context-indicator {
@@ -20924,14 +20793,6 @@
         padding: 16px 18px !important;
     }
 
-    .ai-sidebar--fullscreen :global(.ai-sidebar__input) {
-        font-size: 15px !important;
-        padding: 14px 18px !important;
-        padding-right: 52px !important;
-        min-height: 50px !important;
-        max-height: 300px !important;
-    }
-
     .ai-sidebar--fullscreen .ai-sidebar__send-btn {
         width: 40px !important;
         height: 40px !important;
@@ -21048,210 +20909,141 @@
         }
     }
 
-    /* Tiptap Inline Tag styles */
-    :global(.context-document-tag) {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: var(--b3-theme-surface-light);
-        border: 1px solid var(--b3-border-color);
-        color: var(--b3-theme-on-surface);
-        border-radius: 12px;
-        padding: 2px 8px;
-        margin: 2px 4px;
-        font-size: 12px;
-        user-select: none;
-        vertical-align: middle;
-        cursor: pointer;
-        line-height: 1.2;
-
-        .context-document-tag__icon {
-            font-size: 11px;
-        }
-
-        .context-document-tag__title {
-            max-width: 120px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .context-document-tag__remove {
-            cursor: pointer;
-            margin-left: 2px;
-            color: var(--b3-theme-on-surface-light);
-            font-weight: bold;
-            font-size: 12px;
-
-            &:hover {
-                color: var(--b3-theme-error);
-            }
-        }
-
-        &:hover {
-            background: var(--b3-theme-background-light);
-        }
-    }
-
-    :global(.context-image-tag) {
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        background: var(--b3-theme-surface-light) !important;
-        border: 1px solid var(--b3-border-color) !important;
-        color: var(--b3-theme-on-surface) !important;
-        border-radius: 12px !important;
-        padding: 2px 8px !important;
-        margin: 2px 4px !important;
-        font-size: 12px !important;
-        user-select: none !important;
-        vertical-align: middle !important;
-        cursor: pointer !important;
-        line-height: 1.2 !important;
-        box-sizing: border-box !important;
-        height: 22px !important;
-    }
-
-    :global(.context-image-tag:hover) {
-        background: var(--b3-theme-background-light) !important;
-    }
-
-    :global(.context-image-tag__thumb) {
-        width: 16px !important;
-        height: 16px !important;
-        min-width: 16px !important;
-        min-height: 16px !important;
-        max-width: 16px !important;
-        max-height: 16px !important;
-        object-fit: cover !important;
-        border-radius: 4px !important;
-        background: var(--b3-theme-background-light) !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    :global(.context-image-tag__name) {
-        max-width: 120px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        line-height: 1.2 !important;
-    }
-
-    :global(.context-image-tag__remove) {
-        cursor: pointer !important;
-        margin-left: 2px !important;
-        color: var(--b3-theme-on-surface-light) !important;
-        font-weight: bold !important;
-        font-size: 12px !important;
-        display: inline-block !important;
-        vertical-align: middle !important;
-        line-height: 1.2 !important;
-    }
-
-    :global(.context-image-tag__remove:hover) {
-        color: var(--b3-theme-error) !important;
-    }
-
-    /* ProseMirror Placeholder */
-    :global(.ProseMirror p.is-editor-empty:first-child::before) {
-        color: var(--b3-theme-on-surface-light);
-        content: attr(data-placeholder);
-        float: left;
-        height: 0;
-        pointer-events: none;
-    }
-
-    /* Tiptap Suggestion Popup */
-    .ai-sidebar__suggestion-popup {
-        background-color: var(--b3-menu-background);
-        border: 1px solid var(--b3-border-color);
-        border-radius: 8px;
-        box-shadow: var(--b3-dialog-shadow);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        max-height: 200px;
-        width: 280px;
-        padding: 4px;
-    }
-
-    .ai-sidebar__suggestion-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        color: var(--b3-theme-on-surface);
-
-        &.ai-sidebar__suggestion-item--selected, &:hover, &:focus {
-            background-color: var(--b3-list-hover);
-            color: var(--b3-theme-primary);
-        }
-    }
-
-    .ai-sidebar__suggestion-icon {
-        flex-shrink: 0;
-        font-size: 14px;
-    }
-
-    .ai-sidebar__suggestion-text {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ai-sidebar__suggestion-content {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .ai-sidebar__suggestion-title {
-        font-weight: 500;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ai-sidebar__suggestion-name {
-        font-weight: normal;
-        font-size: 11px;
-        color: var(--b3-theme-on-surface-light);
-    }
-
-    .ai-sidebar__suggestion-desc {
-        font-size: 11px;
-        color: var(--b3-theme-on-surface-light);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        margin-top: 2px;
-    }
-
-    .ai-sidebar__suggestion-empty {
-        padding: 8px;
-        text-align: center;
-        color: var(--b3-theme-on-surface-light);
-        font-size: 12px;
-    }
-
-    /* Style override for Tiptap editor wrapper */
+    /* Protyle editor wrapper */
     .ai-sidebar__editor-wrapper {
         flex: 1;
         min-width: 0;
         display: flex;
-        
-        :global(.ProseMirror) {
-            outline: none;
-            width: 100%;
-        }
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg) {
+        outline: none;
+        width: 100%;
+        padding: 6px 8px;
+        box-sizing: border-box;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [contenteditable="true"]) {
+        outline: none;
+    }
+
+    /* 内联图片 chip：将原生 img 压缩为缩略图 + 文件名 + 删除按钮的紧凑标签 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip) {
+        display: inline-flex;
+        align-items: center;
+        vertical-align: middle;
+        max-width: 220px;
+        height: 22px;
+        margin: 0 2px;
+        padding: 1px 6px;
+        box-sizing: border-box;
+        background: var(--b3-theme-surface-light);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 12px;
+        overflow: hidden;
+        user-select: none;
+        line-height: 1.2;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip > span:has(> img)) {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip img) {
+        width: 16px;
+        height: 16px;
+        min-width: 16px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* 隐藏思源原生图片的操作图标/拖拽柄/网络图标记 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__drag),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__title),
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .img__net) {
+        display: none !important;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__name) {
+        font-size: 12px;
+        color: var(--b3-theme-on-surface);
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove) {
+        font-size: 12px;
+        font-weight: bold;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove:hover) {
+        color: var(--b3-theme-error);
+    }
+
+    /* 内联文档/块 chip：原生块引用压缩为 图标 + 标题 + × 的紧凑标签。
+       图标和 × 用 CSS 伪元素绘制，避免往 span 内塞 DOM 被 Lute 重渲染并入锚文本 */
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]) {
+        display: inline-flex;
+        align-items: center;
+        vertical-align: middle;
+        max-width: 220px;
+        height: 22px;
+        margin: 0 2px;
+        padding: 1px 16px 1px 6px;
+        box-sizing: border-box;
+        background: var(--b3-theme-surface-light);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.2;
+        user-select: none;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        position: relative;
+        color: var(--b3-theme-on-surface);
+        text-decoration: none;
+        cursor: default;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::before) {
+        content: '📄';
+        font-size: 11px;
+        margin-right: 3px;
+        flex-shrink: 0;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"][data-ai-doc-type="block"]::before) {
+        content: '🧩';
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::after) {
+        content: '×';
+        position: absolute;
+        right: 5px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-weight: bold;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover::after) {
+        color: var(--b3-theme-error);
     }
 </style>

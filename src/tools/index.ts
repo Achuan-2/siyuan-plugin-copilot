@@ -46,9 +46,6 @@ export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     plugin_task_note_management: {
         tools: [],
     },
-    plugin: {
-        tools: [],
-    },
     other: {
         tools: [
             'read_skill',
@@ -66,9 +63,6 @@ export const TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
  */
 export const QA_TOOL_CATEGORIES: Record<string, { tools: string[] }> = {
     siyuan: {
-        tools: [],
-    },
-    plugin: {
         tools: [],
     },
     plugin_task_note_management: {
@@ -2497,37 +2491,72 @@ export async function initializeMcpTools() {
             ...mappedMcpTools
         );
 
-        // Update TOOL_CATEGORIES and QA_TOOL_CATEGORIES
-        // Group plugin tools, task note management plugin tools and siyuan tools
+        // Clear all previous plugin categories from TOOL_CATEGORIES and QA_TOOL_CATEGORIES
+        for (const key of Object.keys(TOOL_CATEGORIES)) {
+            if (key.startsWith('plugin__') || key === 'plugin') {
+                delete TOOL_CATEGORIES[key];
+            }
+        }
+        for (const key of Object.keys(QA_TOOL_CATEGORIES)) {
+            if (key.startsWith('plugin__') || key === 'plugin') {
+                delete QA_TOOL_CATEGORIES[key];
+            }
+        }
+        TOOL_CATEGORIES.plugin_task_note_management = { tools: [] };
+        QA_TOOL_CATEGORIES.plugin_task_note_management = { tools: [] };
+
+        // Update siyuan tools
+        const siyuanToolNames = filteredMcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
+        TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
+        QA_TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
+
+        // Group plugin tools by plugin name
+        const pluginGroups: Record<string, string[]> = {};
+        const taskNoteManagementTools: string[] = [];
+
+        for (const t of filteredMcpToolsList) {
+            if (t.name.startsWith("plugin__")) {
+                if (t.name.startsWith("plugin__siyuan_plugin_task_note_management__")) {
+                    taskNoteManagementTools.push(t.name);
+                } else {
+                    const parts = t.name.split('__');
+                    if (parts.length >= 2) {
+                        const pluginName = parts[1];
+                        if (pluginName) {
+                            const categoryKey = `plugin__${pluginName}`;
+                            if (!pluginGroups[categoryKey]) {
+                                pluginGroups[categoryKey] = [];
+                            }
+                            pluginGroups[categoryKey].push(t.name);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort tools within each plugin group and assign to categories
         const TASK_NOTE_MANAGEMENT_PREFIX = 'plugin__siyuan_plugin_task_note_management__';
         const TASK_NOTE_MANAGEMENT_ORDER = ['task', 'project', 'habit', 'stats'];
 
-        const taskNoteManagementToolNames = filteredMcpToolsList
-            .filter(t => t.name.startsWith(TASK_NOTE_MANAGEMENT_PREFIX))
-            .map(t => t.name)
-            .sort((a, b) => {
-                const suffixA = a.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
-                const suffixB = b.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
-                const idxA = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixA);
-                const idxB = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixB);
-                if (idxA === -1 && idxB === -1) return 0;
-                if (idxA === -1) return 1;
-                if (idxB === -1) return -1;
-                return idxA - idxB;
-            });
+        taskNoteManagementTools.sort((a, b) => {
+            const suffixA = a.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
+            const suffixB = b.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
+            const idxA = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixA);
+            const idxB = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixB);
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+        });
 
-        const pluginToolNames = filteredMcpToolsList.filter(
-            t => t.name.startsWith("plugin__") && !t.name.startsWith(TASK_NOTE_MANAGEMENT_PREFIX)
-        ).map(t => t.name);
-        const siyuanToolNames = filteredMcpToolsList.filter(t => !t.name.startsWith("plugin__")).map(t => t.name);
+        TOOL_CATEGORIES.plugin_task_note_management = { tools: taskNoteManagementTools };
+        QA_TOOL_CATEGORIES.plugin_task_note_management = { tools: taskNoteManagementTools };
 
-        TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
-        TOOL_CATEGORIES.plugin.tools = pluginToolNames;
-        TOOL_CATEGORIES.plugin_task_note_management.tools = taskNoteManagementToolNames;
-
-        QA_TOOL_CATEGORIES.siyuan.tools = siyuanToolNames;
-        QA_TOOL_CATEGORIES.plugin.tools = pluginToolNames;
-        QA_TOOL_CATEGORIES.plugin_task_note_management.tools = taskNoteManagementToolNames;
+        for (const [categoryKey, tools] of Object.entries(pluginGroups)) {
+            tools.sort();
+            TOOL_CATEGORIES[categoryKey] = { tools };
+            QA_TOOL_CATEGORIES[categoryKey] = { tools };
+        }
 
     } catch (error) {
         console.error("Failed to initialize Siyuan MCP tools:", error);
