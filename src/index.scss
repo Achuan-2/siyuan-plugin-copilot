@@ -263,7 +263,7 @@
 
 /* 重置 Copilot 输入框内 Protyle 编辑器的高度与边距，解决默认高度过高的问题 */
 .ai-sidebar__editor-wrapper {
-  min-height: 36px !important;
+  min-height: 50px !important;
   max-height: 180px !important;
   overflow-y: auto !important;
 }
