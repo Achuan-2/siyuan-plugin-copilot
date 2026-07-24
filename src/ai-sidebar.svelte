@@ -2592,6 +2592,13 @@
             }
         });
 
+        // 阻止移动端 touch 事件从侧栏容器冒泡到思源外层抽屉，防止滑动查看聊天记录时误触发思源移动端侧栏收起
+        if (sidebarContainer) {
+            sidebarContainer.addEventListener('touchstart', handleTouchStopPropagation, { passive: true });
+            sidebarContainer.addEventListener('touchmove', handleTouchStopPropagation, { passive: true });
+            sidebarContainer.addEventListener('touchend', handleTouchStopPropagation, { passive: true });
+        }
+
         // 添加全局点击事件监听器
         document.addEventListener('click', handleClickOutside);
         // 添加全局滚动事件监听器以关闭右键菜单
@@ -2608,6 +2615,12 @@
     });
 
     onDestroy(async () => {
+        if (sidebarContainer) {
+            sidebarContainer.removeEventListener('touchstart', handleTouchStopPropagation);
+            sidebarContainer.removeEventListener('touchmove', handleTouchStopPropagation);
+            sidebarContainer.removeEventListener('touchend', handleTouchStopPropagation);
+        }
+
         if (contentObserver) {
             contentObserver.disconnect();
         }
@@ -2640,6 +2653,11 @@
             await saveCurrentSession(true); // 静默保存，不显示提示
         }
     });
+
+    const handleTouchStopPropagation = (e: TouchEvent) => {
+        // 阻止触摸事件向外冒泡到思源 mobile 侧栏/抽屉容器，防止向下滑动查看聊天记录时误触发思源移动端侧栏收起手势
+        e.stopPropagation();
+    };
 
     // 迁移旧设置到新结构
     function migrateOldSettings() {
@@ -17383,6 +17401,8 @@
         height: 100%;
         background-color: var(--b3-theme-background);
         overflow: hidden;
+        touch-action: pan-y;
+        overscroll-behavior-y: contain;
     }
 
     .ai-sidebar__header {
@@ -17717,6 +17737,8 @@
         flex: 1;
         position: relative;
         overflow-y: auto;
+        touch-action: pan-y;
+        overscroll-behavior-y: contain;
         padding: 12px;
         display: flex;
         flex-direction: column;

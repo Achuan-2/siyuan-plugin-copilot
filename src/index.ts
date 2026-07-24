@@ -425,6 +425,19 @@ export default class PluginSample extends Plugin {
         return 'iconCopilotWebApp';
     }
 
+    /**
+     * 阻止移动端 touch 事件从 Dock DOM 容器冒泡到思源外层抽屉/侧栏，
+     * 防止向下滑动查看聊天记录或内部内容时误触发思源移动端侧栏收起手势。
+     */
+    private preventMobileDockSwipeClose(element: HTMLElement) {
+        const stopTouchPropagation = (e: TouchEvent) => {
+            e.stopPropagation();
+        };
+        element.addEventListener('touchstart', stopTouchPropagation, { passive: true });
+        element.addEventListener('touchmove', stopTouchPropagation, { passive: true });
+        element.addEventListener('touchend', stopTouchPropagation, { passive: true });
+    }
+
     registerWebAppDock(app: any) {
         if (!app.showInSidebar) return;
         const dockType = `webapp-dock-${app.id}`;
@@ -445,6 +458,7 @@ export default class PluginSample extends Plugin {
             },
             type: dockType,
             init: (dock) => {
+                this.preventMobileDockSwipeClose(dock.element);
                 this.initWebAppView(dock.element, app);
             },
             destroy: () => {
@@ -567,6 +581,7 @@ export default class PluginSample extends Plugin {
             },
             type: COLLECTION_DOCK_TYPE,
             init: (dock) => {
+                this.preventMobileDockSwipeClose(dock.element);
                 this.webAppCollectionApp = new WebAppCollectionDock({
                     target: dock.element,
                     props: {
@@ -643,7 +658,7 @@ export default class PluginSample extends Plugin {
         if (enabled) {
             const validIds = new Set((webApps || []).map(app => app.id));
             const filteredIds = (openedAppIds || [])
-                .filter(id => validIds.has(id));
+                .filter(id => id.startsWith('weblink_') || validIds.has(id));
             this.registerWebAppCollectionDock(webApps, filteredIds);
         } else {
             this.removeWebAppCollectionDock();
@@ -713,6 +728,45 @@ export default class PluginSample extends Plugin {
     }
 
     /**
+     * 在集合 Dock 中打开临时网页（侧栏新建临时页签）
+     */
+    async openTempUrlInCollectionDock(url: string) {
+        if (!url) return;
+
+        const tempAppId = "weblink_" + Date.now();
+        let name = "Web Link";
+        try {
+            const urlObj = new URL(url);
+            name = urlObj.hostname || name;
+        } catch (e) {}
+
+        const tempApp = {
+            id: tempAppId,
+            name: name,
+            url: url,
+            icon: "iconCopilotWebApp"
+        };
+
+        const settings = await this.loadSettings();
+        const openedAppIds = new Set(settings.openedWebAppIds || []);
+        openedAppIds.add(tempAppId);
+        settings.openedWebAppIds = Array.from(openedAppIds);
+        await this.saveSettings(settings);
+
+        if (this.webAppCollectionApp) {
+            if (typeof (this.webAppCollectionApp as any).addTempApp === 'function') {
+                (this.webAppCollectionApp as any).addTempApp(tempApp);
+            }
+            this.webAppCollectionApp.$set({
+                openedAppIds: settings.openedWebAppIds
+            });
+            if (typeof (this.webAppCollectionApp as any).openApp === 'function') {
+                (this.webAppCollectionApp as any).openApp(tempAppId);
+            }
+        }
+    }
+
+    /**
      * 关闭集合 Dock 中的指定小程序页签
      */
     async closeWebAppInCollectionDock(appId: string) {
@@ -751,7 +805,7 @@ export default class PluginSample extends Plugin {
         }
     }
 
-    initWebAppView(element: HTMLElement, app: any, tabInstance?: any, showFullscreenButton: boolean = true) {
+    initWebAppView(element: HTMLElement, app: any, tabInstance?: any, showFullscreenButton: boolean = true, isCollectionDock: boolean = false) {
         const pluginInstance = this;
         element.style.display = 'flex';
                 element.style.flexDirection = 'column';
@@ -1576,6 +1630,11 @@ export default class PluginSample extends Plugin {
                             try {
                                 const iconId = await pluginInstance.getOrCreateIconForDomain(newUrl);
                                 try { if (tabInstance?.tab) (tabInstance?.tab as any).icon = iconId; } catch (e) { }
+                                if (isCollectionDock && pluginInstance.webAppCollectionApp) {
+                                    if (typeof (pluginInstance.webAppCollectionApp as any).updateAppIcon === 'function') {
+                                        (pluginInstance.webAppCollectionApp as any).updateAppIcon(app.id, iconId);
+                                    }
+                                }
                                 try {
                                     // 根据当前标签页标题尝试更新 tab header 的 svg
                                     const titleText = (tabInstance?.tab && tabInstance?.tab.title) ? tabInstance?.tab.title : '';
@@ -1614,7 +1673,11 @@ export default class PluginSample extends Plugin {
                         e.preventDefault();
                         const url = e.url;
                         if (url) {
-                            openUrlInNewTab(url);
+                            if (isCollectionDock) {
+                                pluginInstance.openTempUrlInCollectionDock(url);
+                            } else {
+                                openUrlInNewTab(url);
+                            }
                         }
                     });
 
@@ -1632,6 +1695,12 @@ export default class PluginSample extends Plugin {
                         const newTitle = event.title;
                         if (newTitle && tabInstance?.tab && typeof tabInstance?.tab.updateTitle === 'function') {
                             tabInstance?.tab.updateTitle(newTitle);
+                        }
+
+                        if (newTitle && isCollectionDock && pluginInstance.webAppCollectionApp) {
+                            if (typeof (pluginInstance.webAppCollectionApp as any).updateAppTitle === 'function') {
+                                (pluginInstance.webAppCollectionApp as any).updateAppTitle(app.id, newTitle);
+                            }
                         }
 
                         // 更新历史记录的标题
@@ -1760,7 +1829,11 @@ export default class PluginSample extends Plugin {
                         if (msg.startsWith('__SIYUAN_COPILOT_LINK__:')) {
                             const url = msg.substring('__SIYUAN_COPILOT_LINK__:'.length);
                             if (url) {
-                                openUrlInNewTab(url);
+                                if (isCollectionDock) {
+                                    pluginInstance.openTempUrlInCollectionDock(url);
+                                } else {
+                                    openUrlInNewTab(url);
+                                }
                             }
                         }
                     });
@@ -1990,6 +2063,7 @@ export default class PluginSample extends Plugin {
             },
             type: AI_SIDEBAR_TYPE,
             init: (dock) => {
+                this.preventMobileDockSwipeClose(dock.element);
                 this.aiSidebarApp = new AISidebar({
                     target: dock.element,
                     props: {
@@ -2009,6 +2083,15 @@ export default class PluginSample extends Plugin {
         try {
             const settings = await this.loadSettings();
             if (settings?.webApps && Array.isArray(settings.webApps)) {
+                // 清理可能遗留的临时网页 ID
+                if (settings.openedWebAppIds && Array.isArray(settings.openedWebAppIds)) {
+                    const cleanOpenedIds = settings.openedWebAppIds.filter(id => !id.startsWith('weblink_'));
+                    if (cleanOpenedIds.length !== settings.openedWebAppIds.length) {
+                        settings.openedWebAppIds = cleanOpenedIds;
+                        await this.saveSettings(settings);
+                    }
+                }
+
                 for (const app of settings.webApps) {
                     if (app.icon && app.icon.startsWith('data:image')) {
                         this.registerWebAppIcon(app.id, app.icon);
