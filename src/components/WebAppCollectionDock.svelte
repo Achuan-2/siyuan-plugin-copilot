@@ -23,16 +23,38 @@
     // appId -> slot element (passed to initWebAppView)
     const slotMap = new Map<string, HTMLElement>();
 
+    // 内存中保存的临时网页小程序（例如在侧栏内点击链接打开的）
+    let tempWebApps: any[] = [];
+
+    // 合并配置的小程序和临时小程序
+    $: allApps = [...(webApps || []), ...tempWebApps];
+
     // 从 prop 派生当前可见的页签，按 openedAppIds 的顺序排列
     $: visibleApps = (openedAppIds || []).reduce<any[]>((arr, id) => {
-        const app = (webApps || []).find(a => a.id === id);
+        const app = allApps.find(a => a.id === id);
         if (app) arr.push(app);
         return arr;
     }, []);
 
+    // 自动清理不再在 openedAppIds 中的临时小程序
+    $: {
+        const visibleIds = new Set(openedAppIds || []);
+        if (tempWebApps.length > 0) {
+            const nextTemp = tempWebApps.filter(app => visibleIds.has(app.id));
+            if (nextTemp.length !== tempWebApps.length) {
+                tempWebApps = nextTemp;
+            }
+        }
+    }
+
     function getIconId(app: any): string {
-        if (app.icon && app.icon.startsWith('data:image')) {
-            return plugin.getWebAppIconId(app.id);
+        if (app.icon) {
+            if (app.icon.startsWith('data:image')) {
+                return plugin.getWebAppIconId(app.id);
+            }
+            if (app.icon.startsWith('iconWebApp_') || app.icon === 'iconCopilotWebApp') {
+                return app.icon;
+            }
         }
         return 'iconCopilotWebApp';
     }
@@ -62,7 +84,7 @@
         slot.style.flex = '1';
         wrapper.appendChild(slot);
 
-        plugin.initWebAppView(slot, app, undefined, false);
+        plugin.initWebAppView(slot, app, undefined, false, true);
 
         contentArea.appendChild(wrapper);
         slotMap.set(app.id, slot);
@@ -72,9 +94,31 @@
     export function openApp(appId: string) {
         // 该方法由父组件调用，仅负责选中已存在的页签
         // 添加/移除 openedAppIds 的逻辑在父组件中完成
-        const app = (webApps || []).find(a => a.id === appId);
+        const app = allApps.find(a => a.id === appId);
         if (app) {
             selectApp(app);
+        }
+    }
+
+    export function addTempApp(app: any) {
+        if (!tempWebApps.find(a => a.id === app.id)) {
+            tempWebApps = [...tempWebApps, app];
+        }
+    }
+
+    export function updateAppTitle(appId: string, title: string) {
+        const tempApp = tempWebApps.find(a => a.id === appId);
+        if (tempApp) {
+            tempApp.name = title;
+            tempWebApps = [...tempWebApps];
+        }
+    }
+
+    export function updateAppIcon(appId: string, icon: string) {
+        const tempApp = tempWebApps.find(a => a.id === appId);
+        if (tempApp) {
+            tempApp.icon = icon;
+            tempWebApps = [...tempWebApps];
         }
     }
 
@@ -335,7 +379,7 @@
                         <span class="b3-menu__label">管理小程序</span>
                     </button>
                     <div class="b3-menu__separator"></div>
-                    {#each webApps || [] as app (app.id)}
+                    {#each (webApps || []).filter(app => !app.id.startsWith('weblink_')) as app (app.id)}
                         <button
                             class="b3-menu__item webapp-collection__app-menu-item"
                             class:b3-menu__item--selected={activeAppId === app.id}
@@ -358,7 +402,7 @@
                             <span class="b3-menu__label">{app.name}</span>
                         </button>
                     {/each}
-                    {#if (webApps || []).length === 0}
+                    {#if (webApps || []).filter(app => !app.id.startsWith('weblink_')).length === 0}
                         <div class="webapp-collection__app-menu-empty">
                             {i18n('settingsWebAppCollectionDockNoApps') || '暂无小程序'}
                         </div>
@@ -392,16 +436,8 @@
                     class:webapp-collection__tab--drop-after={dragOverAppId === app.id &&
                         dropPosition === 'after'}
                     title={app.name}
-                    role="button"
-                    tabindex="0"
                     draggable="true"
                     on:click={() => selectApp(app)}
-                    on:keydown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            selectApp(app);
-                        }
-                    }}
                     on:dragstart={e => handleDragStart(e, app.id)}
                     on:dragenter={e => handleDragEnter(e, app.id)}
                     on:dragover={e => handleDragOver(e, app.id)}
@@ -446,6 +482,8 @@
         height: 100%;
         overflow: hidden;
         background: var(--b3-theme-background);
+        touch-action: pan-y;
+        overscroll-behavior-y: contain;
     }
 
     .webapp-collection__toolbar {
