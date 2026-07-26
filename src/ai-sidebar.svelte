@@ -1348,6 +1348,42 @@
         updateContextDocumentsForMode();
     }
 
+    /**
+     * 获取上下文文档/块的最新内容
+     * - 如果是 webpage 类型，直接使用已有 content
+     * - 在 agent 模式下，如果 type === 'doc'，不需要直接传输文档全文（仅保留ID供工具读取）
+     * - 优先使用 exportMdContent 获取 Markdown 内容；若失败或无内容，降级使用 getBlockKramdown
+     */
+    async function fetchContextDocContent(doc: { id: string; type?: string; content?: string }): Promise<string> {
+        if (doc.type === 'webpage') {
+            return doc.content || '';
+        }
+
+        if (chatMode === 'agent' && doc.type === 'doc') {
+            return '';
+        }
+
+        try {
+            const data = await exportMdContent(doc.id, false, false, 2, 0, false);
+            if (data && data.content) {
+                return data.content;
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        try {
+            const blockData = await getBlockKramdown(doc.id);
+            if (blockData && blockData.kramdown) {
+                return blockData.kramdown;
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        return doc.content || '';
+    }
+
     // 更新上下文文档内容以匹配当前模式
     async function updateContextDocumentsForMode() {
         if (contextDocuments.length === 0) return;
@@ -1355,34 +1391,7 @@
         const updatedDocs: ContextDocument[] = [];
         for (const doc of contextDocuments) {
             try {
-                let content: string;
-
-                if (doc.type === 'webpage') {
-                    // 网页类型：保持原内容不变（已经获取到内容）
-                    content = doc.content;
-                } else if ((chatMode === 'agent' || chatMode === 'ask') && userToolCount > 0) {
-                    // agent模式或启用工具的问答模式：文档只保留ID，块获取kramdown
-                    if (doc.type === 'doc') {
-                        content = ''; // 文档不保存内容，只保留ID
-                    } else {
-                        // 块获取kramdown格式
-                        const blockData = await getBlockKramdown(doc.id);
-                        if (blockData && blockData.kramdown) {
-                            content = blockData.kramdown;
-                        } else {
-                            content = doc.content; // 保留原内容
-                        }
-                    }
-                } else {
-                    // ask模式：获取Markdown格式
-                    const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                    if (data && data.content) {
-                        content = data.content;
-                    } else {
-                        content = doc.content; // 保留原内容
-                    }
-                }
-
+                const content = await fetchContextDocContent(doc);
                 updatedDocs.push({
                     id: doc.id,
                     title: doc.title,
@@ -1392,7 +1401,6 @@
                 });
             } catch (error) {
                 console.error(`Failed to update content for block ${doc.id}:`, error);
-                // 出错时保留原内容
                 updatedDocs.push(doc);
             }
         }
@@ -1451,18 +1459,7 @@
         const userContextDocs = lastUserMessage.contextDocuments || [];
         for (const doc of userContextDocs) {
             try {
-                let content: string;
-                if ((chatMode === 'agent' || chatMode === 'ask') && userToolCount > 0) {
-                    if (doc.type === 'doc') {
-                        content = '';
-                    } else {
-                        const blockData = await getBlockKramdown(doc.id);
-                        content = (blockData && blockData.kramdown) || doc.content;
-                    }
-                } else {
-                    const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                    content = (data && data.content) || doc.content;
-                }
+                const content = await fetchContextDocContent(doc);
                 contextDocumentsWithLatestContent.push({
                     id: doc.id,
                     title: doc.title,
@@ -1800,9 +1797,7 @@
         const userContextDocs = lastUserMessage.contextDocuments || [];
         for (const doc of userContextDocs) {
             try {
-                let content: string;
-                const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                content = (data && data.content) || doc.content;
+                const content = await fetchContextDocContent(doc);
                 contextDocumentsWithLatestContent.push({
                     id: doc.id,
                     title: doc.title,
@@ -4241,19 +4236,7 @@
         if (userContextDocuments.length > 0) {
             for (const doc of userContextDocuments) {
                 try {
-                    let content: string;
-                    if ((chatMode === 'agent' || chatMode === 'ask') && userToolCount > 0) {
-                        // agent模式或启用工具的问答模式：文档只保留ID，块获取kramdown
-                        if (doc.type === 'doc') {
-                            content = '';
-                        } else {
-                            const blockData = await getBlockKramdown(doc.id);
-                            content = (blockData && blockData.kramdown) || doc.content;
-                        }
-                    } else {
-                        const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                        content = (data && data.content) || doc.content;
-                    }
+                    const content = await fetchContextDocContent(doc);
                     contextDocumentsWithLatestContent.push({
                         id: doc.id,
                         title: doc.title,
@@ -4894,12 +4877,8 @@
                                       ? '网页'
                                       : '块';
 
-                            // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                            if (
-                                (chatMode === 'agent' || chatMode === 'ask') &&
-                                userToolCount > 0 &&
-                                doc.type === 'doc'
-                            ) {
+                            // agent模式下，文档块只传递ID，不传递内容
+                            if (chatMode === 'agent' && doc.type === 'doc') {
                                 return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                             }
 
@@ -5068,7 +5047,7 @@
                                           ? '网页'
                                           : '块';
 
-                                // agent模式：文档块只传递ID，不传递内容
+                                // agent模式下，文档块只传递ID，不传递内容
                                 if (chatMode === 'agent' && doc.type === 'doc') {
                                     return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                                 }
@@ -5144,12 +5123,8 @@
                                           ? '网页'
                                           : '块';
 
-                                // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                                if (
-                                    (chatMode === 'agent' || chatMode === 'ask') &&
-                                    userToolCount > 0 &&
-                                    doc.type === 'doc'
-                                ) {
+                                // agent模式下，文档块只传递ID，不传递内容
+                                if (chatMode === 'agent' && doc.type === 'doc') {
                                     return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                                 }
 
@@ -6022,11 +5997,11 @@
         const result: ContextDocument[] = [];
         for (const doc of sourceDocs) {
             try {
-                const data = await exportMdContent(doc.id, false, false, 2, 0, false);
+                const content = await fetchContextDocContent(doc);
                 result.push({
                     id: doc.id,
                     title: doc.title,
-                    content: data?.content || doc.content,
+                    content: content,
                     type: doc.type,
                 });
             } catch (error) {
@@ -6421,38 +6396,12 @@
         if (editorDocs.length > 0) {
             for (const doc of editorDocs) {
                 try {
-                    let content: string;
-
-                    if ((chatMode === 'agent' || chatMode === 'ask') && userToolCount > 0) {
-                        // agent模式或启用工具的问答模式：文档只传递ID
-                        if (doc.type === 'doc') {
-                            content = '';
-                        } else {
-                            // 普通块获取kramdown格式
-                            const blockData = await getBlockKramdown(doc.id);
-                            if (blockData && blockData.kramdown) {
-                                content = blockData.kramdown;
-                            } else {
-                                // 降级使用缓存内容
-                                content = doc.content || '';
-                            }
-                        }
-                    } else {
-                        // ask模式：获取Markdown格式
-                        const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                        if (data && data.content) {
-                            content = data.content;
-                        } else {
-                            // 降级使用缓存内容
-                            content = doc.content || '';
-                        }
-                    }
-
+                    const content = await fetchContextDocContent(doc);
                     contextDocumentsWithLatestContent.push({
                         id: doc.id,
                         title: doc.title,
                         content: content,
-                        type: doc.type, // 保留类型信息
+                        type: doc.type,
                     });
                 } catch (error) {
                     console.error(`Failed to get latest content for block ${doc.id}:`, error);
@@ -6618,12 +6567,8 @@
                                       ? '网页'
                                       : '块';
 
-                            // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                            if (
-                                (chatMode === 'agent' || chatMode === 'ask') &&
-                                userToolCount > 0 &&
-                                doc.type === 'doc'
-                            ) {
+                            // agent模式下，文档块只传递ID，不传递内容
+                            if (chatMode === 'agent' && doc.type === 'doc') {
                                 return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                             }
 
@@ -6784,12 +6729,8 @@
                                           ? '网页'
                                           : '块';
 
-                                // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                                if (
-                                    (chatMode === 'agent' || chatMode === 'ask') &&
-                                    userToolCount > 0 &&
-                                    doc.type === 'doc'
-                                ) {
+                                // agent模式下，文档块只传递ID，不传递内容
+                                if (chatMode === 'agent' && doc.type === 'doc') {
                                     return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                                 }
 
@@ -6868,12 +6809,8 @@
                                           ? '网页'
                                           : '块';
 
-                                // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                                if (
-                                    (chatMode === 'agent' || chatMode === 'ask') &&
-                                    userToolCount > 0 &&
-                                    doc.type === 'doc'
-                                ) {
+                                // agent模式下，文档块只传递ID，不传递内容
+                                if (chatMode === 'agent' && doc.type === 'doc') {
                                     return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                                 }
 
@@ -9408,11 +9345,7 @@
         }
 
         try {
-            let content = '';
-            if (!(chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0))) {
-                const data = await exportMdContent(docId, false, false, 2, 0, false);
-                content = data?.content || '';
-            }
+            const content = await fetchContextDocContent({ id: docId, type: 'doc' });
 
             contextDocuments = [
                 ...contextDocuments,
@@ -9624,21 +9557,8 @@
                 blockContent = blockContent || blockInfo?.content || '';
             }
 
-            let content = '';
-
-            if (chatMode === 'agent' || (chatMode === 'ask' && userToolCount > 0)) {
-                if (isDoc) {
-                    content = '';
-                } else {
-                    const blockData = await getBlockKramdown(blockId);
-                    content = blockData?.kramdown || '';
-                }
-            } else {
-                const data = await exportMdContent(blockId, false, false, 2, 0, false);
-                if (data && data.content) {
-                    content = data.content;
-                }
-            }
+            const docType = isDoc ? 'doc' : 'block';
+            const content = await fetchContextDocContent({ id: blockId, type: docType, content: blockContent });
 
             // 块 chip 只显示块自身内容预览（exportMdContent 会带上 # 文档标题，不可用）；
             // 文档 chip 才使用文档标题
@@ -12050,17 +11970,7 @@
         const userContextDocs = lastUserMessage.contextDocuments || [];
         for (const doc of userContextDocs) {
             try {
-                let content: string;
-
-                // 问答模式：获取Markdown格式
-                const data = await exportMdContent(doc.id, false, false, 2, 0, false);
-                if (data && data.content) {
-                    content = data.content;
-                } else {
-                    // 降级使用缓存内容
-                    content = doc.content;
-                }
-
+                const content = await fetchContextDocContent(doc);
                 contextDocumentsWithLatestContent.push({
                     id: doc.id,
                     title: doc.title,
@@ -12171,12 +12081,8 @@
                                     : doc.type === 'webpage'
                                       ? '网页'
                                       : '块';
-                            // agent模式或启用工具的问答模式：文档块只传递ID，不传递内容
-                            if (
-                                (chatMode === 'agent' || chatMode === 'ask') &&
-                                userToolCount > 0 &&
-                                doc.type === 'doc'
-                            ) {
+                            // agent模式下，文档块只传递ID，不传递内容
+                            if (chatMode === 'agent' && doc.type === 'doc') {
                                 return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
                             }
                             return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\`\n\n\`\`\`markdown\n${doc.content}\n\`\`\``;
