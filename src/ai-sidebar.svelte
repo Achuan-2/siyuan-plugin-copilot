@@ -61,7 +61,7 @@
     import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
     import { settingsStore } from './stores/settings';
-    import { confirm, Constants, platformUtils } from 'siyuan';
+    import { confirm, Constants, platformUtils, getFrontend } from 'siyuan';
     import { i18n, i18nKey } from './utils/i18n';
     import {
         AVAILABLE_TOOLS,
@@ -639,13 +639,16 @@
 
     // 发送前处理编辑器中取出的 markdown：
     // blob 图片语法替换为 [图片: name] 文本标记（图片内容已通过附件上传）；
-    // 块引用语法 ((id 'title')) 替换为 @<title> 标记（上下文内容随消息单独附带）
+    // 块引用语法 ((id 'title')) 替换为 @[title](siyuan://blocks/id) 思源块链接格式
     function transformEditorMarkdownForSend(text: string): string {
         return text
             .replace(/!\[([^\]]*)\]\(blob:[^)\s]+\)/g, (_match, alt) => `[图片: ${alt}]`)
             .replace(
-                /\(\((\d{14}-[0-9a-z]{7})(?:\s+(['"])(.*?)\2)?\)\)/g,
-                (_match, id, _quote, anchor) => `@<${anchor || id}>`
+                /\(\((\d{14}-[0-9a-z]{7})(?:\s+(?:(['"])(.*?)\2|([^)]+)))?\)\)/g,
+                (_match, id, _quote, anchorQuoted, anchorUnquoted) => {
+                    const anchor = (anchorQuoted || anchorUnquoted || '').trim() || id;
+                    return `@[${anchor}](siyuan://blocks/${id})`;
+                }
             );
     }
 
@@ -3101,6 +3104,63 @@
         } else if (isLoading) {
             // 如果正在加载且用户滚动离开底部，停止自动滚动
             autoScroll = false;
+        }
+    }
+
+    $: isMobile = typeof window !== 'undefined' && (
+        (window as any).siyuan?.config?.system?.container === 'mobile' ||
+        (window as any).siyuan?.mobile ||
+        (typeof getFrontend === 'function' && getFrontend()?.endsWith('mobile'))
+    );
+
+    // 最小化 / 收起 Dock 侧栏或弹窗 (对齐 AgentChat.ts 的 toggleModel 机制)
+    function minimize(event?: Event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        if (!sidebarContainer) return;
+
+        if (isFullscreen) {
+            isFullscreen = false;
+        }
+
+        // 查找包含 copilot / ai-chat-sidebar 的 Dock 按钮，或当前活动状态的 Dock 按钮
+        const dockBtn =
+            (document.querySelector('span.dock__item--active[data-type*="ai-chat-sidebar"]') as HTMLElement) ||
+            (document.querySelector('span.dock__item--active[data-type*="copilot"]') as HTMLElement) ||
+            (document.querySelector('span.dock__item--active') as HTMLElement);
+
+        if (dockBtn) {
+            const dockType = dockBtn.getAttribute('data-type');
+            const layout = (window as any).siyuan?.layout;
+
+            if (dockType && layout) {
+                const dock =
+                    (layout.leftDock?.data?.[dockType] && layout.leftDock) ||
+                    (layout.rightDock?.data?.[dockType] && layout.rightDock) ||
+                    (layout.bottomDock?.data?.[dockType] && layout.bottomDock) ||
+                    null;
+
+                if (dock && typeof dock.toggleModel === 'function') {
+                    dock.toggleModel(dockType, false, true);
+                    return;
+                }
+            }
+
+            // 兜底：取消高亮状态并触发点击
+            dockBtn.classList.remove('dock__item--active', 'dock__item--activefocus');
+            dockBtn.click();
+            return;
+        }
+
+        // 如果在 Dialog 弹窗模式中
+        const dialogClose =
+            (sidebarContainer.closest('.b3-dialog')?.querySelector('.b3-dialog__action[data-type="close"]') as HTMLElement) ||
+            (sidebarContainer.closest('.b3-dialog')?.querySelector('.b3-dialog__action') as HTMLElement);
+        if (dialogClose) {
+            dialogClose.click();
         }
     }
 
@@ -7978,6 +8038,7 @@
                     /```(\w+)?\n([\s\S]*?)```/g,
                     '<pre><code class="language-$1">$2</code></pre>'
                 )
+                .replace(/\[([^\]]+)\]\((siyuan:\/\/blocks\/[^\)]+)\)/g, '<a href="$2">$1</a>')
                 .replace(/\n/g, '<br>');
         } catch (error) {
             console.error('Format message error:', error);
@@ -13231,27 +13292,6 @@
                 on:update={e => handleSessionUpdate(e.detail.sessions)}
                 on:saveToNote={e => handleSaveSessionToNote(e.detail.sessionId)}
             />
-            <button
-                class="b3-button b3-button--text"
-                on:click={copyAsMarkdown}
-                title={i18n('aiSidebarActionsCopyAllChat')}
-            >
-                <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-            </button>
-            <button
-                class="b3-button b3-button--text"
-                on:click={() => openSaveToNoteDialog()}
-                title={i18n('aiSidebarActionsSaveToNote')}
-            >
-                <svg class="b3-button__icon"><use xlink:href="#iconDownload"></use></svg>
-            </button>
-            <button
-                class="b3-button b3-button--text"
-                on:click={clearChat}
-                title={i18n('aiSidebarActionsClear')}
-            >
-                <svg class="b3-button__icon"><use xlink:href="#iconTrashcan"></use></svg>
-            </button>
             <div class="ai-sidebar__open-window-menu-container" style="position: relative;">
                 <button
                     class="b3-button b3-button--text"
@@ -13296,6 +13336,17 @@
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
             </button>
+            {#if !isMobile}
+                <button
+                    class="b3-button b3-button--text ai-sidebar__minimize-btn"
+                    on:click={minimize}
+                    title={i18n('aiSidebarActionsMinimize') || '最小化'}
+                >
+                    <svg class="b3-button__icon">
+                        <use xlink:href="#iconMin"></use>
+                    </svg>
+                </button>
+            {/if}
         </div>
     </div>
 
@@ -16094,9 +16145,6 @@
     >
         <!-- 模式选择 -->
         <div class="ai-sidebar__mode-selector">
-            <label for="chat-mode-select" class="ai-sidebar__mode-label">
-                {i18n('aiSidebarModeLabel')}:
-            </label>
             <select
                 id="chat-mode-select"
                 class="b3-select ai-sidebar__mode-select"
@@ -16114,7 +16162,6 @@
                     on:click={() => (isToolSelectorOpen = !isToolSelectorOpen)}
                     title={i18n('aiSidebarAgentSelectTools')}
                 >
-                    <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
                     <span>{i18n('aiSidebarAgentTools')} ({userToolCount})</span>
                 </button>
             {/if}
@@ -16366,27 +16413,6 @@
                 {:else}
                     <svg class="b3-button__icon"><use xlink:href="#iconUpload"></use></svg>
                 {/if}
-            </button>
-            <button
-                class="b3-button b3-button--text ai-sidebar__weblink-btn"
-                on:click={openWebLinkDialog}
-                disabled={isFetchingWebContent || isLoading}
-                title={i18n('aiSidebarActionsAddWebLink')}
-            >
-                {#if isFetchingWebContent}
-                    <svg class="b3-button__icon ai-sidebar__loading-icon">
-                        <use xlink:href="#iconRefresh"></use>
-                    </svg>
-                {:else}
-                    <svg class="b3-button__icon"><use xlink:href="#iconLink"></use></svg>
-                {/if}
-            </button>
-            <button
-                class="b3-button b3-button--text ai-sidebar__add-current-doc-btn"
-                on:click={addCurrentDocToContext}
-                title={i18n('aiSidebarActionsAddCurrentDoc')}
-            >
-                <svg class="b3-button__icon"><use xlink:href="#iconFile"></use></svg>
             </button>
             <button
                 class="b3-button b3-button--text ai-sidebar__search-btn"
@@ -17309,18 +17335,19 @@
         overflow: hidden;
         touch-action: pan-y;
         overscroll-behavior-y: contain;
+        container-type: inline-size;
     }
 
     .ai-sidebar__header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 12px;
+        padding: 8px clamp(4px, 2cqw, 12px);
         border-bottom: 1px solid var(--b3-border-color);
         flex-shrink: 0;
         min-width: 0; /* 允许在flex布局中缩小 */
         flex-wrap: wrap; /* 允许换行显示 */
-        gap: 8px; /* 添加间距 */
+        gap: clamp(2px, 1.5cqw, 8px); /* 动态适应窗口宽度的间距 */
     }
 
     .ai-sidebar__title {
@@ -17330,7 +17357,7 @@
         color: var(--b3-theme-on-background);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: clamp(2px, 1cqw, 8px);
         flex-shrink: 1; /* 标题可以缩小 */
         min-width: 0; /* 允许标题缩小 */
     }
@@ -17345,9 +17372,14 @@
     .ai-sidebar__actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: clamp(1px, 1.2cqw, 6px); /* 随着侧栏/窗口变小，按钮间距自动收缩 */
         flex-wrap: wrap; /* 在窄宽度下换行 */
         justify-content: flex-end;
+
+        :global(.b3-button--text) {
+            padding: 4px clamp(2px, 0.8cqw, 6px);
+            min-width: auto;
+        }
     }
 
     .ai-sidebar__open-window-menu-container {
@@ -18140,17 +18172,10 @@
     .ai-sidebar__mode-selector {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         padding: 4px 0;
         flex-wrap: wrap;
         min-width: 0;
-    }
-
-    .ai-sidebar__mode-label {
-        font-size: 13px;
-        color: var(--b3-theme-on-surface);
-        font-weight: 500;
-        flex-shrink: 0;
     }
 
     .ai-sidebar__mode-select {
@@ -18195,9 +18220,15 @@
     .ai-sidebar__multi-model-selector-wrapper {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         flex: 1;
         justify-content: flex-end;
+    }
+
+    @media (max-width: 768px) {
+        :global(.ai-sidebar__minimize-btn) {
+            display: none !important;
+        }
     }
 
     .ai-sidebar__input-row {
@@ -18345,7 +18376,6 @@
     }
 
     .ai-sidebar__upload-btn,
-    .ai-sidebar__weblink-btn,
     .ai-sidebar__search-btn {
         flex-shrink: 0;
     }
@@ -20900,7 +20930,7 @@
         display: flex;
         border-radius: 12px;
         overflow: hidden;
-        min-height: 36px;
+        min-height: 75px;
         max-height: 180px;
         overflow-y: auto;
     }
@@ -20921,7 +20951,7 @@
         box-sizing: border-box;
         font-size: 14px;
         line-height: 1.5;
-        min-height: 24px !important;
+        min-height: 75px !important;
         max-height: 180px !important;
         overflow-y: auto !important;
     }

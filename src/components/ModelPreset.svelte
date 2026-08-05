@@ -1746,7 +1746,6 @@
                                 class="b3-button b3-button--text model-settings-tool-selector__trigger"
                                 on:click={() => (isToolSelectorOpen = true)}
                             >
-                                <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
                                 <span>
                                     {i18n('aiSidebarAgentSelectTools') || '选择工具'}
                                     ({getPresetToolCount(tempSelectedTools)})

@@ -634,9 +634,6 @@
         on:click|stopPropagation={() => (isOpen = !isOpen)}
         title={enableMultiModel ? i18n('multiModelTitle') : fullModelName}
     >
-        <svg class="b3-button__icon">
-            <use xlink:href="#iconLayout"></use>
-        </svg>
         <span class="multi-model-selector__label">
             {#if enableMultiModel}
                 {#if selectedModels.length > 0}
