@@ -13340,7 +13340,7 @@
                 <button
                     class="b3-button b3-button--text ai-sidebar__minimize-btn"
                     on:click={minimize}
-                    title={i18n('aiSidebarActionsMinimize') || '最小化'}
+                    title={i18n('aiSidebarActionsMinimize')}
                 >
                     <svg class="b3-button__icon">
                         <use xlink:href="#iconMin"></use>
@@ -16169,21 +16169,8 @@
             <!-- 模型选择器（问答模式：支持单选/多选切换；其他模式：仅单选） -->
             {#if chatMode === 'ask'}
                 <div class="ai-sidebar__multi-model-selector-wrapper">
-                    {#if !enableMultiModel && (showThinkingToggle || showWebSearchToggle)}
+                    {#if !enableMultiModel && showThinkingToggle}
                         <div class="ai-sidebar__thinking-toggle-container">
-                            {#if showWebSearchToggle}
-                                <button
-                                    class="ai-sidebar__thinking-toggle b3-button b3-button--text"
-                                    class:ai-sidebar__thinking-toggle--active={isWebSearchModeEnabled}
-                                    on:click={toggleWebSearchMode}
-                                    title={isWebSearchModeEnabled
-                                        ? i18n('webSearchEnabled')
-                                        : i18n('webSearchDisabled')}
-                                    disabled={!currentProvider || !currentModelId}
-                                >
-                                    🌐
-                                </button>
-                            {/if}
                             {#if showThinkingToggle}
                                 <button
                                     class="ai-sidebar__thinking-toggle b3-button b3-button--text"
@@ -16228,21 +16215,8 @@
                 </div>
             {:else}
                 <div class="ai-sidebar__model-selector-container">
-                    {#if chatMode !== 'draw' && (showThinkingToggle || showWebSearchToggle)}
+                    {#if chatMode !== 'draw' && showThinkingToggle}
                         <div class="ai-sidebar__thinking-toggle-container">
-                            {#if showWebSearchToggle}
-                                <button
-                                    class="ai-sidebar__thinking-toggle b3-button b3-button--text"
-                                    class:ai-sidebar__thinking-toggle--active={isWebSearchModeEnabled}
-                                    on:click={toggleWebSearchMode}
-                                    title={isWebSearchModeEnabled
-                                        ? i18n('webSearchEnabled')
-                                        : i18n('webSearchDisabled')}
-                                    disabled={!currentProvider || !currentModelId}
-                                >
-                                    🌐
-                                </button>
-                            {/if}
                             {#if showThinkingToggle}
                                 <button
                                     class="ai-sidebar__thinking-toggle b3-button b3-button--text"
