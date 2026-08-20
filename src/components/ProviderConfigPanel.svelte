@@ -28,6 +28,10 @@
     let showAdvancedConfig = false; // 控制高级设置是否显示
     let customBodyErrors: { [modelId: string]: string | null } = {}; // 跟踪每个模型的 JSON 验证错误
     let showCustomBodyForModel: { [modelId: string]: boolean } = {}; // 控制每个模型的自定义参数折叠/展开
+    let showConfigForModel: { [modelId: string]: boolean } = {}; // 控制每个模型的完整配置折叠/展开
+    let draggedModelId: string | null = null;
+    let dragOverModelId: string | null = null;
+    let modelDropPosition: 'before' | 'after' | null = null;
     let currentChatInterface = getDefaultChatInterface(providerId);
 
     const chatInterfaceOptions = [
@@ -343,6 +347,83 @@
             config.models = [...config.models];
             dispatch('change');
         }
+    }
+
+    function toggleModelConfig(modelId: string) {
+        showConfigForModel = {
+            ...showConfigForModel,
+            [modelId]: !showConfigForModel[modelId],
+        };
+    }
+
+    function resetModelDragState() {
+        draggedModelId = null;
+        dragOverModelId = null;
+        modelDropPosition = null;
+    }
+
+    function updateModelDropPosition(event: DragEvent, targetModelId: string) {
+        if (!draggedModelId || draggedModelId === targetModelId) {
+            dragOverModelId = null;
+            modelDropPosition = null;
+            return;
+        }
+
+        const target = event.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        dragOverModelId = targetModelId;
+        modelDropPosition = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    }
+
+    function handleModelDragStart(event: DragEvent, modelId: string) {
+        draggedModelId = modelId;
+        dragOverModelId = null;
+        modelDropPosition = null;
+
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', modelId);
+            const modelItem = (event.currentTarget as HTMLElement).closest('.model-item');
+            if (modelItem instanceof HTMLElement) {
+                event.dataTransfer.setDragImage(modelItem, 24, 24);
+            }
+        }
+    }
+
+    function handleModelDragOver(event: DragEvent, targetModelId: string) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        updateModelDropPosition(event, targetModelId);
+    }
+
+    function handleModelDrop(event: DragEvent, targetModelId: string) {
+        event.preventDefault();
+        updateModelDropPosition(event, targetModelId);
+
+        if (!draggedModelId || draggedModelId === targetModelId || !modelDropPosition) {
+            resetModelDragState();
+            return;
+        }
+
+        const reorderedModels = [...config.models];
+        const draggedIndex = reorderedModels.findIndex(model => model.id === draggedModelId);
+        if (draggedIndex === -1) {
+            resetModelDragState();
+            return;
+        }
+
+        const [draggedModel] = reorderedModels.splice(draggedIndex, 1);
+        const targetIndex = reorderedModels.findIndex(model => model.id === targetModelId);
+        if (targetIndex === -1) {
+            resetModelDragState();
+            return;
+        }
+
+        const insertIndex = targetIndex + (modelDropPosition === 'after' ? 1 : 0);
+        reorderedModels.splice(insertIndex, 0, draggedModel);
+        config.models = reorderedModels;
+        dispatch('change');
+        resetModelDragState();
     }
 
     // 过滤并排序模型 - 支持空格分隔的多关键词搜索
@@ -757,10 +838,51 @@
             {#if filteredAddedModels.length === 0}
                 <div class="model-search-empty">{i18n('modelsNoMatch')}</div>
             {/if}
-            {#each filteredAddedModels as model}
-                <div class="model-item">
-                    <div class="model-item__header">
-                        <span class="model-item__name">{model.name}</span>
+            {#each filteredAddedModels as model (model.id)}
+                <div
+                    class="model-item"
+                    class:model-item--dragging={draggedModelId === model.id}
+                    class:model-item--drop-before={dragOverModelId === model.id &&
+                        modelDropPosition === 'before'}
+                    class:model-item--drop-after={dragOverModelId === model.id &&
+                        modelDropPosition === 'after'}
+                    on:dragover={e => handleModelDragOver(e, model.id)}
+                    on:drop={e => handleModelDrop(e, model.id)}
+                >
+                    <div
+                        class="model-item__header"
+                        class:model-item__header--expanded={showConfigForModel[model.id]}
+                    >
+                        <div class="model-item__header-main">
+                            <div
+                                class="model-item__drag-handle"
+                                draggable="true"
+                                role="button"
+                                tabindex="0"
+                                title={i18n('modelsDragToSort')}
+                                aria-label={i18n('modelsDragToSort')}
+                                on:dragstart|stopPropagation={e =>
+                                    handleModelDragStart(e, model.id)}
+                                on:dragend={resetModelDragState}
+                            >
+                                <svg><use xlink:href="#iconDrag"></use></svg>
+                            </div>
+                            <button
+                                type="button"
+                                class="model-item__toggle"
+                                aria-expanded={showConfigForModel[model.id] || false}
+                                on:click={() => toggleModelConfig(model.id)}
+                            >
+                                <svg class="b3-button__icon">
+                                    <use
+                                        xlink:href={showConfigForModel[model.id]
+                                            ? '#iconDown'
+                                            : '#iconRight'}
+                                    ></use>
+                                </svg>
+                                <span class="model-item__name">{model.name}</span>
+                            </button>
+                        </div>
                         <button
                             class="b3-button b3-button--text b3-button--error"
                             on:click={() => removeModel(model.id)}
@@ -771,7 +893,8 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="model-item__config">
+                    {#if showConfigForModel[model.id]}
+                        <div class="model-item__config">
                         <div class="model-config-item">
                             <span>{i18n('modelsTemperature')}: {model.temperature}</span>
                             <input
@@ -798,7 +921,7 @@
                         </div>
                         <div class="model-config-item">
                             <span>{i18n('modelsCapabilities')}</span>
-                            <div class="model-capabilities">
+                                <div class="model-capabilities">
                                 <label class="">
                                     <input
                                         type="checkbox"
@@ -894,7 +1017,7 @@
                                         🌐 {i18n('modelsWebSearch')}
                                     </span>
                                 </label>
-                            </div>
+                                </div>
                         </div>
                         <!-- 自定义参数设置（所有平台都显示，默认折叠） -->
                         <div class="model-config-item">
@@ -957,7 +1080,8 @@
                                 </div>
                             {/if}
                         </div>
-                    </div>
+                        </div>
+                    {/if}
                 </div>
             {/each}
         </div>
@@ -1244,19 +1368,98 @@
         border-radius: 6px;
         padding: 12px;
         margin-bottom: 12px;
+        position: relative;
+        transition: border-color 0.15s ease, opacity 0.15s ease;
+
+        &--dragging {
+            opacity: 0.4;
+        }
+
+        &--drop-before::before,
+        &--drop-after::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--b3-theme-primary);
+            border-radius: 2px;
+            box-shadow: 0 0 4px var(--b3-theme-primary);
+        }
+
+        &--drop-before::before {
+            top: -2px;
+        }
+
+        &--drop-after::after {
+            bottom: -2px;
+        }
     }
 
     .model-item__header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 12px;
+        gap: 8px;
+
+        &--expanded {
+            margin-bottom: 12px;
+        }
+    }
+
+    .model-item__header-main {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .model-item__toggle {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+        padding: 2px 0;
+        color: var(--b3-theme-on-background);
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+
+        .b3-button__icon {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+    }
+
+    .model-item__drag-handle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        color: var(--b3-theme-on-surface-light);
+        cursor: grab;
+
+        &:active {
+            cursor: grabbing;
+        }
+
+        svg {
+            width: 16px;
+            height: 16px;
+        }
     }
 
     .model-item__name {
         font-size: 14px;
         font-weight: 600;
         color: var(--b3-theme-on-background);
+        overflow-wrap: anywhere;
     }
 
     .model-item__config {
