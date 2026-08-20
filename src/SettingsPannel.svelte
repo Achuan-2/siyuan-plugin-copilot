@@ -528,6 +528,14 @@ description: 描述这个 Skill 的功能
     let dragOverIndex: number | null = null;
     let dragSourceIndex: number | null = null;
     let dragSourceId: string | null = null;
+    let platformTouchDragTimer: ReturnType<typeof setTimeout> | null = null;
+    let platformTouchDragActive = false;
+    let platformTouchPointerId: number | null = null;
+    let platformTouchStartX = 0;
+    let platformTouchStartY = 0;
+
+    const PLATFORM_TOUCH_DRAG_DELAY = 350;
+    const PLATFORM_TOUCH_MOVE_THRESHOLD = 8;
 
     // 平台右键菜单状态
     let contextMenuPlatformId: string | null = null;
@@ -626,31 +634,32 @@ description: 描述这个 Skill 的功能
         }
     }
 
-    // 处理拖拽结束
-    function handleDragEnd() {
+    function resetPlatformDragState() {
         dragOverIndex = null;
         dragSourceIndex = null;
         dragSourceId = null;
     }
 
-    // 处理放置
-    function handleDrop(e: DragEvent, targetIndex: number) {
-        if (platformSearchQuery.trim()) {
+    // 处理拖拽结束
+    function handleDragEnd() {
+        resetPlatformDragState();
+    }
+
+    function reorderPlatforms(sourceIndex: number, targetIndex: number) {
+        if (
+            sourceIndex === targetIndex ||
+            sourceIndex < 0 ||
+            targetIndex < 0 ||
+            sourceIndex >= allProviderOptions.length ||
+            targetIndex >= allProviderOptions.length
+        ) {
             return;
         }
-        e.preventDefault();
-        dragOverIndex = null;
 
-        if (dragSourceIndex === null || dragSourceIndex === targetIndex) {
-            return;
-        }
-
-        // 重新排序
         const items = [...allProviderOptions];
-        const [removed] = items.splice(dragSourceIndex, 1);
+        const [removed] = items.splice(sourceIndex, 1);
         items.splice(targetIndex, 0, removed);
 
-        // 保存新顺序
         const newOrder = items.map(p => p.id);
         settings = {
             ...settings,
@@ -664,10 +673,102 @@ description: 描述这个 Skill 的功能
         pushMsg(i18n('platformReorderSuccess') || '平台顺序已更新');
     }
 
+    // 处理放置
+    function handleDrop(e: DragEvent, targetIndex: number) {
+        if (platformSearchQuery.trim()) {
+            return;
+        }
+        e.preventDefault();
+        if (dragSourceIndex === null || dragSourceIndex === targetIndex) {
+            resetPlatformDragState();
+            return;
+        }
+
+        reorderPlatforms(dragSourceIndex, targetIndex);
+        resetPlatformDragState();
+    }
+
     // 处理拖拽悬停（防止默认行为）
     function handleDragOver(e: DragEvent) {
         e.preventDefault();
         e.dataTransfer!.dropEffect = 'move';
+    }
+
+    function clearPlatformTouchDragTimer() {
+        if (platformTouchDragTimer !== null) {
+            clearTimeout(platformTouchDragTimer);
+            platformTouchDragTimer = null;
+        }
+    }
+
+    function handlePlatformPointerDown(event: PointerEvent, index: number, providerId: string) {
+        if (event.pointerType !== 'touch' || platformSearchQuery.trim()) return;
+
+        event.preventDefault();
+        clearPlatformTouchDragTimer();
+        platformTouchPointerId = event.pointerId;
+        platformTouchStartX = event.clientX;
+        platformTouchStartY = event.clientY;
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+        platformTouchDragTimer = setTimeout(() => {
+            platformTouchDragTimer = null;
+            platformTouchDragActive = true;
+            dragSourceIndex = index;
+            dragSourceId = providerId;
+            dragOverIndex = null;
+            navigator.vibrate?.(20);
+        }, PLATFORM_TOUCH_DRAG_DELAY);
+    }
+
+    function handlePlatformPointerMove(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== platformTouchPointerId) return;
+
+        event.preventDefault();
+        if (!platformTouchDragActive) {
+            const movedDistance = Math.hypot(
+                event.clientX - platformTouchStartX,
+                event.clientY - platformTouchStartY
+            );
+            if (movedDistance > PLATFORM_TOUCH_MOVE_THRESHOLD) {
+                clearPlatformTouchDragTimer();
+            }
+            return;
+        }
+
+        const element = document.elementFromPoint(event.clientX, event.clientY);
+        const target = element?.closest<HTMLElement>('.platform-item[data-platform-index]');
+        const targetIndex = Number(target?.dataset.platformIndex);
+        dragOverIndex = Number.isInteger(targetIndex) && targetIndex !== dragSourceIndex
+            ? targetIndex
+            : null;
+    }
+
+    function finishPlatformTouchDrag(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== platformTouchPointerId) return;
+
+        event.preventDefault();
+        clearPlatformTouchDragTimer();
+        if (
+            platformTouchDragActive &&
+            dragSourceIndex !== null &&
+            dragOverIndex !== null
+        ) {
+            reorderPlatforms(dragSourceIndex, dragOverIndex);
+        }
+
+        platformTouchDragActive = false;
+        platformTouchPointerId = null;
+        resetPlatformDragState();
+    }
+
+    function cancelPlatformTouchDrag(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== platformTouchPointerId) return;
+
+        clearPlatformTouchDragTimer();
+        platformTouchDragActive = false;
+        platformTouchPointerId = null;
+        resetPlatformDragState();
     }
 
     function handleProviderChange() {
@@ -1277,6 +1378,7 @@ description: 描述这个 Skill 的功能
     onDestroy(() => {
         document.removeEventListener('click', closePlatformContextMenu);
         window.removeEventListener('blur', closePlatformContextMenu);
+        clearPlatformTouchDragTimer();
         if (platformLayoutObserver) {
             platformLayoutObserver.disconnect();
             platformLayoutObserver = null;
@@ -1562,6 +1664,7 @@ description: 描述这个 Skill 的功能
                             {#each displayedProviderOptions as item (item.platform.id)}
                                 <div
                                     class="platform-item"
+                                    data-platform-index={item.index}
                                     class:platform-item--selected={selectedProviderId ===
                                         item.platform.id}
                                     class:platform-item--dragging={dragSourceIndex === item.index}
@@ -1573,7 +1676,6 @@ description: 描述这个 Skill 的功能
                                         item.index &&
                                         dragSourceIndex !== null &&
                                         dragSourceIndex < item.index}
-                                    draggable={!isMobileLayout && !platformSearchQuery.trim()}
                                     on:click={() => {
                                         selectedProviderId = item.platform.id;
                                         handleProviderSelect();
@@ -1586,15 +1688,10 @@ description: 描述这个 Skill 的功能
                                             openMobileModelPanel();
                                         }
                                     }}
-                                    on:dragstart={e =>
-                                        !isMobileLayout &&
-                                        !platformSearchQuery.trim() &&
-                                        handleDragStart(e, item.index, item.platform.id)}
                                     on:dragenter={() =>
                                         !isMobileLayout &&
                                         !platformSearchQuery.trim() &&
                                         handleDragEnter(item.index)}
-                                    on:dragend={handleDragEnd}
                                     on:dragover={e =>
                                         !isMobileLayout &&
                                         !platformSearchQuery.trim() &&
@@ -1609,7 +1706,29 @@ description: 描述这个 Skill 的功能
                                     tabindex="0"
                                     title={`${platformSearchQuery.trim() ? '搜索中暂不支持拖拽排序' : '拖动以排序'} · ${i18n('commonDelete') || '删除'}：右键`}
                                 >
-                                    <div class="platform-item__drag-handle">
+                                    <div
+                                        class="platform-item__drag-handle"
+                                        draggable={!isMobileLayout && !platformSearchQuery.trim()}
+                                        role="button"
+                                        tabindex="0"
+                                        title={platformSearchQuery.trim()
+                                            ? '搜索中暂不支持拖拽排序'
+                                            : '拖动以排序'}
+                                        on:click|stopPropagation
+                                        on:dragstart|stopPropagation={e =>
+                                            handleDragStart(e, item.index, item.platform.id)}
+                                        on:dragend={handleDragEnd}
+                                        on:pointerdown={e =>
+                                            handlePlatformPointerDown(
+                                                e,
+                                                item.index,
+                                                item.platform.id
+                                            )}
+                                        on:pointermove={handlePlatformPointerMove}
+                                        on:pointerup={finishPlatformTouchDrag}
+                                        on:pointercancel={cancelPlatformTouchDrag}
+                                        on:contextmenu|preventDefault|stopPropagation
+                                    >
                                         <svg class="b3-button__icon">
                                             <use xlink:href="#iconDrag"></use>
                                         </svg>
@@ -2476,6 +2595,10 @@ description: 描述这个 Skill 的功能
         opacity: 0.4;
         transition: opacity 0.2s;
         flex-shrink: 0;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        touch-action: none;
 
         &:hover {
             opacity: 0.8;
@@ -2697,7 +2820,11 @@ description: 描述这个 Skill 的功能
         }
 
         .platform-item__drag-handle {
-            display: none;
+            display: flex;
+            width: 28px;
+            height: 32px;
+            margin-left: -6px;
+            opacity: 0.65;
         }
 
         :global(.platform-main--mobile-open .provider-config) {

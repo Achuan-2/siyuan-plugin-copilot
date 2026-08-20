@@ -32,7 +32,15 @@
     let draggedModelId: string | null = null;
     let dragOverModelId: string | null = null;
     let modelDropPosition: 'before' | 'after' | null = null;
+    let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
+    let touchDragActive = false;
+    let touchDragPointerId: number | null = null;
+    let touchDragStartX = 0;
+    let touchDragStartY = 0;
     let currentChatInterface = getDefaultChatInterface(providerId);
+
+    const TOUCH_DRAG_DELAY = 350;
+    const TOUCH_DRAG_MOVE_THRESHOLD = 8;
 
     const chatInterfaceOptions = [
         { value: 'openai-completion', label: 'OpenAI Completion' },
@@ -362,6 +370,34 @@
         modelDropPosition = null;
     }
 
+    function clearTouchDragTimer() {
+        if (touchDragTimer !== null) {
+            clearTimeout(touchDragTimer);
+            touchDragTimer = null;
+        }
+    }
+
+    function reorderModel(
+        sourceModelId: string,
+        targetModelId: string,
+        dropPosition: 'before' | 'after'
+    ) {
+        if (sourceModelId === targetModelId) return;
+
+        const reorderedModels = [...config.models];
+        const draggedIndex = reorderedModels.findIndex(model => model.id === sourceModelId);
+        if (draggedIndex === -1) return;
+
+        const [draggedModel] = reorderedModels.splice(draggedIndex, 1);
+        const targetIndex = reorderedModels.findIndex(model => model.id === targetModelId);
+        if (targetIndex === -1) return;
+
+        const insertIndex = targetIndex + (dropPosition === 'after' ? 1 : 0);
+        reorderedModels.splice(insertIndex, 0, draggedModel);
+        config.models = reorderedModels;
+        dispatch('change');
+    }
+
     function updateModelDropPosition(event: DragEvent, targetModelId: string) {
         if (!draggedModelId || draggedModelId === targetModelId) {
             dragOverModelId = null;
@@ -400,29 +436,86 @@
         event.preventDefault();
         updateModelDropPosition(event, targetModelId);
 
-        if (!draggedModelId || draggedModelId === targetModelId || !modelDropPosition) {
-            resetModelDragState();
+        if (draggedModelId && modelDropPosition) {
+            reorderModel(draggedModelId, targetModelId, modelDropPosition);
+        }
+        resetModelDragState();
+    }
+
+    function updateTouchModelDropPosition(clientX: number, clientY: number) {
+        const element = document.elementFromPoint(clientX, clientY);
+        const target = element?.closest<HTMLElement>('.model-item[data-model-id]');
+        const targetModelId = target?.dataset.modelId;
+
+        if (!target || !targetModelId || targetModelId === draggedModelId) {
+            dragOverModelId = null;
+            modelDropPosition = null;
             return;
         }
 
-        const reorderedModels = [...config.models];
-        const draggedIndex = reorderedModels.findIndex(model => model.id === draggedModelId);
-        if (draggedIndex === -1) {
-            resetModelDragState();
+        const rect = target.getBoundingClientRect();
+        dragOverModelId = targetModelId;
+        modelDropPosition = clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    }
+
+    function handleModelPointerDown(event: PointerEvent, modelId: string) {
+        if (event.pointerType !== 'touch') return;
+
+        event.preventDefault();
+        clearTouchDragTimer();
+        touchDragPointerId = event.pointerId;
+        touchDragStartX = event.clientX;
+        touchDragStartY = event.clientY;
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+        touchDragTimer = setTimeout(() => {
+            touchDragTimer = null;
+            touchDragActive = true;
+            draggedModelId = modelId;
+            dragOverModelId = null;
+            modelDropPosition = null;
+            navigator.vibrate?.(20);
+        }, TOUCH_DRAG_DELAY);
+    }
+
+    function handleModelPointerMove(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== touchDragPointerId) return;
+
+        event.preventDefault();
+        if (!touchDragActive) {
+            const movedDistance = Math.hypot(
+                event.clientX - touchDragStartX,
+                event.clientY - touchDragStartY
+            );
+            if (movedDistance > TOUCH_DRAG_MOVE_THRESHOLD) {
+                clearTouchDragTimer();
+            }
             return;
         }
 
-        const [draggedModel] = reorderedModels.splice(draggedIndex, 1);
-        const targetIndex = reorderedModels.findIndex(model => model.id === targetModelId);
-        if (targetIndex === -1) {
-            resetModelDragState();
-            return;
+        updateTouchModelDropPosition(event.clientX, event.clientY);
+    }
+
+    function finishModelTouchDrag(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== touchDragPointerId) return;
+
+        event.preventDefault();
+        clearTouchDragTimer();
+        if (touchDragActive && draggedModelId && dragOverModelId && modelDropPosition) {
+            reorderModel(draggedModelId, dragOverModelId, modelDropPosition);
         }
 
-        const insertIndex = targetIndex + (modelDropPosition === 'after' ? 1 : 0);
-        reorderedModels.splice(insertIndex, 0, draggedModel);
-        config.models = reorderedModels;
-        dispatch('change');
+        touchDragActive = false;
+        touchDragPointerId = null;
+        resetModelDragState();
+    }
+
+    function cancelModelTouchDrag(event: PointerEvent) {
+        if (event.pointerType !== 'touch' || event.pointerId !== touchDragPointerId) return;
+
+        clearTouchDragTimer();
+        touchDragActive = false;
+        touchDragPointerId = null;
         resetModelDragState();
     }
 
@@ -841,6 +934,7 @@
             {#each filteredAddedModels as model (model.id)}
                 <div
                     class="model-item"
+                    data-model-id={model.id}
                     class:model-item--dragging={draggedModelId === model.id}
                     class:model-item--drop-before={dragOverModelId === model.id &&
                         modelDropPosition === 'before'}
@@ -864,6 +958,10 @@
                                 on:dragstart|stopPropagation={e =>
                                     handleModelDragStart(e, model.id)}
                                 on:dragend={resetModelDragState}
+                                on:pointerdown={e => handleModelPointerDown(e, model.id)}
+                                on:pointermove={handleModelPointerMove}
+                                on:pointerup={finishModelTouchDrag}
+                                on:pointercancel={cancelModelTouchDrag}
                             >
                                 <svg><use xlink:href="#iconDrag"></use></svg>
                             </div>
@@ -1444,6 +1542,10 @@
         flex-shrink: 0;
         color: var(--b3-theme-on-surface-light);
         cursor: grab;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
 
         &:active {
             cursor: grabbing;
