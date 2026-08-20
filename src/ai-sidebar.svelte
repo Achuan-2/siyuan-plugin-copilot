@@ -7792,7 +7792,7 @@
     }
 
     // 复制对话为Markdown
-    function copyAsMarkdown() {
+    async function copyAsMarkdown() {
         const markdown = messages
             .filter(msg => msg.role !== 'system')
             .map(msg => {
@@ -7803,15 +7803,13 @@
             })
             .join('\n---\n\n');
 
-        navigator.clipboard
-            .writeText(markdown)
-            .then(() => {
-                pushMsg(i18n('aiSidebarSuccessCopyMarkdownSuccess'));
-            })
-            .catch(err => {
-                pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
-                console.error('Copy failed:', err);
-            });
+        try {
+            await platformUtils.writeText(markdown);
+            pushMsg(i18n('aiSidebarSuccessCopyMarkdownSuccess'));
+        } catch (err) {
+            pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
+            console.error('Copy failed:', err);
+        }
     }
 
     // 清空对话
@@ -8478,27 +8476,25 @@
                     copyButton.title = '复制代码';
 
                     // 添加复制功能
-                    copyButton.addEventListener('click', () => {
+                    copyButton.addEventListener('click', async () => {
                         const code = codeElement.textContent || '';
-                        navigator.clipboard
-                            .writeText(code)
-                            .then(() => {
-                                // 显示复制成功提示
-                                pushMsg('已复制');
-                                // 更新按钮图标
+                        try {
+                            await platformUtils.writeText(code);
+                            // 显示复制成功提示
+                            pushMsg('已复制');
+                            // 更新按钮图标
+                            copyButton.innerHTML =
+                                '<svg><use xlink:href="#iconCheck"></use></svg>';
+                            copyButton.classList.add('copied');
+                            setTimeout(() => {
                                 copyButton.innerHTML =
-                                    '<svg><use xlink:href="#iconCheck"></use></svg>';
-                                copyButton.classList.add('copied');
-                                setTimeout(() => {
-                                    copyButton.innerHTML =
-                                        '<svg><use xlink:href="#iconCopy"></use></svg>';
-                                    copyButton.classList.remove('copied');
-                                }, 2000);
-                            })
-                            .catch(err => {
-                                console.error('Copy failed:', err);
-                                pushErrMsg('复制失败');
-                            });
+                                    '<svg><use xlink:href="#iconCopy"></use></svg>';
+                                copyButton.classList.remove('copied');
+                            }, 2000);
+                        } catch (err) {
+                            console.error('Copy failed:', err);
+                            pushErrMsg('复制失败');
+                        }
                     });
 
                     // 组装工具栏
@@ -8636,17 +8632,15 @@
     }
 
     // 复制单条消息
-    function copyMessage(content: string | MessageContent[]) {
+    async function copyMessage(content: string | MessageContent[]) {
         const textContent = typeof content === 'string' ? content : getMessageText(content);
-        navigator.clipboard
-            .writeText(textContent)
-            .then(() => {
-                pushMsg(i18n('aiSidebarSuccessCopySuccess'));
-            })
-            .catch(err => {
-                pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
-                console.error('Copy failed:', err);
-            });
+        try {
+            await platformUtils.writeText(textContent);
+            pushMsg(i18n('aiSidebarSuccessCopySuccess'));
+        } catch (err) {
+            pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
+            console.error('Copy failed:', err);
+        }
     }
 
     // 处理复制事件，将选中的HTML内容转换为Markdown
@@ -9083,6 +9077,10 @@
         messageType: 'user' | 'assistant',
         isMultiModel = false
     ) {
+        // 移动端长按文本会触发 contextmenu；保留浏览器原生行为，才能显示
+        // 文本划选手柄和系统复制菜单。插件自定义菜单仅供桌面端右键使用。
+        if (isMobile) return;
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -15077,6 +15075,7 @@
             <div
                 class="ai-message ai-message--assistant ai-message--streaming"
                 on:contextmenu={e => {
+                    if (isMobile) return;
                     e.preventDefault();
                     e.stopPropagation();
                 }}
