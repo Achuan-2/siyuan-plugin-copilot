@@ -364,6 +364,8 @@
     "platformApiUrlPlaceholder": "Enter custom API URL",
     "platformBuiltInAchuan": "A API",
     "platformBuiltInAchuanDescription": "Providing stable and reliable API direct connection relay services for OpenAI ChatGPT, Gemini, Claude, Deepseek, Grok, etc.",
+    "platformBuiltInApimart": "APIMart",
+    "platformBuiltInApimartDescription": "APIMart is a low-cost API platform for AI image & video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video. Pay-as-you-go with no monthly fee.",
     "platformBuiltInDeepseek": "DeepSeek",
     "platformBuiltInGemini": "Gemini",
     "platformBuiltInMinimax": "MiniMax",

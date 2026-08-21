@@ -364,6 +364,8 @@
     "platformApiUrlPlaceholder": "输入自定义 API 地址",
     "platformBuiltInAchuan": "A API",
     "platformBuiltInAchuanDescription": "为您提供稳定可靠的Openai ChatGPT、Gemini、Claude、Deepseek、Grok等API直连中转服务，支持GPT image、nanobanana等生图模型（gemini-3-pro-image-preview）。人民币:美刀=0.6:1，注册即送$0.2试用额度。",
+    "platformBuiltInApimart": "APIMart",
+    "platformBuiltInApimartDescription": "APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费，注册即可开用。",
     "platformBuiltInDeepseek": "DeepSeek",
     "platformBuiltInGemini": "Gemini",
     "platformBuiltInMinimax": "MiniMax",

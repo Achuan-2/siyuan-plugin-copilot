@@ -2546,7 +2546,7 @@ export default class PluginSample extends Plugin {
             } else if (settings.aiProviders) {
                 // 检查是否真正有配置了模型的用户（排除首次安装的默认空配置）
                 let hasActualModels = false;
-                const builtInProviders = ['Achuan', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'minimax'];
+                const builtInProviders = ['apimart', 'Achuan', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'minimax'];
 
                 // 检查内置平台是否有实际配置的模型
                 for (const providerId of builtInProviders) {

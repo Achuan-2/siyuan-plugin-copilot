@@ -27,6 +27,7 @@
     }
 
     const builtInProviderNames: Record<string, string> = {
+        apimart: i18n('platformBuiltInApimart'),
         Achuan: i18n('platformBuiltInAchuan'),
         gemini: i18n('platformBuiltInGemini'),
         deepseek: i18n('platformBuiltInDeepseek'),
@@ -102,6 +103,8 @@
                 if (orderA !== undefined && orderB !== undefined) {
                     return orderA - orderB;
                 }
+                if (a.id === 'apimart') return -1;
+                if (b.id === 'apimart') return 1;
                 if (orderA !== undefined) return -1;
                 if (orderB !== undefined) return 1;
                 return 0;

@@ -48,6 +48,12 @@ export interface CustomProviderConfig extends ProviderConfig {
 export const getDefaultSettings = () => ({
     // AI 设置 - 新的多平台多模型结构
     aiProviders: {
+        apimart: {
+            apiKey: '',
+            customApiUrl: '',
+            models: [],
+            enabled: true,
+        },
         Achuan: {
             apiKey: '',
             customApiUrl: '',
@@ -94,8 +100,8 @@ export const getDefaultSettings = () => ({
         disabledBuiltInProviders: [] as string[],
         providerOrder: [] as string[]
     } as Record<string, any>,
-    selectedProviderId: 'openai' as string,  // 设置面板中选中的平台
-    currentProvider: 'openai' as string,      // 对话中当前使用的平台
+    selectedProviderId: 'apimart' as string,  // 设置面板中选中的平台
+    currentProvider: 'apimart' as string,      // 对话中当前使用的平台
     currentModelId: '' as string,
     drawProvider: '' as string,               // 画图模式单独记忆的当前平台
     drawModelId: '' as string,                // 画图模式单独记忆的当前模型

@@ -2748,6 +2748,7 @@
             // 创建新的提供商结构
             if (!settings.aiProviders) {
                 settings.aiProviders = {
+                    apimart: { apiKey: '', customApiUrl: '', models: [] },
                     gemini: { apiKey: '', customApiUrl: '', models: [] },
                     deepseek: { apiKey: '', customApiUrl: '', models: [] },
                     openai: { apiKey: '', customApiUrl: '', models: [] },
@@ -2790,6 +2791,10 @@
         }
 
         // 兼容新增内置平台
+        if (settings.aiProviders && !settings.aiProviders.apimart) {
+            settings.aiProviders.apimart = { apiKey: '', customApiUrl: '', models: [] };
+        }
+
         if (settings.aiProviders && !settings.aiProviders.minimax) {
             settings.aiProviders.minimax = { apiKey: '', customApiUrl: '', models: [] };
         }
@@ -4183,6 +4188,7 @@
 
     function findFirstImageGenerationModel() {
         const builtInProviders = [
+            'apimart',
             'Achuan',
             'gemini',
             'deepseek',

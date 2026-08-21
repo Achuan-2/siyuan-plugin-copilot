@@ -175,9 +175,9 @@
                 return s;
             }
 
-            // 规则2：以 '/' 结尾，去掉 /v1 前缀
-            if (endsWithSlash) {
-                return s + '/messages';
+            // 规则2：以 '/' 结尾，或以 /v1 结尾：去掉 /v1 前缀
+            if (endsWithSlash || /\/v1$/i.test(s)) {
+                return s.replace(/\/+$/, '') + '/messages';
             }
 
             // 规则4：默认情况，拼接完整路径
@@ -194,9 +194,9 @@
             return s;
         }
 
-        // 规则2：以 '/' 结尾，去掉 /v1 前缀
-        if (endsWithSlash) {
-            return s + '/chat/completions';
+        // 规则2：以 '/' 结尾，或以 /v1 结尾：去掉 /v1 前缀
+        if (endsWithSlash || /\/v1$/i.test(s)) {
+            return s.replace(/\/+$/, '') + '/chat/completions';
         }
 
         // 规则4：默认情况，拼接完整路径
@@ -630,6 +630,11 @@
                         </a>
                     {/if}
                 </div>
+                {#if providerId === 'apimart'}
+                    <div class="provider-description">
+                        {i18n('platformBuiltInApimartDescription')}
+                    </div>
+                {/if}
                 {#if providerId === 'Achuan'}
                     <div class="provider-description">
                         {i18n('platformBuiltInAchuanDescription')}

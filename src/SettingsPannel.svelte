@@ -485,6 +485,7 @@ description: 描述这个 Skill 的功能
     }
 
     const builtInProviderNames: Record<string, string> = {
+        apimart: i18n('platformBuiltInApimart'),
         Achuan: i18n('platformBuiltInAchuan'),
         gemini: i18n('platformBuiltInGemini'),
         openai: i18n('platformBuiltInOpenai'),
@@ -496,6 +497,7 @@ description: 描述这个 Skill 的功能
 
     // 内置平台的默认 API 地址
     const builtInProviderDefaultUrls: Record<string, string> = {
+        apimart: 'https://api.apimart.ai',
         Achuan: 'https://gpt.achuan-2.top/',
         gemini: 'https://generativelanguage.googleapis.com',
         deepseek: 'https://api.deepseek.com',
@@ -507,6 +509,7 @@ description: 描述这个 Skill 的功能
 
     // 内置平台的官网链接
     const builtInProviderWebsites: Record<string, string> = {
+        apimart: 'https://go.apimart.ai/gh-slidesci',
         Achuan: 'https://gpt.achuan-2.top/register?aff=ZndO',
         gemini: 'https://aistudio.google.com/apikey',
         deepseek: 'https://platform.deepseek.com/',
@@ -1009,13 +1012,15 @@ description: 描述这个 Skill 的功能
         if (savedOrder.length > 0) {
             // 创建ID到位置的映射
             const orderMap = new Map(savedOrder.map((id, index) => [id, index]));
-            // 按顺序排序，未在顺序中的放到最后
+            // 按顺序排序，未在顺序中的放到最后（apimart 默认优先排在第一位）
             allProviders.sort((a, b) => {
                 const orderA = orderMap.get(a.id);
                 const orderB = orderMap.get(b.id);
                 if (orderA !== undefined && orderB !== undefined) {
                     return orderA - orderB;
                 }
+                if (a.id === 'apimart') return -1;
+                if (b.id === 'apimart') return 1;
                 if (orderA !== undefined) return -1;
                 if (orderB !== undefined) return 1;
                 return 0;
@@ -1392,6 +1397,7 @@ description: 描述这个 Skill 的功能
         // 确保 aiProviders 存在
         if (!settings.aiProviders) {
             settings.aiProviders = {
+                apimart: { apiKey: '', customApiUrl: '', models: [], enabled: true },
                 gemini: { apiKey: '', customApiUrl: '', models: [], enabled: true },
                 deepseek: { apiKey: '', customApiUrl: '', models: [], enabled: true },
                 openai: { apiKey: '', customApiUrl: '', models: [], enabled: true },
@@ -1407,6 +1413,7 @@ description: 描述这个 Skill 的功能
 
         // 确保每个内置平台都存在（支持旧配置升级）
         const builtInPlatformIds = [
+            'apimart',
             'Achuan',
             'gemini',
             'deepseek',
@@ -1455,11 +1462,16 @@ description: 描述这个 Skill 的功能
         // 确保 providerOrder 数组存在
         if (!settings.aiProviders.providerOrder) {
             settings.aiProviders.providerOrder = [];
+        } else if (
+            settings.aiProviders.providerOrder.length > 0 &&
+            !settings.aiProviders.providerOrder.includes('apimart')
+        ) {
+            settings.aiProviders.providerOrder.unshift('apimart');
         }
 
         // 恢复选中的平台ID（仅用于设置面板显示）
         // 优先使用 selectedProviderId，如果不存在则使用 currentProvider 作为初始值
-        selectedProviderId = settings.selectedProviderId || settings.currentProvider || 'openai';
+        selectedProviderId = settings.selectedProviderId || settings.currentProvider || 'apimart';
 
         // 确保 selectedProviderId 设置被保存
         if (!settings.selectedProviderId) {

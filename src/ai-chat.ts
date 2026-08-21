@@ -186,7 +186,7 @@ export interface ModelInfo {
     provider: string;
 }
 
-export type AIProvider = 'gemini' | 'deepseek' | 'openai' | 'moonshot' | 'volcano' | 'Achuan' | 'minimax' | 'custom';
+export type AIProvider = 'apimart' | 'openai' | 'gemini' | 'deepseek'  | 'moonshot' | 'volcano' | 'Achuan' | 'minimax' | 'custom';
 export type ChatInterfaceType = 'openai-completion' | 'gemini' | 'anthropic';
 
 export function getDefaultChatInterface(provider: string): ChatInterfaceType {
@@ -232,6 +232,14 @@ interface ProviderConfig {
 
 // 预定义的AI平台配置
 const PROVIDER_CONFIGS: Record<AIProvider, ProviderConfig> = {
+    apimart: {
+        name: 'APIMart',
+        baseUrl: 'https://api.apimart.ai',
+        modelsEndpoint: '/v1/models',
+        chatEndpoint: '/v1/chat/completions',
+        apiKeyHeader: 'Authorization',
+        websiteUrl: 'https://go.apimart.ai/gh-slidesci'
+    },
     gemini: {
         name: 'Gemini',
         baseUrl: 'https://generativelanguage.googleapis.com',
@@ -350,9 +358,9 @@ function getBaseUrlAndEndpoint(
         }
     }
 
-    // 规则2：以 '/' 结尾，去掉 /v1 前缀，保留后续路径
-    if (trimmedUrl.endsWith('/')) {
-        const baseUrl = trimmedUrl.slice(0, -1); // 移除 '/'
+    // 规则2：以 '/' 或 '/v1' 结尾，去掉 /v1 前缀，保留后续路径
+    if (trimmedUrl.endsWith('/') || /\/v1$/i.test(normalizedUrl)) {
+        const baseUrl = normalizedUrl;
         const endpoint = defaultEndpoint.startsWith('/v1')
             ? defaultEndpoint.substring(3) // 去掉 /v1，例如 /v1/models -> /models
             : defaultEndpoint;
@@ -636,7 +644,7 @@ export async function fetchModels(
     useForwardProxy?: boolean,
     chatInterface?: ChatInterfaceType // 根据不同的平台接口，走不同的 API Key 认证方式
 ): Promise<ModelInfo[]> {
-    const isBuiltIn = ['gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const fallbackProviderName = isBuiltIn ? config.name : provider;
 
@@ -2288,7 +2296,7 @@ export async function chat(
     customApiUrl?: string,
     advancedConfig?: AdvancedProviderConfig
 ): Promise<void> {
-    const isBuiltIn = ['gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const chatInterface = advancedConfig?.chatInterface || getDefaultChatInterface(provider);
 
@@ -2470,7 +2478,7 @@ export async function generateImage(
     customApiUrl?: string,
     useForwardProxy?: boolean
 ): Promise<ImageGenerationResult> {
-    const isBuiltIn = ['gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
 
     const isGeminiPreview = provider === 'gemini' && (options.model.includes('image-preview') || options.model.includes('image'));
