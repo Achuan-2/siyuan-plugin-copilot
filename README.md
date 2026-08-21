@@ -1,10 +1,14 @@
 <img alt="image" src="https://assets.b3logfile.com/siyuan/1610205759005/assets/image-20260118224558-e1kdo6x.png" />
 
-插件GitHub地址：[https://github.com/Achuan-2/siyuan-plugin-copilot](https://github.com/Achuan-2/siyuan-plugin-copilot)
+## 🙏 赞助商
+
+| Logo | 说明 |
+| --- | --- |
+| ![17873186772188803ff9ca56b8aefe5fa96dcb51eb47d-20260821211408-jzsp68c.jpg](https://fastly.jsdelivr.net/gh/Achuan-2/PicBed@pic/assets/17873186772188803ff9ca56b8aefe5fa96dcb51eb47d-20260821211408-jzsp68c.jpg) | 感谢 APIMart 赞助了本项目！APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费，通过此[注册链接](https://go.apimart.ai/gh-slidesci)注册即可开用。 |
 
 ## 📝开发背景
 
-思源笔记自带的AI功能比较弱，我经常需要向AI咨询各种问题，每次需要用AI根据我的笔记内容做出解答，总是要复制粘贴到其他AI软件，并且一个AI的回答往往不能令我满意，所以我经常会把同一个问题复制粘贴去询问不同AI模型，非常麻烦。
+我经常需要向AI咨询各种问题，每次需要用AI根据我的笔记内容做出解答，总是要复制粘贴到其他AI软件，并且一个AI的回答往往不能令我满意，所以我经常会把同一个问题复制粘贴去询问不同AI模型，非常麻烦。
 
 于是我自己在思源笔记里开发了一个AI插件
 
