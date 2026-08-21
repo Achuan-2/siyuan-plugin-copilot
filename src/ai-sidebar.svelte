@@ -389,6 +389,7 @@
 
     export let plugin: any;
     export let initialMessage: string = ''; // 初始消息
+    export let initialSessionId: string = ''; // 初始会话ID
     export let mode: 'sidebar' | 'dialog' = 'sidebar'; // 使用模式：sidebar或dialog
     export let respondToGlobalActions: boolean = false; // 是否响应全局事件（仅标签页实例）
 
@@ -2247,8 +2248,11 @@
         // 加载小程序设置
         webApps = settings.webApps || [];
 
-        // 如果有系统提示词，添加到消息列表
-        if (getBaseSystemPrompt()) {
+        // 如果传入了初始会话ID，加载该会话
+        if (initialSessionId) {
+            await doLoadSession(initialSessionId);
+        } else if (getBaseSystemPrompt()) {
+            // 如果有系统提示词，添加到消息列表
             messages = [{ role: 'system', content: getBaseSystemPrompt() }];
         }
 
@@ -2605,6 +2609,8 @@
         document.addEventListener('copy', handleCopyEvent);
         // 监听文档总结事件
         window.addEventListener('copilot-summarize-doc', handleSummarizeDoc as EventListener);
+        // 监听从侧栏等处请求在页签加载会话的事件
+        window.addEventListener('copilot-open-tab-session', handleOpenTabSession as EventListener);
         // 监听提示词更新事件（多实例同步）
         window.addEventListener(PROMPTS_SYNC_EVENT, handlePromptsUpdated as EventListener);
 
@@ -2638,6 +2644,8 @@
         document.removeEventListener('copy', handleCopyEvent);
         // 移除文档总结事件监听器
         window.removeEventListener('copilot-summarize-doc', handleSummarizeDoc as EventListener);
+        // 移除在页签加载会话的事件监听器
+        window.removeEventListener('copilot-open-tab-session', handleOpenTabSession as EventListener);
         // 移除提示词更新事件监听器
         window.removeEventListener(PROMPTS_SYNC_EVENT, handlePromptsUpdated as EventListener);
 
@@ -9475,6 +9483,15 @@
         sendMessage();
     }
 
+    // 处理在页签加载指定会话事件
+    async function handleOpenTabSession(event: CustomEvent<{ sessionId: string }>) {
+        if (!respondToGlobalActions) return;
+        const targetSessionId = event.detail?.sessionId;
+        if (targetSessionId) {
+            await loadSession(targetSessionId);
+        }
+    }
+
     // 处理文档总结事件（从右键菜单触发）
     async function handleSummarizeDoc(event: CustomEvent) {
         const { docId } = event.detail;
@@ -10064,10 +10081,14 @@
     }
 
     async function doLoadSession(sessionId: string) {
-        const sessionMetadata = sessions.find(s => s.id === sessionId);
-        if (sessionMetadata) {
-            try {
-                // 加载完整内容 (使用 getFileBlob 因为 saveData 路径不一致，或者由于前缀问题)
+        if (!sessionId) return;
+        let sessionMetadata = sessions.find(s => s.id === sessionId);
+        if (!sessionMetadata) {
+            await loadSessions();
+            sessionMetadata = sessions.find(s => s.id === sessionId);
+        }
+        try {
+            // 加载完整内容 (使用 getFileBlob 因为 saveData 路径不一致，或者由于前缀问题)
                 // 或者继续使用 loadData 但它是相对的。
                 // 如果我们用 putFile 存了，我们也应该用对应的 read 方式。
                 const path = `/data/storage/petal/siyuan-plugin-copilot/sessions/${sessionId}.json`;
@@ -10314,7 +10335,6 @@
                 console.error('Failed to load session content:', e);
                 pushErrMsg('加载会话失败');
             }
-        }
     }
 
     async function newSession() {
@@ -10936,14 +10956,20 @@
     }
 
     // 在页签打开
-    function openInTab() {
-        plugin.openAITab();
+    async function openInTab() {
+        if (messages.filter(m => m.role !== 'system').length > 0) {
+            await saveCurrentSession(true);
+        }
+        plugin.openAITab(currentSessionId);
         showOpenWindowMenu = false;
     }
 
     // 在新窗口打开
-    function openInNewWindow() {
-        plugin.openAIWindow();
+    async function openInNewWindow() {
+        if (messages.filter(m => m.role !== 'system').length > 0) {
+            await saveCurrentSession(true);
+        }
+        plugin.openAIWindow(currentSessionId);
         showOpenWindowMenu = false;
     }
 

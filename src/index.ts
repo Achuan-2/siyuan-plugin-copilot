@@ -2014,12 +2014,14 @@ export default class PluginSample extends Plugin {
                 element.style.display = 'flex';
                 element.style.flexDirection = 'column';
                 element.style.height = '100%';
+                const sessionId = this.data?.sessionId;
                 // 创建AI聊天界面
                 new AISidebar({
                     target: element,
                     props: {
                         plugin: pluginInstance,
-                        respondToGlobalActions: true
+                        respondToGlobalActions: true,
+                        initialSessionId: sessionId || ''
                     }
                 });
             },
@@ -2781,7 +2783,7 @@ export default class PluginSample extends Plugin {
     /**
      * 打开AI标签页
      */
-    openAITab() {
+    openAITab(sessionId?: string) {
         const tabId = this.name + AI_TAB_TYPE;
         openTab({
             app: this.app,
@@ -2790,16 +2792,24 @@ export default class PluginSample extends Plugin {
                 icon: 'iconCopilot',
                 id: tabId,
                 data: {
-                    time: Date.now()
+                    time: Date.now(),
+                    sessionId: sessionId
                 }
             }
         });
+        if (sessionId) {
+            window.dispatchEvent(
+                new CustomEvent('copilot-open-tab-session', {
+                    detail: { sessionId }
+                })
+            );
+        }
     }
 
     /**
      * 在新窗口打开AI
      */
-    async openAIWindow() {
+    async openAIWindow(sessionId?: string) {
         const tabId = this.name + AI_TAB_TYPE;
         const tab = openTab({
             app: this.app,
@@ -2807,6 +2817,10 @@ export default class PluginSample extends Plugin {
                 title: 'Siyuan Copilot',
                 icon: 'iconCopilot',
                 id: tabId,
+                data: {
+                    time: Date.now(),
+                    sessionId: sessionId
+                }
             }
         });
 
