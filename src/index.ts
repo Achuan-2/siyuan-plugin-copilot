@@ -25,7 +25,7 @@ import "@/index.scss";
 import SettingPanel from "./SettingsPannel.svelte";
 import { getDefaultSettings } from "./defaultSettings";
 import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
-import AISidebar from "./ai-sidebar.svelte";
+import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
 import { updateSettings, getSettings } from "./stores/settings";
@@ -53,7 +53,7 @@ interface WebViewHistory {
 
 
 export default class PluginSample extends Plugin {
-    private aiSidebarApp: AISidebar;
+    private aiSidebarApp: AIChatSessionHost;
     private webAppCollectionApp: any = null;
     private webAppCollectionApps: any[] = [];
     private chatDialogs: Map<string, { dialog: Dialog; app: ChatDialog }> = new Map();
@@ -2016,7 +2016,7 @@ export default class PluginSample extends Plugin {
                 element.style.height = '100%';
                 const sessionId = this.data?.sessionId;
                 // 创建AI聊天界面
-                new AISidebar({
+                new AIChatSessionHost({
                     target: element,
                     props: {
                         plugin: pluginInstance,
@@ -2066,7 +2066,7 @@ export default class PluginSample extends Plugin {
             type: AI_SIDEBAR_TYPE,
             init: (dock) => {
                 this.preventMobileDockSwipeClose(dock.element);
-                this.aiSidebarApp = new AISidebar({
+                this.aiSidebarApp = new AIChatSessionHost({
                     target: dock.element,
                     props: {
                         plugin: this

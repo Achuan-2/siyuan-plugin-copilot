@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick, onDestroy } from 'svelte';
+    import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
     import {
         chat,
         getProviderConfig,
@@ -61,6 +61,11 @@
     import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
     import { settingsStore } from './stores/settings';
+    import {
+        enqueueSessionMetadataSave,
+        getSessionTaskStatus,
+        setSessionTaskStatus,
+    } from './sessionTaskStatus';
     import { confirm, Constants, platformUtils, getFrontend } from 'siyuan';
     import { i18n, i18nKey } from './utils/i18n';
     import {
@@ -392,6 +397,11 @@
     export let initialSessionId: string = ''; // 初始会话ID
     export let mode: 'sidebar' | 'dialog' = 'sidebar'; // 使用模式：sidebar或dialog
     export let respondToGlobalActions: boolean = false; // 是否响应全局事件（仅标签页实例）
+    export let sessionHost = false; // 是否由会话宿主管理多个并行会话视图
+    export let sessionViewId = ''; // 当前视图在会话宿主中的唯一ID
+    export let isSessionViewActive = true; // 隐藏的后台视图不响应全局交互事件
+
+    const dispatch = createEventDispatcher();
 
     interface ChatSession {
         id: string;
@@ -401,6 +411,7 @@
         updatedAt: number;
         messageCount?: number; // 消息数量
         pinned?: boolean; // 是否钉住
+        isLoading?: boolean; // 会话是否有后台任务正在运行
     }
 
     let messages: Message[] = [];
@@ -856,6 +867,67 @@
     let currentSessionId: string = '';
     let isSessionManagerOpen = false;
     let hasUnsavedChanges = false;
+
+    // 由宿主组件共享的会话运行状态事件。状态同时写入会话 metadata，
+    // 这样新建的会话视图和其他页签打开历史记录时也能看到后台任务。
+    let reportedTaskSessionId = '';
+    let notifiedSessionId = '';
+
+    function publishSessionTaskStatus(sessionId: string, running: boolean) {
+        if (!sessionId) return;
+
+        setSessionTaskStatus(sessionId, running);
+
+        const session = sessions.find(item => item.id === sessionId);
+        if (session && session.isLoading !== running) {
+            session.isLoading = running;
+            sessions = [...sessions];
+        }
+
+        // 保存 metadata，不保存消息正文；正文仍由原有流式保存逻辑负责。
+        // 保存操作由队列串行化，避免完成后的 false 被较早的 true 覆盖。
+        saveSessions();
+
+        window.dispatchEvent(
+            new CustomEvent('copilot-session-status', {
+                detail: { sessionId, isLoading: running },
+            })
+        );
+    }
+
+    function syncSessionTaskStatus(sessionId: string, loading: boolean) {
+        const shouldRun = Boolean(sessionId && loading);
+
+        if (reportedTaskSessionId && (!shouldRun || reportedTaskSessionId !== sessionId)) {
+            publishSessionTaskStatus(reportedTaskSessionId, false);
+            reportedTaskSessionId = '';
+        }
+
+        if (shouldRun && reportedTaskSessionId !== sessionId) {
+            reportedTaskSessionId = sessionId;
+            publishSessionTaskStatus(sessionId, true);
+        }
+    }
+
+    function handleSessionTaskStatus(event: Event) {
+        const detail = (event as CustomEvent<{ sessionId?: string; isLoading?: boolean }>).detail;
+        if (!detail?.sessionId || typeof detail.isLoading !== 'boolean') return;
+
+        setSessionTaskStatus(detail.sessionId, detail.isLoading);
+        const session = sessions.find(item => item.id === detail.sessionId);
+        if (session && session.isLoading !== detail.isLoading) {
+            session.isLoading = detail.isLoading;
+            sessions = [...sessions];
+        }
+    }
+
+    // 会话首次获得持久化ID后通知宿主，以便历史列表重新打开该会话时复用同一视图。
+    $: if (sessionHost && sessionViewId && currentSessionId && currentSessionId !== notifiedSessionId) {
+        notifiedSessionId = currentSessionId;
+        dispatch('session-created', { viewId: sessionViewId, sessionId: currentSessionId });
+    }
+
+    $: syncSessionTaskStatus(currentSessionId, isLoading);
 
     // 在新窗口打开菜单
     let showOpenWindowMenu = false;
@@ -2168,6 +2240,11 @@
 
     // 订阅设置变化
     let unsubscribe: () => void;
+
+    onMount(() => {
+        window.addEventListener('copilot-session-status', handleSessionTaskStatus);
+        return () => window.removeEventListener('copilot-session-status', handleSessionTaskStatus);
+    });
 
     onMount(async () => {
         settings = await plugin.loadSettings();
@@ -9494,6 +9571,7 @@
 
     // 处理文档总结事件（从右键菜单触发）
     async function handleSummarizeDoc(event: CustomEvent) {
+        if (!isSessionViewActive) return;
         const { docId } = event.detail;
         if (!docId) return;
         try {
@@ -9847,7 +9925,13 @@
     async function loadSessions() {
         try {
             const data = await plugin.loadData('chat-sessions.json');
-            sessions = data?.sessions || [];
+            sessions = (data?.sessions || []).map((session: ChatSession) => {
+                const taskStatus =
+                    session.id === currentSessionId
+                        ? isLoading
+                        : getSessionTaskStatus(session.id);
+                return { ...session, isLoading: taskStatus ?? false };
+            });
             // 会话迁移已在 index.ts 的 loadSettings 中统一处理
         } catch (error) {
             console.error('Load sessions error:', error);
@@ -9856,19 +9940,26 @@
     }
 
     async function saveSessions() {
+        // 在排队前固定本次快照，保证 true/false 两次状态更新按调用顺序落盘。
+        const metadata = sessions.map(s => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { messages, ...rest } = s;
+            const taskStatus =
+                s.id === currentSessionId ? isLoading : getSessionTaskStatus(s.id);
+            return {
+                ...rest,
+                ...(taskStatus === undefined ? {} : { isLoading: taskStatus }),
+                messageCount:
+                    s.messageCount ||
+                    (s.messages ? s.messages.filter(m => m.role !== 'system').length : 0),
+            };
+        });
+
         try {
-            // 只保存 metadata 到 chat-sessions.json
-            const metadata = sessions.map(s => {
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { messages, ...rest } = s;
-                return {
-                    ...rest,
-                    messageCount:
-                        s.messageCount ||
-                        (s.messages ? s.messages.filter(m => m.role !== 'system').length : 0),
-                };
-            });
-            await plugin.saveData('chat-sessions.json', { sessions: metadata });
+            // 只保存 metadata 到 chat-sessions.json；多个会话视图共享同一写入队列。
+            await enqueueSessionMetadataSave(() =>
+                plugin.saveData('chat-sessions.json', { sessions: metadata })
+            );
         } catch (error) {
             console.error('Save sessions error:', error);
             pushErrMsg(i18n('aiSidebarErrorsSaveSessionFailed'));
@@ -9916,6 +10007,7 @@
                 if (session) {
                     session.updatedAt = now;
                     session.messageCount = messages.filter(m => m.role !== 'system').length;
+                    session.isLoading = getSessionTaskStatus(currentSessionId) ?? isLoading;
 
                     // 1. 保存 metadata 列表
                     await saveSessions();
@@ -9950,6 +10042,7 @@
                         messageCount: messages.filter(m => m.role !== 'system').length,
                         createdAt: now,
                         updatedAt: now,
+                        isLoading: getSessionTaskStatus(currentSessionId) ?? isLoading,
                     };
                     sessions = [newSession, ...sessions];
                     await saveSessions();
@@ -9983,6 +10076,7 @@
                     messageCount: messages.filter(m => m.role !== 'system').length,
                     createdAt: now,
                     updatedAt: now,
+                    isLoading,
                 };
                 sessions = [newSession, ...sessions];
                 currentSessionId = newSession.id;
@@ -10022,6 +10116,14 @@
     }
 
     async function loadSession(sessionId: string) {
+        // 会话宿主通过切换独立视图来加载会话。当前视图即使正在生成，也不能被中断。
+        if (sessionHost) {
+            if (sessionId && sessionId !== currentSessionId) {
+                dispatch('session-switch', { viewId: sessionViewId, sessionId });
+            }
+            return;
+        }
+
         // 如果消息正在生成，先中断
         if (isLoading && abortController) {
             abortMessage();
@@ -10338,6 +10440,12 @@
     }
 
     async function newSession() {
+        // 新建会话只创建/切换到一个新的独立视图，旧视图中的请求继续在后台运行。
+        if (sessionHost) {
+            dispatch('session-new', { viewId: sessionViewId });
+            return;
+        }
+
         // 如果消息正在生成，先中断
         if (isLoading && abortController) {
             abortMessage();

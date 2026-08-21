@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createEventDispatcher, tick } from 'svelte';
+    import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
     import { pushMsg } from '../api';
     import { i18n } from '../utils/i18n';
 
@@ -25,7 +25,27 @@
         createdAt: number;
         updatedAt: number;
         pinned?: boolean; // 是否钉住
+        isLoading?: boolean; // 会话是否有后台任务正在运行
     }
+
+    function handleSessionStatus(event: Event) {
+        const detail = (event as CustomEvent<{ sessionId?: string; isLoading?: boolean }>).detail;
+        if (!detail?.sessionId || typeof detail.isLoading !== 'boolean') return;
+
+        const index = sessions.findIndex(session => session.id === detail.sessionId);
+        if (index === -1 || sessions[index].isLoading === detail.isLoading) return;
+
+        sessions[index] = { ...sessions[index], isLoading: detail.isLoading };
+        sessions = [...sessions];
+    }
+
+    onMount(() => {
+        window.addEventListener('copilot-session-status', handleSessionStatus);
+    });
+
+    onDestroy(() => {
+        window.removeEventListener('copilot-session-status', handleSessionStatus);
+    });
 
     // 右键菜单状态
     let contextMenuVisible = false;
@@ -609,6 +629,15 @@
                                         </svg>
                                     {/if}
                                     {session.title}
+                                    {#if session.isLoading}
+                                        <svg
+                                            class="session-item__loading-icon"
+                                            title="后台任务进行中"
+                                            aria-label="后台任务进行中"
+                                        >
+                                            <use xlink:href="#iconRefresh"></use>
+                                        </svg>
+                                    {/if}
                                 </div>
                                 <div class="session-item__info">
                                     <span class="session-item__date">
@@ -962,6 +991,25 @@
         margin-right: 4px;
         color: var(--b3-theme-primary);
         vertical-align: text-top;
+    }
+
+    .session-item__loading-icon {
+        width: 13px;
+        height: 13px;
+        margin-left: 5px;
+        color: var(--b3-theme-primary);
+        vertical-align: -2px;
+        animation: session-item-spin 1s linear infinite;
+    }
+
+    @keyframes session-item-spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     .session-context-menu {
