@@ -2363,22 +2363,37 @@
         }
 
         const app = window.siyuan.ws.app;
-        protyle = new Protyle(app, editorElement, {
-            lite: true,
-            blockId: '',
-            render: {
-                gutter: false,
-                breadcrumb: false,
-                scroll: false,
-                background: false,
-                title: false,
+        // 与思源 mountProtyleLiteFragment 保持一致：该标记会禁用 Lite 编辑器中
+        // 依赖内核文档块的原生块菜单，避免对临时块 ID 发起内核操作。
+        editorElement.classList.add('protyle-lite-fragment');
+        protyle = new Protyle(
+            app,
+            editorElement,
+            {
+                lite: true,
+                blockId: '',
+                render: {
+                    gutter: false,
+                    breadcrumb: false,
+                    scroll: false,
+                    background: false,
+                    title: false,
+                },
+                hint: {
+                    extend: hintExtend,
+                },
             },
-            hint: {
-                extend: hintExtend,
-            },
-        });
+            // 插件 SDK 类型尚未包含该参数，当前思源 Protyle 已支持。
+            // @ts-expect-error ProtyleRuntimeCapabilities is available at runtime
+            {
+                websocket: false,
+            }
+        );
 
         protyleInternal = protyle.protyle;
+        // 明确固定为 Lite transaction；删除临时块时只更新本地 DOM/Undo，
+        // 不向 /api/transactions 或块引用检查接口提交不存在的块 ID。
+        protyleInternal.lite = true;
         wysiwygElement = protyleInternal.wysiwyg!.element;
 
         wysiwygElement.innerHTML = '';
@@ -2386,6 +2401,10 @@
         emptyP.firstElementChild!.classList.add('protyle-wysiwyg--empty');
         emptyP.firstElementChild!.setAttribute('placeholder', i18n('aiSidebarInputPlaceholder'));
         wysiwygElement.appendChild(emptyP);
+        // Protyle 初始化时始终会添加 loading；Lite 编辑器不会加载文档，需像
+        // 思源 mountProtyleLiteFragment 一样主动结束 loading 状态。
+        editorElement.setAttribute('data-loading', 'finished');
+        editorElement.querySelectorAll('.wysiwygLoading').forEach(item => item.remove());
         updatePlaceholder();
 
         contentObserver = new MutationObserver(() => {
