@@ -2739,11 +2739,10 @@ export default class PluginSample extends Plugin {
                         })
                     );
 
-                    // 保存完整内容到 individual 文件
-                    const path = `/data/storage/petal/siyuan-plugin-copilot/sessions/${session.id}.json`;
-                    const content = JSON.stringify({ messages: processedMessages }, null, 2);
-                    const blob = new Blob([content], { type: 'application/json' });
-                    await putFile(path, false, blob);
+                    // 保存完整内容到独立会话文件
+                    await this.saveData(`sessions/${session.id}.json`, {
+                        messages: processedMessages,
+                    });
 
                     // 更新 metadata
                     session.messageCount = session.messages.filter((m: any) => m.role !== 'system').length;

@@ -36,8 +36,6 @@
         lsNotebooks,
         searchDocs,
         getHPathByID,
-        putFile,
-        removeFile,
     } from './api';
     import { getModelContextLimit } from './utils/contextEstimator';
     import {
@@ -1261,10 +1259,7 @@
         id: string
     ): Promise<{ inputText: string; outputText: string } | null> {
         try {
-            const translatePath = `/data/storage/petal/siyuan-plugin-copilot/translate/${id}.json`;
-            const blob = await getFileBlob(translatePath);
-            const text = await blob.text();
-            return JSON.parse(text);
+            return await plugin.loadData(`translate/${id}.json`);
         } catch (error) {
             console.error('Load translate item error:', error);
             return null;
@@ -10051,10 +10046,9 @@
                     }));
 
                     // 3. 保存完整内容到独立文件
-                    const sessionPath = `/data/storage/petal/siyuan-plugin-copilot/sessions/${currentSessionId}.json`;
-                    const sessionContent = JSON.stringify({ messages: messagesToSave }, null, 2);
-                    const sessionBlob = new Blob([sessionContent], { type: 'application/json' });
-                    await putFile(sessionPath, false, sessionBlob);
+                    await plugin.saveData(`sessions/${currentSessionId}.json`, {
+                        messages: messagesToSave,
+                    });
                 } else {
                     // 如果会话不存在，创建为新会话
                     const userContent = messages.find(m => m.role === 'user')?.content || '';
@@ -10084,10 +10078,9 @@
                             data: '',
                         })),
                     }));
-                    const sessionPath = `/data/storage/petal/siyuan-plugin-copilot/sessions/${currentSessionId}.json`;
-                    const sessionContent = JSON.stringify({ messages: messagesToSave }, null, 2);
-                    const sessionBlob = new Blob([sessionContent], { type: 'application/json' });
-                    await putFile(sessionPath, false, sessionBlob);
+                    await plugin.saveData(`sessions/${currentSessionId}.json`, {
+                        messages: messagesToSave,
+                    });
                 }
             } else {
                 // 创建新会话
@@ -10119,10 +10112,9 @@
                         data: '',
                     })),
                 }));
-                const sessionPath = `/data/storage/petal/siyuan-plugin-copilot/sessions/${newSession.id}.json`;
-                const sessionContent = JSON.stringify({ messages: messagesToSave }, null, 2);
-                const sessionBlob = new Blob([sessionContent], { type: 'application/json' });
-                await putFile(sessionPath, false, sessionBlob);
+                await plugin.saveData(`sessions/${newSession.id}.json`, {
+                    messages: messagesToSave,
+                });
             }
             hasUnsavedChanges = false;
 
@@ -10215,16 +10207,10 @@
             sessionMetadata = sessions.find(s => s.id === sessionId);
         }
         try {
-            // 加载完整内容 (使用 getFileBlob 因为 saveData 路径不一致，或者由于前缀问题)
-                // 或者继续使用 loadData 但它是相对的。
-                // 如果我们用 putFile 存了，我们也应该用对应的 read 方式。
-                const path = `/data/storage/petal/siyuan-plugin-copilot/sessions/${sessionId}.json`;
-                const blob = await getFileBlob(path);
-                if (!blob) throw new Error('File not found');
-                const text = await blob.text();
-                const sessionData = JSON.parse(text);
-                const loadedMessages = sessionData?.messages || [];
-                let sessionModified = false; // 标记会话是否被修改（需要重新保存）
+            const sessionData = await plugin.loadData(`sessions/${sessionId}.json`);
+            if (!sessionData) throw new Error('File not found');
+            const loadedMessages = sessionData?.messages || [];
+            let sessionModified = false; // 标记会话是否被修改（需要重新保存）
 
                 // 还原图片数据 (从 path 还原为 blob url) 和文本附件数据
                 // 同时处理旧的 base64 格式图片，自动保存到 assets
@@ -10545,11 +10531,9 @@
                 sessions = sessions.filter(s => s.id !== sessionId);
                 await saveSessions();
 
-                // 删除独立会话文件 (SiYuan removeFile 路径相对于 workspace root)
+                // 删除独立会话文件
                 try {
-                    await removeFile(
-                        `/data/storage/petal/siyuan-plugin-copilot/sessions/${sessionId}.json`
-                    );
+                    await plugin.removeData(`sessions/${sessionId}.json`);
                 } catch (e) {
                     // 忽略错误
                 }
@@ -10582,9 +10566,7 @@
                 // 批量删除独立会话文件
                 for (const id of sessionIds) {
                     try {
-                        await removeFile(
-                            `/data/storage/petal/siyuan-plugin-copilot/sessions/${id}.json`
-                        );
+                        await plugin.removeData(`sessions/${id}.json`);
                     } catch (e) {
                         // 忽略错误
                     }
@@ -10603,11 +10585,8 @@
     // 加载指定会话的可搜索文本（用户与AI的全部对话内容），用于会话管理面板的搜索
     async function loadSessionSearchableText(sessionId: string): Promise<string> {
         try {
-            const path = `/data/storage/petal/siyuan-plugin-copilot/sessions/${sessionId}.json`;
-            const blob = await getFileBlob(path);
-            if (!blob) return '';
-            const text = await blob.text();
-            const sessionData = JSON.parse(text);
+            const sessionData = await plugin.loadData(`sessions/${sessionId}.json`);
+            if (!sessionData) return '';
             const sessionMessages: Message[] = sessionData?.messages || [];
             const parts: string[] = [];
             for (const msg of sessionMessages) {
@@ -10636,14 +10615,11 @@
     async function handleSaveSessionToNote(sessionId: string) {
         try {
             // 加载会话消息
-            const path = `/data/storage/petal/siyuan-plugin-copilot/sessions/${sessionId}.json`;
-            const blob = await getFileBlob(path);
-            if (!blob) {
+            const sessionData = await plugin.loadData(`sessions/${sessionId}.json`);
+            if (!sessionData) {
                 pushErrMsg('会话文件不存在');
                 return;
             }
-            const text = await blob.text();
-            const sessionData = JSON.parse(text);
             const sessionMessages = sessionData?.messages || [];
 
             if (sessionMessages.length === 0) {

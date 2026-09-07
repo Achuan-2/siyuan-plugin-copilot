@@ -2,7 +2,7 @@
     import { createEventDispatcher } from 'svelte';
     import { platformUtils } from 'siyuan';
     import { chat, type Message } from '../ai-chat';
-    import { pushMsg, pushErrMsg, getFileBlob, putFile } from '../api';
+    import { pushMsg, pushErrMsg } from '../api';
     import { i18n } from '../utils/i18n';
     import MultiModelSelector from './MultiModelSelector.svelte';
 
@@ -144,16 +144,7 @@
     // 保存单个翻译项
     async function saveTranslateItem(id: string, inputText: string, outputText: string) {
         try {
-            try {
-                await putFile('/data/storage/petal/siyuan-plugin-copilot/translate', true, null);
-            } catch (e) {
-                // 目录可能已存在
-            }
-
-            const translatePath = `/data/storage/petal/siyuan-plugin-copilot/translate/${id}.json`;
-            const content = JSON.stringify({ inputText, outputText }, null, 2);
-            const blob = new Blob([content], { type: 'application/json' });
-            await putFile(translatePath, false, blob);
+            await plugin.saveData(`translate/${id}.json`, { inputText, outputText });
         } catch (error) {
             console.error('Save translate item error:', error);
             throw error;
@@ -165,10 +156,7 @@
         id: string
     ): Promise<{ inputText: string; outputText: string } | null> {
         try {
-            const translatePath = `/data/storage/petal/siyuan-plugin-copilot/translate/${id}.json`;
-            const blob = await getFileBlob(translatePath);
-            const text = await blob.text();
-            return JSON.parse(text);
+            return await plugin.loadData(`translate/${id}.json`);
         } catch (error) {
             console.error('Load translate item error:', error);
             return null;
