@@ -10,7 +10,18 @@ function normalizeName(name: string): string {
 /**
  * 模型上下文限制估算工具
  */
-export function getModelContextLimit(modelId: string, provider: string): number {
+export function getModelContextLimit(
+    modelId: string,
+    provider: string,
+    customMaxTokens?: number
+): number {
+    // 用户为模型显式配置最大 token 数时，优先将其作为上下文上限。
+    // -1、0、NaN 等值表示未配置，继续使用内置模型数据估算。
+    const configuredLimit = Math.floor(Number(customMaxTokens));
+    if (Number.isFinite(configuredLimit) && configuredLimit > 0) {
+        return configuredLimit;
+    }
+
     const id = modelId.toLowerCase();
     
     // 对 modelId 进行处理：如果是 path 结构（如 provider/model-id），取最后一段

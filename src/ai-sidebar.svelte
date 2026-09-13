@@ -2137,11 +2137,21 @@
     $: totalUsedTokens = totalHistoryTokens + currentInputTokens + toolsTokens;
 
     $: activeModelsContextInfo = (() => {
+        // 显式依赖 providers，确保模型的自定义最大 token 数更新后立即刷新指示器。
+        const providerConfigs = providers;
         if (enableMultiModel && chatMode === 'ask' && selectedMultiModels.length > 0) {
             return selectedMultiModels.map(model => {
-                const limit = getModelContextLimit(model.modelId, model.provider);
+                const config = getProviderAndModelConfig(
+                    model.provider,
+                    model.modelId,
+                    providerConfigs
+                );
+                const limit = getModelContextLimit(
+                    model.modelId,
+                    model.provider,
+                    config?.modelConfig?.maxTokens
+                );
                 const ratio = limit > 0 ? (totalUsedTokens / limit) : 0;
-                const config = getProviderAndModelConfig(model.provider, model.modelId);
                 const modelName = config?.modelConfig?.name || model.modelId;
                 const providerName = config?.providerConfig?.name || model.provider;
                 return {
@@ -2155,9 +2165,17 @@
                 };
             });
         } else if (currentModelId) {
-            const limit = getModelContextLimit(currentModelId, currentProvider);
+            const config = getProviderAndModelConfig(
+                currentProvider,
+                currentModelId,
+                providerConfigs
+            );
+            const limit = getModelContextLimit(
+                currentModelId,
+                currentProvider,
+                config?.modelConfig?.maxTokens
+            );
             const ratio = limit > 0 ? (totalUsedTokens / limit) : 0;
-            const config = getProviderAndModelConfig(currentProvider, currentModelId);
             const modelName = config?.modelConfig?.name || currentModelId;
             const providerName = config?.providerConfig?.name || currentProvider;
             return [{
@@ -3955,15 +3973,22 @@
     }
 
     // 获取指定提供商和模型的配置
-    function getProviderAndModelConfig(provider: string, modelId: string) {
+    function getProviderAndModelConfig(
+        provider: string,
+        modelId: string,
+        providerConfigs = providers
+    ) {
         let providerConfig: any = null;
 
         // 检查是否是内置平台
-        if (providers[provider] && !Array.isArray(providers[provider])) {
-            providerConfig = providers[provider];
-        } else if (providers.customProviders && Array.isArray(providers.customProviders)) {
+        if (providerConfigs[provider] && !Array.isArray(providerConfigs[provider])) {
+            providerConfig = providerConfigs[provider];
+        } else if (
+            providerConfigs.customProviders &&
+            Array.isArray(providerConfigs.customProviders)
+        ) {
             // 检查是否是自定义平台
-            providerConfig = providers.customProviders.find((p: any) => p.id === provider);
+            providerConfig = providerConfigs.customProviders.find((p: any) => p.id === provider);
         }
 
         if (!providerConfig) return null;
