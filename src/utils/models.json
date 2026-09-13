@@ -192,6 +192,9 @@
   "deepseek-v3.2-exp": {
     "contextLength": 163840
   },
+  "deepseek-flash": {
+      "contextLength": 1048576
+    },
   "deepseek-v4-flash": {
     "contextLength": 1048576
   },
