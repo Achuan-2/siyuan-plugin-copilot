@@ -2532,7 +2532,7 @@
             const refSpan = target.closest('[data-type~="block-ref"]') as HTMLElement | null;
             if (refSpan && wysiwygElement.contains(refSpan)) {
                 const rect = refSpan.getBoundingClientRect();
-                if (rect.width > 0 && event.clientX >= rect.right - 16) {
+                if (rect.width > 0 && event.clientX >= rect.right - 20) {
                     event.preventDefault();
                     event.stopPropagation();
                     refSpan.remove();
@@ -21180,6 +21180,7 @@
         padding: 1px 16px 1px 6px;
         box-sizing: border-box;
         background: var(--b3-theme-surface-light);
+        background-image: none !important;
         border: 1px solid var(--b3-border-color);
         border-radius: 12px;
         font-size: 12px;
@@ -21192,6 +21193,14 @@
         color: var(--b3-theme-on-surface);
         text-decoration: none;
         cursor: default;
+    }
+
+    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover) {
+        background-color: var(--b3-theme-surface-light) !important;
+        background-image: none !important;
+        border-radius: 12px !important;
+        color: var(--b3-theme-on-surface) !important;
+        text-decoration: none !important;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::before) {
@@ -21208,9 +21217,18 @@
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::after) {
         content: '×';
         position: absolute;
-        right: 5px;
+        right: 2px;
         top: 50%;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
         transform: translateY(-50%);
+        border-radius: 50%;
+        background: var(--b3-theme-surface);
+        box-shadow: 0 0 0 1px var(--b3-border-color);
         font-weight: bold;
         color: var(--b3-theme-on-surface-light);
         cursor: pointer;
