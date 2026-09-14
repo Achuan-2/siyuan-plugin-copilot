@@ -713,13 +713,17 @@
     }
 
     // 将块引用（@ 文档/块 chip 以及 (( 插入的原生引用）作为不可编辑的原子节点：
-    // 避免点击 chip 边缘时光标进入标题文字；同时标注上下文类型，供 CSS 区分 📄/🧩 图标。
+    // 避免点击 chip 边缘时光标进入标题文字，并关闭原生悬浮预览，防止点击 × 时误触预览；
+    // 同时标注上下文类型，供 CSS 区分 📄/🧩 图标。
     // 只设置属性，不改动 DOM 结构，避免被 Lute 重渲染并入锚文本。
     function enhanceInlineDocChips() {
         if (!wysiwygElement) return;
         wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((span) => {
             if (span.getAttribute('contenteditable') !== 'false') {
                 span.setAttribute('contenteditable', 'false');
+            }
+            if (span.getAttribute('prevent-popover') !== 'true') {
+                span.setAttribute('prevent-popover', 'true');
             }
             const id = span.getAttribute('data-id');
             const wantType =
@@ -9553,7 +9557,7 @@
             // 在编辑器中内联显示文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
             if (protyle) {
                 protyle.insert(
-                    `<span data-type="block-ref" data-id="${docId}" data-subtype="s" contenteditable="false">${escapeHtml(docTitle)}</span>${Constants.ZWSP}`
+                    `<span data-type="block-ref" data-id="${docId}" data-subtype="s" contenteditable="false" prevent-popover="true">${escapeHtml(docTitle)}</span>${Constants.ZWSP}`
                 );
             }
 
@@ -9785,7 +9789,7 @@
             // 在编辑器中内联显示块/文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
             if (protyle) {
                 protyle.insert(
-                    `<span data-type="block-ref" data-id="${blockId}" data-subtype="s" contenteditable="false">${escapeHtml(displayTitle)}</span>${Constants.ZWSP}`
+                    `<span data-type="block-ref" data-id="${blockId}" data-subtype="s" contenteditable="false" prevent-popover="true">${escapeHtml(displayTitle)}</span>${Constants.ZWSP}`
                 );
             }
         } catch (error) {
@@ -21210,9 +21214,11 @@
         font-weight: bold;
         color: var(--b3-theme-on-surface-light);
         cursor: pointer;
+        transition: color 0.15s ease, transform 0.15s ease;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover::after) {
         color: var(--b3-theme-error);
+        transform: translateY(-50%) scale(1.2);
     }
 </style>
