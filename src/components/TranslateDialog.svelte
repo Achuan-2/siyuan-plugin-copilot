@@ -12,6 +12,7 @@
     export let settings: any = {};
 
     const dispatch = createEventDispatcher();
+    const BIDIRECTIONAL_CHINESE_ENGLISH = 'zh-en';
 
     // 翻译状态
     let translateInputLanguage = 'auto';
@@ -195,7 +196,10 @@
 
     // 交换语言（仅交换语言，不交换文本）
     async function swapLanguages() {
-        if (translateInputLanguage !== 'auto') {
+        if (
+            translateInputLanguage !== 'auto' &&
+            translateOutputLanguage !== BIDIRECTIONAL_CHINESE_ENGLISH
+        ) {
             const prevInputLanguage = translateInputLanguage;
             translateInputLanguage = translateOutputLanguage;
             translateOutputLanguage = prevInputLanguage;
@@ -283,8 +287,22 @@
             };
 
             const inputLangName = languageNames[translateInputLanguage] || translateInputLanguage;
-            const outputLangName =
+            let outputLangName =
                 languageNames[translateOutputLanguage] || translateOutputLanguage;
+
+            if (translateOutputLanguage === BIDIRECTIONAL_CHINESE_ENGLISH) {
+                if (
+                    translateInputLanguage === 'zh-CN' ||
+                    translateInputLanguage === 'zh-TW'
+                ) {
+                    outputLangName = 'English';
+                } else if (translateInputLanguage === 'en') {
+                    outputLangName = 'Simplified Chinese';
+                } else {
+                    outputLangName =
+                        'English when the source text is primarily Chinese, or Simplified Chinese when the source text is primarily English; determine the direction from the source text';
+                }
+            }
 
             const promptTemplate =
                 settings.translatePrompt ||
@@ -501,6 +519,8 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                             class="b3-button b3-button--text translate-dialog__swap-button"
                             on:click={swapLanguages}
                             title={i18n('aiSidebarTranslateSwap') || '交换语言'}
+                            disabled={translateInputLanguage === 'auto' ||
+                                translateOutputLanguage === BIDIRECTIONAL_CHINESE_ENGLISH}
                         >
                             <svg class="b3-button__icon"><use xlink:href="#iconRefresh"></use></svg>
                         </button>
@@ -513,6 +533,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                                 bind:value={translateOutputLanguage}
                                 on:change={saveTranslateLanguageSettings}
                             >
+                                <option value={BIDIRECTIONAL_CHINESE_ENGLISH}>中文/英文</option>
                                 <option value="zh-CN">简体中文</option>
                                 <option value="zh-TW">繁体中文</option>
                                 <option value="en">English</option>
