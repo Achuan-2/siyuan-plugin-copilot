@@ -647,12 +647,9 @@
         return protyleInternal.lute.BlockDOM2StdMd(wysiwygElement.innerHTML).trim();
     }
 
-    // 发送前处理编辑器中取出的 markdown：
-    // blob 图片语法替换为 [图片: name] 文本标记（图片内容已通过附件上传）；
-    // 块引用语法 ((id 'title')) 替换为 @[title](siyuan://blocks/id) 思源块链接格式
+    // 将编辑器中手动插入的块引用转为可点击的思源块链接。
     function transformEditorMarkdownForSend(text: string): string {
         return text
-            .replace(/!\[([^\]]*)\]\(blob:[^)\s]+\)/g, (_match, alt) => `[图片: ${alt}]`)
             .replace(
                 /\(\((\d{14}-[0-9a-z]{7})(?:\s+(?:(['"])(.*?)\2|([^)]+)))?\)\)/g,
                 (_match, id, _quote, anchorQuoted, anchorUnquoted) => {
@@ -660,78 +657,6 @@
                     return `@[${anchor}](siyuan://blocks/${id})`;
                 }
             );
-    }
-
-    // 已增强的图片 chip 缓存（src -> span 元素）。
-    // Lute 重渲染块时会重建 img span，新建的 <img> 元素需重新解码图片导致闪烁；
-    // 复用缓存的同一元素（位图已解码）可避免闪烁。
-    const imgChipCache = new Map<string, HTMLElement>();
-
-    // 将编辑器中的原生 blob 图片增强为紧凑 chip（缩略图 + 文件名 + 删除按钮）。
-    // Lute 重渲染块时会重建 img span，因此需在每次 DOM 变化后对未增强的 span 重新增强。
-    function enhanceInlineImageChips() {
-        if (!wysiwygElement) return;
-        wysiwygElement
-            .querySelectorAll('[data-type="img"]:not(.ai-inline-img-chip)')
-            .forEach((span) => {
-                const img = span.querySelector('img');
-                const src = img?.getAttribute('src') || '';
-                if (!img || !src.startsWith('blob:')) return;
-                // 重渲染重建的 span：直接换回缓存的旧元素，避免图片重新解码造成闪烁
-                const cached = imgChipCache.get(src);
-                if (cached && !cached.isConnected) {
-                    span.replaceWith(cached);
-                    return;
-                }
-                span.classList.add('ai-inline-img-chip');
-                // 移除 lazy 加载，避免解码延迟
-                img.removeAttribute('loading');
-                const nameEl = document.createElement('span');
-                nameEl.className = 'ai-inline-img-chip__name';
-                nameEl.textContent = img.getAttribute('alt') || '图片';
-                const removeEl = document.createElement('span');
-                removeEl.className = 'ai-inline-img-chip__remove';
-                removeEl.textContent = '×';
-                img.parentElement?.append(nameEl, removeEl);
-                imgChipCache.set(src, span as HTMLElement);
-            });
-        // 清理已不在编辑器中的 chip 缓存
-        if (imgChipCache.size > 0) {
-            const presentSrcs = new Set<string>();
-            wysiwygElement.querySelectorAll('[data-type="img"] img').forEach((el) => {
-                const src = el.getAttribute('src');
-                if (src) {
-                    presentSrcs.add(src);
-                }
-            });
-            imgChipCache.forEach((_el, src) => {
-                if (!presentSrcs.has(src)) {
-                    imgChipCache.delete(src);
-                }
-            });
-        }
-    }
-
-    // 将块引用（@ 文档/块 chip 以及 (( 插入的原生引用）作为不可编辑的原子节点：
-    // 避免点击 chip 边缘时光标进入标题文字，并关闭原生悬浮预览，防止点击 × 时误触预览；
-    // 同时标注上下文类型，供 CSS 区分 📄/🧩 图标。
-    // 只设置属性，不改动 DOM 结构，避免被 Lute 重渲染并入锚文本。
-    function enhanceInlineDocChips() {
-        if (!wysiwygElement) return;
-        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((span) => {
-            if (span.getAttribute('contenteditable') !== 'false') {
-                span.setAttribute('contenteditable', 'false');
-            }
-            if (span.getAttribute('prevent-popover') !== 'true') {
-                span.setAttribute('prevent-popover', 'true');
-            }
-            const id = span.getAttribute('data-id');
-            const wantType =
-                contextDocuments.find(doc => doc.id === id)?.type === 'block' ? 'block' : 'doc';
-            if (span.getAttribute('data-ai-doc-type') !== wantType) {
-                span.setAttribute('data-ai-doc-type', wantType);
-            }
-        });
     }
 
     function setProtyleContent(markdown: string) {
@@ -815,38 +740,11 @@
         }
     }
 
-    // 从编辑器同步输入状态：
-    // 1. currentInput 同步为编辑器纯文本 markdown；
-    // 2. 图片附件与编辑器中的内联 blob 图片保持同步（内联图片被删除时移除对应附件）；
-    // 3. 上下文文档与编辑器中的块引用 chip 保持同步（chip 被删除时移除对应上下文）。
+    // 附件与上下文独立于编辑器，编辑器只负责输入正文。
     function syncInputFromProtyle() {
         if (!wysiwygElement) return;
         currentInput = getMarkdownFromProtyle();
-
-        const presentImageSrcs = new Set<string>();
-        wysiwygElement.querySelectorAll('img[src^="blob:"]').forEach((el) => {
-            const src = el.getAttribute('src');
-            if (src) {
-                presentImageSrcs.add(src);
-            }
-        });
-        currentAttachments = currentAttachments.filter(
-            att => att.type !== 'image' || presentImageSrcs.has(att.data)
-        );
-
-        const presentDocIds = new Set<string>();
-        wysiwygElement.querySelectorAll('[data-type~="block-ref"][data-id]').forEach((el) => {
-            const id = el.getAttribute('data-id');
-            if (id) {
-                presentDocIds.add(id);
-            }
-        });
-        contextDocuments = contextDocuments.filter(doc => presentDocIds.has(doc.id));
     }
-
-    let hasInlineDocs = false;
-    $: hasInlineDocs = contextDocuments.length > 0;
-
 
     // 提示词管理
     interface Prompt {
@@ -2430,8 +2328,6 @@
 
         contentObserver = new MutationObserver(() => {
             updatePlaceholder();
-            enhanceInlineImageChips();
-            enhanceInlineDocChips();
             syncInputFromProtyle();
         });
         contentObserver.observe(wysiwygElement, { childList: true, characterData: true, subtree: true });
@@ -2511,34 +2407,6 @@
             event.preventDefault();
             event.stopPropagation();
             confirmDocHint(btnElement.getAttribute('data-id') || '');
-        }, true);
-
-        // 点击内联图片 chip 的删除按钮：移除图片（附件由 MutationObserver 同步移除）。
-        // 捕获阶段拦截，避免触发思源原生图片菜单。
-        wysiwygElement.addEventListener('click', (event: MouseEvent) => {
-            const target = event.target as HTMLElement;
-            if (target.classList.contains('ai-inline-img-chip__remove')) {
-                event.preventDefault();
-                event.stopPropagation();
-                const imgSpan = target.closest('[data-type="img"]');
-                if (imgSpan) {
-                    imgSpan.remove();
-                    syncInputFromProtyle();
-                }
-                return;
-            }
-            // 块引用 chip：点击右侧 × 区域（CSS ::after 绘制）时删除引用；
-            // 其余区域保持思源原生行为（点击打开文档）
-            const refSpan = target.closest('[data-type~="block-ref"]') as HTMLElement | null;
-            if (refSpan && wysiwygElement.contains(refSpan)) {
-                const rect = refSpan.getBoundingClientRect();
-                if (rect.width > 0 && event.clientX >= rect.right - 20) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    refSpan.remove();
-                    syncInputFromProtyle();
-                }
-            }
         }, true);
 
         // 移动端 touch 时主动聚焦 contenteditable 并放置光标，touchend 时通过原生桥唤起输入法。
@@ -2927,13 +2795,6 @@
         };
         currentAttachments = [...currentAttachments, attachment];
 
-        // 在编辑器中内联显示原生图片（blob URL 可经 Lute 渲染且能存活于 SpinBlockDOM 重渲染），
-        // 附件仍上传到插件资源目录；发送时 blob 图片语法会被替换为文本标记
-        if (protyle && protyleInternal?.lute) {
-            const alt = file.name.replace(/[\[\]]/g, '');
-            protyle.insert(protyleInternal.lute.Md2BlockDOM(`![${alt}](${blobUrl})`));
-        }
-
         isUploadingFile = true;
         const saveTask = (async () => {
             try {
@@ -3065,16 +2926,7 @@
 
     // 移除附件
     function removeAttachment(index: number) {
-        const attachment = currentAttachments[index];
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
-
-        // 图片附件：同步删除编辑器中的内联图片
-        if (attachment && attachment.type === 'image' && wysiwygElement) {
-            wysiwygElement.querySelectorAll(`img[src="${attachment.data}"]`).forEach((img) => {
-                const imgSpan = img.closest('[data-type="img"]');
-                (imgSpan || img).remove();
-            });
-        }
     }
 
     // 打开网页链接对话框
@@ -4410,7 +4262,7 @@
 
     // 多模型发送消息
     async function sendMultiModelMessage() {
-        // 保存用户输入和附件（blob 图片、块引用语法替换为文本标记，内容已通过附件/上下文上传）
+        // 保存用户输入和附件，并处理手动输入的块引用。
         const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
         const userAttachments = [...currentAttachments];
@@ -5262,7 +5114,9 @@
                         textContent += `\n\n---\n\n以下是相关内容作为上下文：\n\n${contextText}`;
                     }
 
-                    contentParts.push({ type: 'text', text: textContent });
+                    if (textContent.trim()) {
+                        contentParts.push({ type: 'text', text: textContent });
+                    }
 
                     // 添加用户上传的图片附件
                     lastUserMessage.attachments?.forEach(att => {
@@ -6258,8 +6112,6 @@
             contextDocumentsWithLatestContent
         );
 
-        // currentAttachments 已通过 onUpdate 与编辑器中的 contextImage 节点保持同步，
-        // 无需再单独收集 inlineImages，避免同一张图片被合并两次。
         const userAttachments = [...currentAttachments];
         const userImageAttachments = userAttachments.filter(att => att.type === 'image');
         if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
@@ -6500,6 +6352,10 @@
         } catch (e) {
             console.error('Failed to wait for attachments:', e);
         }
+        if (!currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0) {
+            isLoading = false;
+            return;
+        }
 
         // 如果处于等待选择答案状态，阻止发送
         if (isWaitingForAnswerSelection) {
@@ -6613,7 +6469,7 @@
                 }
             }
         }
-        // 用户消息只保存原始输入（不包含文档内容；blob 图片、块引用语法替换为文本标记）
+        // 用户消息正文不包含上方独立选择的附件和上下文。
         const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
 
         const combinedAttachments = [...currentAttachments];
@@ -6944,7 +6800,9 @@
                         textContent += `\n\n---\n\n以下是相关内容作为上下文：\n\n${contextText}`;
                     }
 
-                    contentParts.push({ type: 'text', text: textContent });
+                    if (textContent.trim()) {
+                        contentParts.push({ type: 'text', text: textContent });
+                    }
 
                     // 添加用户上传的图片
                     lastUserMessage.attachments?.forEach(att => {
@@ -9531,12 +9389,7 @@
 
     // 添加文档到上下文
     async function addDocumentToContext(docId: string, docTitle: string) {
-        // 已在上下文数组中，或编辑器中已通过 (( 插入该文档引用
-        const exists =
-            contextDocuments.some(doc => doc.id === docId) ||
-            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${docId}"]`) !== null;
-
-        if (exists) {
+        if (contextDocuments.some(doc => doc.id === docId)) {
             pushMsg(i18n('aiSidebarSuccessDocumentExists'));
             return;
         }
@@ -9553,13 +9406,6 @@
                     type: 'doc',
                 },
             ];
-
-            // 在编辑器中内联显示文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
-            if (protyle) {
-                protyle.insert(
-                    `<span data-type="block-ref" data-id="${docId}" data-subtype="s" contenteditable="false" prevent-popover="true">${escapeHtml(docTitle)}</span>${Constants.ZWSP}`
-                );
-            }
 
             isSearchDialogOpen = false;
             searchKeyword = '';
@@ -9710,23 +9556,30 @@
         }
     }
 
-    // 判断块的 markdown 是否只包含图片（可多张，无文字），
-    // 是则返回全部 assets 图片路径；含文字、无图片或含非 assets 图片时返回空数组
+    // 用思源自己的 Markdown 渲染结果识别纯图片块，兼容图片标题、样式和块属性。
+    // 含有正文或非本地资源时仍按普通块处理。
     function extractImageOnlyAssetPaths(markdown: string): string[] {
-        const imgRe = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+        if (!markdown.trim() || !protyleInternal?.lute) return [];
+
+        const template = document.createElement('template');
+        template.innerHTML = protyleInternal.lute.Md2BlockDOM(markdown);
+        const images = Array.from(template.content.querySelectorAll('img'));
+        if (images.length === 0) return [];
+
         const paths: string[] = [];
-        let match: RegExpExecArray | null;
-        while ((match = imgRe.exec(markdown)) !== null) {
-            if (!match[1].startsWith('assets/')) {
-                return [];
-            }
-            paths.push(match[1]);
+        for (const image of images) {
+            const src = image.getAttribute('src') || image.getAttribute('data-src') || '';
+            const assetPath = src.replace(/^\/?(?:data\/)?/, '').split(/[?#]/, 1)[0];
+            if (!assetPath.startsWith('assets/')) return [];
+            paths.push(assetPath);
         }
-        if (paths.length === 0) {
-            return [];
-        }
-        // 移除全部图片语法后不能残留文字内容
-        return markdown.replace(imgRe, '').trim() === '' ? paths : [];
+
+        template.content.querySelectorAll('[data-type~="img"], [data-type="NodeImage"], .img, img, .protyle-attr, .protyle-action')
+            .forEach(element => element.remove());
+        const remainingText = (template.content.textContent || '')
+            .replace(new RegExp(Constants.ZWSP, 'g'), '')
+            .trim();
+        return remainingText ? [] : paths;
     }
 
     // 将 assets 中的图片资源上传为图片附件（走统一的图片附件流程）
@@ -9737,7 +9590,14 @@
                 throw new Error('read image asset failed: ' + assetRelPath);
             }
             const name = assetRelPath.split('/').pop() || 'image.png';
-            const file = new File([blob], name, { type: blob.type || 'image/png' });
+            const extension = name.split('.').pop()?.toLowerCase() || '';
+            const mimeTypes: Record<string, string> = {
+                png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+                webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', avif: 'image/avif',
+            };
+            const mimeType = blob.type.startsWith('image/') ? blob.type : mimeTypes[extension];
+            if (!mimeType) throw new Error('unsupported image asset: ' + assetRelPath);
+            const file = new File([blob], name, { type: mimeType });
             await addImageAttachment(file);
         } catch (error) {
             console.error('Add image block error:', error);
@@ -9747,11 +9607,7 @@
 
     // 添加块到上下文（而不是整个文档）
     async function addBlockToContext(blockId: string, blockTitle: string, isDocOverride?: boolean, blockContent: string = '') {
-        const exists =
-            contextDocuments.some(doc => doc.id === blockId) ||
-            wysiwygElement?.querySelector(`[data-type~="block-ref"][data-id="${blockId}"]`) !== null;
-
-        if (exists) {
+        if (contextDocuments.some(doc => doc.id === blockId)) {
             pushMsg(i18n('aiSidebarSuccessBlockExists'));
             return;
         }
@@ -9786,12 +9642,6 @@
                 },
             ];
 
-            // 在编辑器中内联显示块/文档 chip（原生块引用做锚点，可存活于 Lute 重渲染）
-            if (protyle) {
-                protyle.insert(
-                    `<span data-type="block-ref" data-id="${blockId}" data-subtype="s" contenteditable="false" prevent-popover="true">${escapeHtml(displayTitle)}</span>${Constants.ZWSP}`
-                );
-            }
         } catch (error) {
             console.error('Add block error:', error);
             pushErrMsg(i18n('aiSidebarErrorsAddBlockContentFailed'));
@@ -16236,75 +16086,68 @@
         {/if}
     </div>
 
-    <!-- 附件列表：只显示非图片文件/网页附件，文档/块和图片已内联显示在编辑器中 -->
-    {#if currentAttachments.some(att => att.type !== 'image')}
+    {#if contextDocuments.length > 0 || currentAttachments.length > 0}
         <div
             class="ai-sidebar__context-docs"
-            class:ai-sidebar__context-docs--drag-over={isDragOver && !hasInlineDocs}
+            class:ai-sidebar__context-docs--drag-over={isDragOver}
             on:dragover={handleDragOver}
             on:dragleave={handleDragLeave}
             on:drop={handleDrop}
         >
             <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebarContextContent')}</div>
             <div class="ai-sidebar__context-docs-list">
-
-                <!-- 显示当前附件（排除已内联显示的图片） -->
+                {#each contextDocuments as doc}
+                    <div class="ai-sidebar__context-doc-item">
+                        <button
+                            class="ai-sidebar__context-doc-remove"
+                            on:click={() => (contextDocuments = contextDocuments.filter(item => item.id !== doc.id))}
+                            title="移除上下文"
+                        >×</button>
+                        <button
+                            class="ai-sidebar__context-doc-link"
+                            on:click={() => openDocument(doc.id)}
+                            title={doc.title}
+                        >{doc.type === 'block' ? '🧩' : '📄'} {doc.title}</button>
+                    </div>
+                {/each}
                 {#each currentAttachments as attachment, index}
-                    {#if attachment.type !== 'image'}
-                        <div class="ai-sidebar__context-doc-item">
+                    <div class="ai-sidebar__context-doc-item">
+                        <button
+                            class="ai-sidebar__context-doc-remove"
+                            on:click={() => removeAttachment(index)}
+                            title="移除附件"
+                        >×</button>
+                        {#if attachment.type === 'image'}
                             <button
-                                class="ai-sidebar__context-doc-remove"
-                                on:click={() => removeAttachment(index)}
-                                title="移除附件"
-                            >
-                                ×
-                            </button>
+                                class="ai-sidebar__context-attachment-open"
+                                on:click={() => openImageViewer(attachment.data, attachment.name)}
+                                title={attachment.name}
+                            ><img class="ai-sidebar__context-attachment-preview" src={attachment.data} alt={attachment.name} /></button>
+                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>{attachment.name}</span>
+                        {:else}
                             {#if attachment.isWebPage}
                                 <span class="ai-sidebar__context-attachment-icon-emoji">🔗</span>
-                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                    {attachment.name}
-                                </span>
-                                <button
-                                    class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                    on:click|stopPropagation={() => {
-                                        platformUtils.writeText(attachment.data);
-                                        pushMsg('已复制网页Markdown内容');
-                                    }}
-                                    title="复制网页Markdown"
-                                >
-                                    <svg class="b3-button__icon">
-                                        <use xlink:href="#iconCopy"></use>
-                                    </svg>
-                                </button>
                             {:else}
-                                <svg class="ai-sidebar__context-attachment-icon">
-                                    <use xlink:href="#iconFile"></use>
-                                </svg>
-                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>
-                                    📄 {attachment.name}
-                                </span>
-                                <button
-                                    class="b3-button b3-button--text ai-sidebar__context-doc-copy"
-                                    on:click|stopPropagation={() => {
-                                        platformUtils.writeText(attachment.data);
-                                        pushMsg('已复制文件内容');
-                                    }}
-                                    title="复制文件内容"
-                                >
-                                    <svg class="b3-button__icon">
-                                        <use xlink:href="#iconCopy"></use>
-                                    </svg>
-                                </button>
+                                <svg class="ai-sidebar__context-attachment-icon"><use xlink:href="#iconFile"></use></svg>
                             {/if}
-                        </div>
-                    {/if}
+                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>{attachment.name}</span>
+                            <button
+                                class="b3-button b3-button--text ai-sidebar__context-doc-copy"
+                                on:click|stopPropagation={() => {
+                                    platformUtils.writeText(attachment.data);
+                                    pushMsg(attachment.isWebPage ? '已复制网页Markdown内容' : '已复制文件内容');
+                                }}
+                                title={attachment.isWebPage ? '复制网页Markdown' : '复制文件内容'}
+                            ><svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg></button>
+                        {/if}
+                    </div>
                 {/each}
             </div>
         </div>
     {/if}
     <div
         class="ai-sidebar__input-container"
-        class:ai-sidebar__input-container--drag-over={isDragOver && contextDocuments.length === 0}
+        class:ai-sidebar__input-container--drag-over={isDragOver}
         bind:this={inputContainer}
         on:dragover={handleDragOver}
         on:dragleave={handleDragLeave}
@@ -17651,11 +17494,17 @@
 
     .ai-sidebar__context-docs {
         flex-shrink: 0;
+        padding: 8px 12px 0;
+        border-top: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-background);
     }
 
     .ai-sidebar__context-docs--drag-over {
         background: var(--b3-theme-primary-lightest);
-        border: 2px dashed var(--b3-theme-primary);
+    }
+
+    .ai-sidebar__context-docs + .ai-sidebar__input-container {
+        border-top: none;
     }
 
     .ai-sidebar__input-container--drag-over {
@@ -17674,7 +17523,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 4px;
-        max-height: 250px;
+        max-height: 100px;
         overflow: auto;
     }
 
@@ -17687,7 +17536,7 @@
         border: 1px solid var(--b3-border-color);
         transition: all 0.2s ease;
         cursor: pointer;
-        max-width: 100%;
+        max-width: min(220px, 100%);
         position: relative;
 
         &:hover {
@@ -17785,19 +17634,25 @@
         padding: 0 4px;
     }
     .ai-sidebar__context-attachment-preview {
-        width: 28px;
-        height: 28px;
+        width: 44px;
+        height: 44px;
         object-fit: cover;
         border-radius: 6px;
         flex-shrink: 0;
         border: 1px solid var(--b3-border-color);
-        cursor: pointer;
         transition: transform 0.2s, opacity 0.2s;
 
         &:hover {
             transform: scale(1.05);
             opacity: 0.9;
         }
+    }
+    .ai-sidebar__context-attachment-open {
+        display: flex;
+        padding: 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
     }
     .ai-sidebar__context-attachment-icon {
         width: 18px;
@@ -21104,139 +20959,4 @@
         cursor: text;
     }
 
-    /* 内联图片 chip：将原生 img 压缩为缩略图 + 文件名 + 删除按钮的紧凑标签 */
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip) {
-        display: inline-flex;
-        align-items: center;
-        vertical-align: middle;
-        max-width: 220px;
-        height: 22px;
-        margin: 0 2px;
-        padding: 1px 6px;
-        box-sizing: border-box;
-        background: var(--b3-theme-surface-light);
-        border: 1px solid var(--b3-border-color);
-        border-radius: 12px;
-        overflow: hidden;
-        user-select: none;
-        line-height: 1.2;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip > span:has(> img)) {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        min-width: 0;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip img) {
-        width: 16px;
-        height: 16px;
-        min-width: 16px;
-        object-fit: cover;
-        border-radius: 4px;
-        margin: 0;
-        padding: 0;
-    }
-
-    /* 隐藏思源原生图片的操作图标/拖拽柄/网络图标记 */
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action),
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__drag),
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .protyle-action__title),
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type="img"].ai-inline-img-chip .img__net) {
-        display: none !important;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__name) {
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
-        max-width: 120px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove) {
-        font-size: 12px;
-        font-weight: bold;
-        color: var(--b3-theme-on-surface-light);
-        cursor: pointer;
-        flex-shrink: 0;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.ai-inline-img-chip__remove:hover) {
-        color: var(--b3-theme-error);
-    }
-
-    /* 内联文档/块 chip：原生块引用压缩为 图标 + 标题 + × 的紧凑标签。
-       图标和 × 用 CSS 伪元素绘制，避免往 span 内塞 DOM 被 Lute 重渲染并入锚文本 */
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]) {
-        display: inline-flex;
-        align-items: center;
-        vertical-align: middle;
-        max-width: 220px;
-        height: 22px;
-        margin: 0 2px;
-        padding: 1px 16px 1px 6px;
-        box-sizing: border-box;
-        background: var(--b3-theme-surface-light);
-        background-image: none !important;
-        border: 1px solid var(--b3-border-color);
-        border-radius: 12px;
-        font-size: 12px;
-        line-height: 1.2;
-        user-select: none;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        position: relative;
-        color: var(--b3-theme-on-surface);
-        text-decoration: none;
-        cursor: default;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover) {
-        background-color: var(--b3-theme-surface-light) !important;
-        background-image: none !important;
-        border-radius: 12px !important;
-        color: var(--b3-theme-on-surface) !important;
-        text-decoration: none !important;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::before) {
-        content: '📄';
-        font-size: 11px;
-        margin-right: 3px;
-        flex-shrink: 0;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"][data-ai-doc-type="block"]::before) {
-        content: '🧩';
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]::after) {
-        content: '×';
-        position: absolute;
-        right: 2px;
-        top: 50%;
-        z-index: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 18px;
-        height: 18px;
-        transform: translateY(-50%);
-        border-radius: 50%;
-        background: var(--b3-theme-surface);
-        box-shadow: 0 0 0 1px var(--b3-border-color);
-        font-weight: bold;
-        color: var(--b3-theme-on-surface-light);
-        cursor: pointer;
-        transition: color 0.15s ease, transform 0.15s ease;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [data-type~="block-ref"]:hover::after) {
-        color: var(--b3-theme-error);
-        transform: translateY(-50%) scale(1.2);
-    }
 </style>
