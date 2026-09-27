@@ -4,7 +4,7 @@
 
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import { AVAILABLE_TOOLS, TOOL_CATEGORIES, type Tool } from '../tools';
+    import { AVAILABLE_TOOLS, TOOL_CATEGORIES, TOOL_DISPLAY_NAMES, type Tool } from '../tools';
     import SubToolControls from './SubToolControls.svelte';
     import { getSubToolConfig, getSubToolNames, type ToolConfig } from '../tools/toolSelection';
     import { i18n, i18nKey, hasTranslation } from '../utils/i18n';
@@ -229,7 +229,20 @@
     function getToolDisplayName(toolName: string): string {
         const key = i18nKey('tools', toolName, 'name');
         const name = i18n(key);
-        return name === key ? toolName : name;
+        if (name !== key) return name;
+
+        if (toolName.startsWith('plugin__')) {
+            const stableName = toolName.replace(/__[0-9a-f]{12}$/, '');
+            const stableKey = i18nKey('tools', stableName, 'name');
+            const stableTranslation = i18n(stableKey);
+            if (stableTranslation !== stableKey) return stableTranslation;
+        }
+
+        if (TOOL_DISPLAY_NAMES[toolName]) return TOOL_DISPLAY_NAMES[toolName];
+        if (toolName.startsWith('plugin__')) {
+            return toolName.replace(/__[0-9a-f]{12}$/, '').split('__').pop() || toolName;
+        }
+        return toolName;
     }
 
     // 获取分类的友好名称

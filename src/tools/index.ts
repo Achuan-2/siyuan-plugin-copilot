@@ -159,6 +159,9 @@ export interface ToolExecutionCallbacks {
  */
 export const TOOL_FULL_DESCRIPTIONS: Record<string, string> = {};
 
+/** MCP tools/list 中的展示标题，保留原始函数名用于实际调用。 */
+export const TOOL_DISPLAY_NAMES: Record<string, string> = {};
+
 const BUILTIN_TOOL_SKILLS_DIR = '/data/plugins/siyuan-plugin-copilot/skills';
 const BUILTIN_TOOL_SKILL_MODULES = import.meta.glob('./skills/*.md', {
     query: '?raw',
@@ -2447,6 +2450,10 @@ export async function initializeMcpTools() {
     try {
         const mcpToolsList = await listSiyuanMcpTools();
 
+        for (const name of Object.keys(TOOL_DISPLAY_NAMES)) {
+            delete TOOL_DISPLAY_NAMES[name];
+        }
+
         // Keep only base non-MCP tools
         const baseTools = AVAILABLE_TOOLS.filter(t => {
             const name = t.function.name;
@@ -2467,6 +2474,10 @@ export async function initializeMcpTools() {
         // Map MCP tools to Tool interface
         const mappedMcpTools: Tool[] = filteredMcpToolsList.map((mcpTool): Tool => {
             const parameters = mcpTool.inputSchema || { type: 'object', properties: {}, required: [] };
+
+            if (typeof mcpTool.title === 'string' && mcpTool.title.trim()) {
+                TOOL_DISPLAY_NAMES[mcpTool.name] = mcpTool.title.trim();
+            }
 
             // Translate the description dynamically if there is a translation
             const descKey = i18nKey('tools', mcpTool.name, 'description');
@@ -2553,8 +2564,8 @@ export async function initializeMcpTools() {
         const TASK_NOTE_MANAGEMENT_ORDER = ['task', 'project', 'habit', 'stats'];
 
         taskNoteManagementTools.sort((a, b) => {
-            const suffixA = a.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
-            const suffixB = b.slice(TASK_NOTE_MANAGEMENT_PREFIX.length);
+            const suffixA = a.slice(TASK_NOTE_MANAGEMENT_PREFIX.length).replace(/__[0-9a-f]{12}$/, '');
+            const suffixB = b.slice(TASK_NOTE_MANAGEMENT_PREFIX.length).replace(/__[0-9a-f]{12}$/, '');
             const idxA = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixA);
             const idxB = TASK_NOTE_MANAGEMENT_ORDER.indexOf(suffixB);
             if (idxA === -1 && idxB === -1) return 0;
