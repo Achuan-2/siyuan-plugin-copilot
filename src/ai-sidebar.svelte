@@ -699,23 +699,7 @@
     }
 
     function createEmptyParagraph(): HTMLElement {
-        // 优先用 Lute 生成标准空段落，确保与 Protyle 内部结构一致
-        if (protyleInternal?.lute) {
-            try {
-                const html = protyleInternal.lute.Md2BlockDOM('');
-                if (html) {
-                    const temp = document.createElement('div');
-                    temp.innerHTML = html;
-                    const parsed = temp.firstElementChild as HTMLElement | null;
-                    if (parsed) {
-                        return parsed;
-                    }
-                }
-            } catch (e) {
-                // ignore, fall through
-            }
-        }
-
+        // 与思源 Lite 的 genEmptyElement(false, false) 一致：空编辑区不预置零宽字符或 <wbr>。
         const emptyP = document.createElement('div');
         let nodeId = '';
         try {
@@ -737,7 +721,7 @@
         emptyP.setAttribute('data-type', 'NodeParagraph');
         emptyP.className = 'p';
         const spellcheck = (window as any).siyuan?.config?.editor?.spellcheck ?? 'false';
-        emptyP.innerHTML = `<div contenteditable="true" spellcheck="${spellcheck}">${Constants.ZWSP}<wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div>`;
+        emptyP.innerHTML = `<div contenteditable="true" spellcheck="${spellcheck}"></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div>`;
         return emptyP;
     }
 
