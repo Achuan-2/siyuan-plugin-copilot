@@ -1,13 +1,12 @@
 <script context="module" lang="ts">
-    export interface ToolConfig {
-        name: string;
-        autoApprove: boolean;
-    }
+    export type { ToolConfig } from '../tools/toolSelection';
 </script>
 
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
     import { AVAILABLE_TOOLS, TOOL_CATEGORIES, type Tool } from '../tools';
+    import SubToolControls from './SubToolControls.svelte';
+    import { getSubToolConfig, getSubToolNames, type ToolConfig } from '../tools/toolSelection';
     import { i18n, i18nKey, hasTranslation } from '../utils/i18n';
 
     export let selectedTools: ToolConfig[] = [];
@@ -150,6 +149,22 @@
         }
     }
 
+    function toggleSubTool(toolName: string, action: string, field: 'enabled' | 'autoApprove') {
+        localSelectedTools = localSelectedTools.map(config => {
+            if (config.name !== toolName) return config;
+            const current = getSubToolConfig(config, action);
+            return {
+                ...config,
+                subTools: {
+                    ...config.subTools,
+                    [action]: { ...current, [field]: !current[field] },
+                },
+            };
+        });
+        selectedTools = [...localSelectedTools];
+        dispatch('update', localSelectedTools);
+    }
+
     // 用户可选择的工具列表（基于当前分类配置，排除系统工具 get_siyuan_skills，并去重）
     $: userSelectableTools = (() => {
         const seen = new Set<string>();
@@ -183,6 +198,7 @@
             const systemTool = localSelectedTools.find(t => t.name === 'get_siyuan_skills');
             // 使用持久化的 autoApprove 配置
             const newSelection = userSelectableTools.map(tool => ({
+                ...localSelectedTools.find(config => config.name === tool.function.name),
                 name: tool.function.name,
                 autoApprove: toolAutoApproveMap.get(tool.function.name) ?? false,
             }));
@@ -331,6 +347,7 @@
             );
             // 添加该类别的所有工具
             const newCategorySelections = tools.map(tool => ({
+                ...localSelectedTools.find(config => config.name === tool.function.name),
                 name: tool.function.name,
                 autoApprove: toolAutoApproveMap.get(tool.function.name) ?? false,
             }));
@@ -387,6 +404,7 @@
         } else {
             const nonMcpTools = localSelectedTools.filter(t => !mcpToolNames.has(t.name));
             const newMcpSelections = allSiyuanMcpTools.map(tool => ({
+                ...localSelectedTools.find(config => config.name === tool.function.name),
                 name: tool.function.name,
                 autoApprove: toolAutoApproveMap.get(tool.function.name) ?? false,
             }));
@@ -434,6 +452,7 @@
         } else {
             const nonPluginTools = localSelectedTools.filter(t => !pluginToolNames.has(t.name));
             const newPluginSelections = allPluginTools.map(tool => ({
+                ...localSelectedTools.find(config => config.name === tool.function.name),
                 name: tool.function.name,
                 autoApprove: toolAutoApproveMap.get(tool.function.name) ?? false,
             }));
@@ -645,6 +664,7 @@
                                                         </span>
                                                     </label>
                                                     <div class="tool-item__header-right">
+                                                        {#if getSubToolNames(tool).length === 0}
                                                         <label
                                                             class="tool-item__auto-approve"
                                                             title={i18n('toolsAutoApproveTooltip')}
@@ -659,6 +679,7 @@
                                                                 {i18n('toolsAutoApproveLabel')}
                                                             </span>
                                                         </label>
+                                                        {/if}
                                                         <button
                                                             class="tool-item__expand b3-button b3-button--text"
                                                             on:click={() => toggleExpand(toolName)}
@@ -679,6 +700,12 @@
                                                 <div class="tool-item__description">
                                                     {getToolShortDescription(tool)}
                                                 </div>
+
+                                                <SubToolControls
+                                                    {tool}
+                                                    config={localSelectedTools.find(t => t.name === toolName)}
+                                                    on:change={event => toggleSubTool(toolName, event.detail.action, event.detail.field)}
+                                                />
 
                                                 {#if isExpanded}
                                                     <div class="tool-item__details">
@@ -762,6 +789,7 @@
                                         </span>
                                     </label>
                                     <div class="tool-item__header-right">
+                                        {#if getSubToolNames(tool).length === 0}
                                         <label
                                             class="tool-item__auto-approve"
                                             title={i18n('toolsAutoApproveTooltip')}
@@ -776,6 +804,7 @@
                                                 {i18n('toolsAutoApproveLabel')}
                                             </span>
                                         </label>
+                                        {/if}
                                         <button
                                             class="tool-item__expand b3-button b3-button--text"
                                             on:click={() => toggleExpand(toolName)}
@@ -796,6 +825,12 @@
                                 <div class="tool-item__description">
                                     {getToolShortDescription(tool)}
                                 </div>
+
+                                <SubToolControls
+                                    {tool}
+                                    config={localSelectedTools.find(t => t.name === toolName)}
+                                    on:change={event => toggleSubTool(toolName, event.detail.action, event.detail.field)}
+                                />
 
                                 {#if isExpanded}
                                     <div class="tool-item__details">
@@ -907,6 +942,7 @@
                                         </span>
                                     </label>
                                     <div class="tool-item__header-right">
+                                        {#if getSubToolNames(tool).length === 0}
                                         <label
                                             class="tool-item__auto-approve"
                                             title={i18n('toolsAutoApproveTooltip')}
@@ -921,6 +957,7 @@
                                                 {i18n('toolsAutoApproveLabel')}
                                             </span>
                                         </label>
+                                        {/if}
                                         <button
                                             class="tool-item__expand b3-button b3-button--text"
                                             on:click={() => toggleExpand(toolName)}
@@ -941,6 +978,12 @@
                                 <div class="tool-item__description">
                                     {getToolShortDescription(tool)}
                                 </div>
+
+                                <SubToolControls
+                                    {tool}
+                                    config={localSelectedTools.find(t => t.name === toolName)}
+                                    on:change={event => toggleSubTool(toolName, event.detail.action, event.detail.field)}
+                                />
 
                                 {#if isExpanded}
                                     <div class="tool-item__details">
@@ -1025,6 +1068,7 @@
                                         </span>
                                     </label>
                                     <div class="tool-item__header-right">
+                                        {#if getSubToolNames(tool).length === 0}
                                         <label
                                             class="tool-item__auto-approve"
                                             title={i18n('toolsAutoApproveTooltip')}
@@ -1039,6 +1083,7 @@
                                                 {i18n('toolsAutoApproveLabel')}
                                             </span>
                                         </label>
+                                        {/if}
                                         <button
                                             class="tool-item__expand b3-button b3-button--text"
                                             on:click={() => toggleExpand(toolName)}
@@ -1059,6 +1104,12 @@
                                 <div class="tool-item__description">
                                     {getToolShortDescription(tool)}
                                 </div>
+
+                                <SubToolControls
+                                    {tool}
+                                    config={localSelectedTools.find(t => t.name === toolName)}
+                                    on:change={event => toggleSubTool(toolName, event.detail.action, event.detail.field)}
+                                />
 
                                 {#if isExpanded}
                                     <div class="tool-item__details">

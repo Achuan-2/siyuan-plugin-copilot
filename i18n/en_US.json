@@ -522,6 +522,7 @@
     "toolsAttrName": "Custom Attributes",
     "toolsAutoApproveFooterInfo": "You can set auto-approve for each tool individually",
     "toolsAutoApproveLabel": "Auto Approve",
+    "toolsSubToolHeading": "Subtools",
     "toolsAutoApproveTooltip": "When enabled, this tool call will not require manual confirmation",
     "toolsBlockDescription": "Siyuan block level operations. Actions: get(id), insert(id, content, parentId?), append(id, content), update(id, content), remove(id), get_kramdown(id).",
     "toolsBlockName": "Block Operations",

@@ -79,6 +79,7 @@
         type Skill,
         type ToolExecutionCallbacks,
     } from './tools';
+    import { filterSelectedTool, getSubToolConfig, getSubToolNames } from './tools/toolSelection';
 
     import {
         Protyle,
@@ -137,13 +138,38 @@
         'siyuan_get_block_content',
     ]);
 
-    function shouldAutoExecuteMultiModelTool(
-        toolName: string
-    ): boolean {
-        return MULTI_MODEL_AUTO_EXECUTE_TOOLS.has(toolName) || 
-               ((chatMode === 'ask') 
-                   ? !!toolAutoApproveSettingsAsk[toolName] 
-                   : !!toolAutoApproveSettings[toolName]);
+    function isToolCallAutoApproved(toolCall: ToolCall): boolean {
+        const toolName = toolCall.function.name;
+        if (MULTI_MODEL_AUTO_EXECUTE_TOOLS.has(toolName)) return true;
+        const config = (chatMode === 'ask' ? selectedToolsAsk : selectedTools)
+            .find(tool => tool.name === toolName);
+        const definition = AVAILABLE_TOOLS.find(tool => tool.function.name === toolName);
+        if (definition && getSubToolNames(definition).length > 0) {
+            try {
+                const action = JSON.parse(toolCall.function.arguments)?.action;
+                return typeof action === 'string' && getSubToolConfig(config, action).autoApprove;
+            } catch {
+                return false;
+            }
+        }
+        return !!config?.autoApprove;
+    }
+
+    function isToolCallEnabled(toolCall: ToolCall, allowedNames: Set<string>): boolean {
+        const name = toolCall.function.name;
+        if (!allowedNames.has(name)) return false;
+        const definition = AVAILABLE_TOOLS.find(tool => tool.function.name === name);
+        if (!definition || getSubToolNames(definition).length === 0) return true;
+        try {
+            const action = JSON.parse(toolCall.function.arguments)?.action;
+            const config = (chatMode === 'ask' ? selectedToolsAsk : selectedTools)
+                .find(tool => tool.name === name);
+            return typeof action === 'string' &&
+                getSubToolNames(definition).includes(action) &&
+                !!config && getSubToolConfig(config, action).enabled;
+        } catch {
+            return false;
+        }
     }
 
     function getToolDefinitionName(tool: any): string {
@@ -184,9 +210,12 @@
         }
 
         const currentSelectedTools = chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-        const selectedToolDefs = AVAILABLE_TOOLS.filter(tool =>
-            currentSelectedTools.some(t => t.name === tool.function.name)
-        );
+        const selectedToolDefs = AVAILABLE_TOOLS.flatMap(tool => {
+            const config = currentSelectedTools.find(t => t.name === tool.function.name);
+            if (!config) return [];
+            const filtered = filterSelectedTool(tool, config);
+            return filtered ? [filtered] : [];
+        });
         const filteredToolDefs = selectedToolDefs.filter(
             tool =>
                 !HIDDEN_SYSTEM_TOOL_NAMES.has(tool.function.name) &&
@@ -1610,19 +1639,16 @@
                                 // 检查是否自动批准
                                 const currentSelectedTools =
                                     chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-                                const autoApprove = shouldAutoExecuteMultiModelTool(
-                                    tc.function.name
-                                );
-                                const isEnabledTool = allowedExecutableToolNames.has(
-                                    tc.function.name
-                                );
+                                const autoApprove = isToolCallAutoApproved(tc);
+                                const isEnabledTool = isToolCallEnabled(tc, allowedExecutableToolNames);
 
                                 let toolResult: string;
                                 if (!isEnabledTool) {
                                     toolResult = await executeToolCall(
                                         tc,
                                         allowedExecutableToolNames,
-                                        toolExecutionCallbacks
+                                        toolExecutionCallbacks,
+                                        currentSelectedTools
                                     );
                                 } else if (autoApprove) {
                                     console.log(
@@ -1631,7 +1657,8 @@
                                     toolResult = await executeToolCall(
                                         tc,
                                         allowedExecutableToolNames,
-                                        toolExecutionCallbacks
+                                        toolExecutionCallbacks,
+                                        currentSelectedTools
                                     );
                                 } else {
                                     console.log(
@@ -4580,23 +4607,16 @@
                                     // 检查是否自动批准
                                     const currentSelectedTools =
                                         chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-                                    const toolConfig = currentSelectedTools.find(
-                                        t => t.name === tc.function.name
-                                    );
-                                    const autoApprove = shouldAutoExecuteMultiModelTool(
-                                        tc.function.name,
-                                        toolConfig
-                                    );
-                                    const isEnabledTool = allowedExecutableToolNames.has(
-                                        tc.function.name
-                                    );
+                                    const autoApprove = isToolCallAutoApproved(tc);
+                                    const isEnabledTool = isToolCallEnabled(tc, allowedExecutableToolNames);
 
                                     let toolResult: string;
                                     if (!isEnabledTool) {
                                         toolResult = await executeToolCall(
                                             tc,
                                             allowedExecutableToolNames,
-                                            toolExecutionCallbacks
+                                            toolExecutionCallbacks,
+                                            currentSelectedTools
                                         );
                                     } else if (autoApprove) {
                                         console.log(
@@ -4605,7 +4625,8 @@
                                         toolResult = await executeToolCall(
                                             tc,
                                             allowedExecutableToolNames,
-                                            toolExecutionCallbacks
+                                            toolExecutionCallbacks,
+                                            currentSelectedTools
                                         );
                                     } else {
                                         // 多模型模式下，非自动批准的工具暂时直接拒绝，避免 UI 冲突
@@ -7170,18 +7191,12 @@
                                 for (const toolCall of toolCalls) {
                                     const currentSelectedToolsInLoop =
                                         chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-                                    const toolConfig = currentSelectedToolsInLoop.find(
-                                        t => t.name === toolCall.function.name
-                                    );
                                     // 系统工具默认自动批准
                                     const isSystemTool = SYSTEM_TOOL_NAMES.has(
                                         toolCall.function.name
                                     );
-                                    const isEnabledTool = allowedExecutableToolNames.has(
-                                        toolCall.function.name
-                                    );
-                                    const autoApprove =
-                                        isSystemTool || toolConfig?.autoApprove || false;
+                                    const isEnabledTool = isToolCallEnabled(toolCall, allowedExecutableToolNames);
+                                    const autoApprove = isSystemTool || isToolCallAutoApproved(toolCall);
                                     const toolChangeContext =
                                         isEnabledTool
                                             ? await resolveToolChangeContext(toolCall)
@@ -7200,7 +7215,8 @@
                                             toolResult = await executeToolCall(
                                                 toolCall,
                                                 allowedExecutableToolNames,
-                                                toolExecutionCallbacks
+                                                toolExecutionCallbacks,
+                                                currentSelectedToolsInLoop
                                             );
 
                                             const toolResultMessage: Message = {
@@ -7218,7 +7234,8 @@
                                             toolResult = await executeToolCall(
                                                 toolCall,
                                                 allowedExecutableToolNames,
-                                                toolExecutionCallbacks
+                                                toolExecutionCallbacks,
+                                                currentSelectedToolsInLoop
                                             );
 
                                             // 添加工具结果消息
@@ -7258,7 +7275,8 @@
                                                 toolResult = await executeToolCall(
                                                     toolCall,
                                                     allowedExecutableToolNames,
-                                                    toolExecutionCallbacks
+                                                    toolExecutionCallbacks,
+                                                    currentSelectedToolsInLoop
                                                 );
 
                                                 // 添加工具结果消息
@@ -12651,18 +12669,12 @@
                                 for (const toolCall of toolCalls) {
                                     const currentSelectedToolsInLoop =
                                         chatMode === 'ask' ? selectedToolsAsk : selectedTools;
-                                    const toolConfig = currentSelectedToolsInLoop.find(
-                                        t => t.name === toolCall.function.name
-                                    );
                                     // 系统工具默认自动批准
                                     const isSystemTool = SYSTEM_TOOL_NAMES.has(
                                         toolCall.function.name
                                     );
-                                    const isEnabledTool = allowedExecutableToolNames.has(
-                                        toolCall.function.name
-                                    );
-                                    const autoApprove =
-                                        isSystemTool || toolConfig?.autoApprove || false;
+                                    const isEnabledTool = isToolCallEnabled(toolCall, allowedExecutableToolNames);
+                                    const autoApprove = isSystemTool || isToolCallAutoApproved(toolCall);
                                     const toolChangeContext =
                                         isEnabledTool
                                             ? await resolveToolChangeContext(toolCall)
@@ -12681,7 +12693,8 @@
                                             toolResult = await executeToolCall(
                                                 toolCall,
                                                 allowedExecutableToolNames,
-                                                toolExecutionCallbacks
+                                                toolExecutionCallbacks,
+                                                currentSelectedToolsInLoop
                                             );
 
                                             const toolResultMessage: Message = {
@@ -12699,7 +12712,8 @@
                                             toolResult = await executeToolCall(
                                                 toolCall,
                                                 allowedExecutableToolNames,
-                                                toolExecutionCallbacks
+                                                toolExecutionCallbacks,
+                                                currentSelectedToolsInLoop
                                             );
 
                                             // 添加工具结果消息
@@ -12739,7 +12753,8 @@
                                                 toolResult = await executeToolCall(
                                                     toolCall,
                                                     allowedExecutableToolNames,
-                                                    toolExecutionCallbacks
+                                                    toolExecutionCallbacks,
+                                                    currentSelectedToolsInLoop
                                                 );
 
                                                 // 添加工具结果消息

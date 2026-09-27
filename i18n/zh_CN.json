@@ -522,6 +522,7 @@
     "toolsAttrName": "属性管理",
     "toolsAutoApproveFooterInfo": "可为每个工具单独设置是否自动批准",
     "toolsAutoApproveLabel": "自动批准",
+    "toolsSubToolHeading": "子工具",
     "toolsAutoApproveTooltip": "启用后，此工具调用不需要手动确认",
     "toolsBlockDescription": "思源块的操作。操作：get(获取块内容/属性), insert(插入块), append(追加内容), update(修改内容), remove(删除块), get_kramdown(获取 Kramdown 原文)",
     "toolsBlockName": "块级操作",

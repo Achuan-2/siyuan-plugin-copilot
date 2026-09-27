@@ -25,6 +25,7 @@ import { settingsStore } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
 import { i18n, i18nKey } from '../utils/i18n';
+import { getSubToolConfig, getSubToolNames, type ToolConfig } from './toolSelection';
 
 /**
  * 获取当前激活的编辑器 Protyle 实例
@@ -1615,7 +1616,8 @@ export async function soul(params: {
 export async function executeToolCall(
     toolCall: ToolCall,
     allowedToolNames?: Iterable<string>,
-    callbacks?: ToolExecutionCallbacks
+    callbacks?: ToolExecutionCallbacks,
+    selectedTools?: ToolConfig[]
 ): Promise<string> {
     const { name, arguments: argsStr } = toolCall.function;
     const allowedToolNameSet = normalizeAllowedToolNames(allowedToolNames);
@@ -1626,6 +1628,18 @@ export async function executeToolCall(
 
     try {
         const args = JSON.parse(argsStr);
+        const definition = AVAILABLE_TOOLS.find(tool => tool.function.name === name);
+        if (selectedTools && definition) {
+            const actions = getSubToolNames(definition);
+            if (actions.length > 0) {
+                const action = args?.action;
+                const config = selectedTools.find(tool => tool.name === name);
+                if (typeof action !== 'string' || !actions.includes(action) ||
+                    !config || !getSubToolConfig(config, action).enabled) {
+                    return `工具 "${name}" 的子工具 "${String(action ?? '')}" 当前未启用，已拒绝执行。`;
+                }
+            }
+        }
 
         switch (name) {
 
