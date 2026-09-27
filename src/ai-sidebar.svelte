@@ -20,7 +20,7 @@
         THINKING_EFFORT_LABELS,
     } from './thinking-effort';
     import type { MessageContent } from './ai-chat';
-    import { getActiveEditor, openTab } from 'siyuan';
+    import { getActiveEditor, getAllModels, openTab } from 'siyuan';
     import { WEBAPP_TAB_TYPE } from './index';
     import {
         pushMsg,
@@ -2489,7 +2489,12 @@
                         type.startsWith(Constants.SIYUAN_DROP_GUTTER) ||
                         type.startsWith(Constants.SIYUAN_DROP_FILE)
                 );
-            return isSiyuanBlockDrop || hasOsFiles || types.includes(Constants.SIYUAN_DROP_TAB);
+            return (
+                isSiyuanBlockDrop ||
+                hasOsFiles ||
+                types.includes(Constants.SIYUAN_DROP_TAB) ||
+                !!getDraggedTabHeader(event)
+            );
         };
         // 阻止思源 dragover 显示块放置指示器（drop 被我们拦截后指示器不会被清理）
         editorElement.addEventListener('dragover', (event: DragEvent) => {
@@ -9660,6 +9665,28 @@
         }
     }
 
+    // 钉住页签只显示图标，从动态图标开始拖动时也可能携带页签 HTML。
+    // 页签的 data-id 是布局 ID，必须通过对应编辑器取得文档 ID。
+    function getDraggedTabHeader(event: DragEvent): HTMLElement | null {
+        const dragElement = (window as any).siyuan?.dragElement as HTMLElement | undefined;
+        const header = dragElement?.closest<HTMLElement>('li[data-type="tab-header"]');
+        if (header) return header;
+
+        const html = event.dataTransfer?.getData('text/html') || '';
+        if (!html.includes('tab-header')) return null;
+
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        const draggedHeader = template.content.querySelector<HTMLElement>(
+            'li[data-type="tab-header"][data-id]'
+        );
+        if (!draggedHeader) return null;
+
+        return document.querySelector<HTMLElement>(
+            `li[data-type="tab-header"][data-id="${CSS.escape(draggedHeader.dataset.id)}"]`
+        ) || draggedHeader;
+    }
+
     // 处理拖放
     function handleDragOver(event: DragEvent) {
         if (event.dataTransfer.types.includes('application/multi-model-sort')) {
@@ -9705,6 +9732,25 @@
 
         event.preventDefault();
         isDragOver = false;
+
+        // 优先按页签对应的文档处理，避免原生编辑器或文件附件逻辑消费动态图标。
+        const tabHeader = getDraggedTabHeader(event);
+        if (tabHeader) {
+            event.stopPropagation();
+            // Editor 模型通过 parent 持有所属页签，tab 仅是构造参数。
+            const editor = getAllModels().editor.find(
+                item => item.parent?.id === tabHeader.dataset.id
+            );
+            const rootId = editor?.editor?.protyle?.block?.rootID;
+            if (rootId) {
+                try {
+                    await addItemByBlockId(rootId, false);
+                } finally {
+                    tabHeader.style.opacity = '1';
+                }
+                return;
+            }
+        }
 
         // 处理标准文件拖放
         if (hasFiles) {
