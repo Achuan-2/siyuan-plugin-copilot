@@ -58,7 +58,7 @@
     import WebAppManager from './components/WebAppManager.svelte';
     import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
-    import { settingsStore } from './stores/settings';
+    import { settingsStore, PLUGIN_DATA_CHANGED_EVENT } from './stores/settings';
     import {
         enqueueSessionMetadataSave,
         getSessionTaskStatus,
@@ -452,6 +452,7 @@
     let inputContainer: HTMLElement;
     let fileInputElement: HTMLInputElement;
     let isInitialLoading = true;
+    let isDestroyed = false;
 
     // 思考过程折叠状态管理
     let thinkingCollapsed: Record<number, boolean> = {};
@@ -888,6 +889,7 @@
     type ChatMode = 'ask' | 'agent' | 'draw';
     let chatMode: ChatMode = 'ask';
     let previousChatMode: ChatMode = 'ask'; // 用于模式切换时恢复对应模型
+    let lastRememberedChatMode: ChatMode = 'ask';
     let isDiffDialogOpen = false;
     let currentDiffOperation: EditOperation | null = null;
     type DiffViewMode = 'diff' | 'split';
@@ -1166,6 +1168,7 @@
     async function loadTranslateHistoryList() {
         try {
             const data = await plugin.loadData('translate-history.json');
+            if (isDestroyed) return;
             translateHistory = data?.history || [];
         } catch (error) {
             console.error('Load translate history error:', error);
@@ -1984,9 +1987,13 @@
                         : { ...(toolAutoApproveSettings || {}) },
             };
         }
-        if (settings.lastUsedChatMode !== chatMode) {
-            settings.lastUsedChatMode = chatMode;
-            plugin.saveSettings(settings);
+        // 仅在本视图切换模式时保存；接收其他窗口的设置不能把本地模式写回去。
+        if (lastRememberedChatMode !== chatMode) {
+            lastRememberedChatMode = chatMode;
+            if (settings.lastUsedChatMode !== chatMode) {
+                settings.lastUsedChatMode = chatMode;
+                plugin.saveSettings(settings);
+            }
         }
     }
     let toolCallsInProgress: Set<string> = new Set(); // 正在执行的工具调用ID
@@ -2176,8 +2183,15 @@
         return () => window.removeEventListener('copilot-session-status', handleSessionTaskStatus);
     });
 
-    onMount(async () => {
+    onMount(() => {
+        initializeSidebar().catch(error => {
+            if (!isDestroyed) console.error('Failed to initialize Copilot sidebar:', error);
+        });
+    });
+
+    async function initializeSidebar() {
         settings = await plugin.loadSettings();
+        if (isDestroyed) return;
 
         // 迁移旧设置到新结构
         migrateOldSettings();
@@ -2212,11 +2226,7 @@
             return config !== null; // 只保留有效的模型
         });
 
-        // 如果过滤后的模型列表与原列表不同，保存更新后的列表
-        if (selectedMultiModels.length !== (settings.selectedMultiModels || []).length) {
-            settings.selectedMultiModels = selectedMultiModels;
-            await plugin.saveSettings(settings);
-        }
+        // 初始化过滤只影响当前视图；用户修改模型选择时再持久化。
 
         // 初始化字体大小设置
         messageFontSize = settings.messageFontSize || 12;
@@ -2227,12 +2237,15 @@
 
         // 加载历史会话
         await loadSessions();
+        if (isDestroyed) return;
 
         // 加载提示词
         await loadPrompts();
+        if (isDestroyed) return;
 
         // 加载 Agent 模式的工具配置
         await loadToolsConfig();
+        if (isDestroyed) return;
 
         // 同步当前工具配置到临时模型设置，供预设面板读取初始状态
         tempModelSettings = {
@@ -2247,6 +2260,7 @@
         };
         // 加载翻译历史和设置
         await loadTranslateHistoryList();
+        if (isDestroyed) return;
         translateProvider = settings.translateProvider || currentProvider || '';
         translateModelId = settings.translateModelId || currentModelId || '';
         translateInputLanguage = settings.translateInputLanguage || 'auto';
@@ -2258,6 +2272,7 @@
         // 如果传入了初始会话ID，加载该会话
         if (initialSessionId) {
             await doLoadSession(initialSessionId);
+            if (isDestroyed) return;
         } else if (getBaseSystemPrompt()) {
             // 如果有系统提示词，添加到消息列表
             messages = [{ role: 'system', content: getBaseSystemPrompt() }];
@@ -2295,6 +2310,7 @@
         const app = window.siyuan.ws.app;
         // 与思源 mountProtyleLiteFragment 保持一致：该标记会禁用 Lite 编辑器中
         // 依赖内核文档块的原生块菜单，避免对临时块 ID 发起内核操作。
+        if (isDestroyed || !editorElement) return;
         editorElement.classList.add('protyle-lite-fragment');
         protyle = new Protyle(
             app,
@@ -2522,6 +2538,7 @@
 
         if (mode === 'dialog' && initialMessage) {
             await tick();
+            if (isDestroyed) return;
             protyle?.focus();
         }
 
@@ -2531,6 +2548,7 @@
             if (newSettings && Object.keys(newSettings).length > 0) {
                 // 更新本地设置
                 settings = newSettings;
+                webApps = newSettings.webApps || [];
 
                 // 更新提供商信息
                 if (newSettings.aiProviders) {
@@ -2563,14 +2581,7 @@
                     });
                     selectedMultiModels = validModels;
 
-                    // 如果过滤后的模型列表与原列表不同，更新设置
-                    if (validModels.length !== newSettings.selectedMultiModels.length) {
-                        settings.selectedMultiModels = validModels;
-                        // 异步保存设置
-                        plugin.saveSettings(settings).catch(err => {
-                            console.error('Failed to save filtered multi-models:', err);
-                        });
-                    }
+                    // 此处只更新视图，避免接收跨窗口配置时再次触发数据变更。
                 }
 
                 // 实时更新字体大小设置
@@ -2614,12 +2625,25 @@
         window.addEventListener('copilot-open-tab-session', handleOpenTabSession as EventListener);
         // 监听提示词更新事件（多实例同步）
         window.addEventListener(PROMPTS_SYNC_EVENT, handlePromptsUpdated as EventListener);
+        window.addEventListener(PLUGIN_DATA_CHANGED_EVENT, handlePluginDataChanged);
 
+        lastRememberedChatMode = chatMode;
         isInitialLoading = false;
         previousChatMode = chatMode;
-    });
+    }
+
+    function handlePluginDataChanged() {
+        if (isDestroyed) return;
+        // 只刷新列表和工具配置，保留当前会话、输入内容及正在运行的请求。
+        void Promise.all([
+            loadSessions(), loadPrompts(), loadToolsConfig(), loadTranslateHistoryList(),
+        ]).catch(error => {
+            if (!isDestroyed) console.error('Failed to refresh Copilot data:', error);
+        });
+    }
 
     onDestroy(async () => {
+        isDestroyed = true;
         if (sidebarContainer) {
             sidebarContainer.removeEventListener('touchstart', handleTouchStopPropagation);
             sidebarContainer.removeEventListener('touchmove', handleTouchStopPropagation);
@@ -2649,6 +2673,7 @@
         window.removeEventListener('copilot-open-tab-session', handleOpenTabSession as EventListener);
         // 移除提示词更新事件监听器
         window.removeEventListener(PROMPTS_SYNC_EVENT, handlePromptsUpdated as EventListener);
+        window.removeEventListener(PLUGIN_DATA_CHANGED_EVENT, handlePluginDataChanged);
 
         // 保存工具配置
         if (isToolConfigLoaded) {
@@ -3257,6 +3282,7 @@
     // 处理模型设置应用
     async function handleApplyModelSettings(
         event: CustomEvent<{
+            persist?: boolean;
             contextCount: number;
             temperature: number;
             temperatureEnabled: boolean;
@@ -3276,6 +3302,11 @@
         }>
     ) {
         const newSettings = event.detail;
+        const shouldPersist = newSettings.persist !== false;
+        if (!shouldPersist) {
+            // 自动恢复预设属于视图初始化，不能修改 store 共享的配置对象。
+            settings = { ...settings };
+        }
 
         // 更新tempModelSettings，保持所有字段的状态
         tempModelSettings = {
@@ -3300,6 +3331,7 @@
             chatMode = newSettings.chatMode;
             // 同步 previousChatMode，避免响应式恢复逻辑覆盖预设中已选择的模型
             previousChatMode = newSettings.chatMode;
+            if (!shouldPersist) lastRememberedChatMode = newSettings.chatMode;
 
             // 如果预设没有指定模型，根据新模式恢复记忆的模型
             if (!newSettings.modelSelectionEnabled) {
@@ -3339,7 +3371,7 @@
                 selectedMultiModels = [...newSettings.selectedModels];
 
                 // 最后保存设置
-                await plugin.saveSettings(settings);
+                if (shouldPersist) await plugin.saveSettings(settings);
             } else {
                 // 单模型模式
                 enableMultiModel = false;
@@ -3360,7 +3392,7 @@
                     currentModelId = selectedModel.modelId;
 
                     // 最后保存设置
-                    await plugin.saveSettings(settings);
+                    if (shouldPersist) await plugin.saveSettings(settings);
                 }
             }
         } else {
@@ -3372,7 +3404,7 @@
         }
 
         // 如果启用了工具选择，根据聊天模式应用到对应的工具配置
-        if (newSettings.toolSelectionEnabled) {
+        if (newSettings.toolSelectionEnabled && shouldPersist) {
             const tools = newSettings.selectedTools || [];
             if (chatMode === 'ask') {
                 selectedToolsAsk = [...tools];
@@ -9876,6 +9908,7 @@
     async function loadSessions() {
         try {
             const data = await plugin.loadData('chat-sessions.json');
+            if (isDestroyed) return;
             sessions = (data?.sessions || []).map((session: ChatSession) => {
                 const taskStatus =
                     session.id === currentSessionId
@@ -11017,6 +11050,7 @@
     async function loadPrompts() {
         try {
             const data = await plugin.loadData('prompts.json');
+            if (isDestroyed) return;
             prompts = data?.prompts || [];
         } catch (error) {
             console.error('Load prompts error:', error);
@@ -11227,6 +11261,7 @@
     async function loadToolsConfig() {
         try {
             const data = await plugin.loadData('agent-tools-config.json');
+            if (isDestroyed) return;
             if (data?.selectedTools && Array.isArray(data.selectedTools)) {
                 selectedTools = data.selectedTools;
             } else {
@@ -11258,21 +11293,10 @@
                 selectedToolsAsk: selectedToolsAsk || [],
                 toolAutoApproveSettingsAsk: toolAutoApproveSettingsAsk || {},
             });
-        } catch (error) {
-            console.error('[ToolConfig] Load error:', error);
-            selectedTools = [];
-            toolAutoApproveSettings = {};
-            selectedToolsAsk = [];
-            toolAutoApproveSettingsAsk = {};
-            lastSavedToolsConfigSnapshot = JSON.stringify({
-                selectedTools: [],
-                toolAutoApproveSettings: {},
-                selectedToolsAsk: [],
-                toolAutoApproveSettingsAsk: {},
-            });
-        } finally {
-            // 标记配置已加载完成，此后才允许自动保存
+            // 读取成功后才允许自动保存；读取失败时保留原配置。
             isToolConfigLoaded = true;
+        } catch (error) {
+            if (!isDestroyed) console.error('[ToolConfig] Load error:', error);
         }
     }
 

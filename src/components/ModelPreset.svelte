@@ -590,10 +590,7 @@
         presets = normalizedPresets;
         selectedPresetId = settings.selectedModelPresetId || '';
 
-        if (JSON.stringify(storedPresets) !== JSON.stringify(normalizedPresets)) {
-            settings.modelPresets = normalizedPresets;
-            await plugin.saveSettings(settings);
-        }
+        // 兼容旧格式只更新内存，用户编辑预设时再保存规范化后的数据。
     }
 
     // 保存预设到设置
@@ -1238,6 +1235,7 @@
                 if (preset) {
                     // 自动应用保存的预设
                     dispatch('apply', {
+                        persist: false,
                         contextCount: preset.contextCount,
                         temperature: preset.temperature,
                         temperatureEnabled: preset.temperatureEnabled ?? true,
@@ -1255,8 +1253,8 @@
                     });
                     selectedPresetId = savedPresetId;
                 } else {
-                    // 预设已被删除，清除保存的ID
-                    await saveSelectedPresetId('');
+                    // 预设已被删除，只清除当前视图的选择。
+                    selectedPresetId = '';
                 }
             }
         })();

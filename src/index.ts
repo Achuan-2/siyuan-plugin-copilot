@@ -28,7 +28,7 @@ import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
-import { updateSettings, getSettings } from "./stores/settings";
+import { updateSettings, getSettings, PLUGIN_DATA_CHANGED_EVENT } from "./stores/settings";
 import { getModelCapabilities } from "./utils/modelCapabilities";
 import { matchHotKey, getCustomHotKey } from "./utils/hotkey";
 import { ChangelogUtils } from "./utils/changelogNotify";
@@ -1976,7 +1976,7 @@ export default class PluginSample extends Plugin {
         this.webViewHistory = await this.loadWebViewHistory();
 
         // 加载设置
-        await this.loadSettings();
+        await this.loadSettings({ persistMigrations: true });
 
         // 初始化思源内部 MCP 工具
         try {
@@ -2090,7 +2090,6 @@ export default class PluginSample extends Plugin {
                     const cleanOpenedIds = settings.openedWebAppIds.filter(id => !id.startsWith('weblink_'));
                     if (cleanOpenedIds.length !== settings.openedWebAppIds.length) {
                         settings.openedWebAppIds = cleanOpenedIds;
-                        await this.saveSettings(settings);
                     }
                 }
 
@@ -2351,6 +2350,21 @@ export default class PluginSample extends Plugin {
         this.chatDialogs.set(dialogId, { dialog, app: chatApp });
     }
 
+    async onDataChanged() {
+        // 其他前端写入插件数据时只刷新内存，避免默认整插件重载以及读后回写循环。
+        const settings = await this.loadSettings({ persistMigrations: false });
+        this.webViewHistory = await this.loadWebViewHistory();
+        const webApps = settings.webApps || [];
+        for (const app of webApps) {
+            if (app.icon?.startsWith('data:image')) {
+                this.registerWebAppIcon(app.id, app.icon);
+            }
+        }
+        this.syncWebAppDocks(webApps);
+        this.syncWebAppCollectionDock(webApps, settings.webAppCollectionDock, settings.openedWebAppIds || []);
+        window.dispatchEvent(new CustomEvent(PLUGIN_DATA_CHANGED_EVENT));
+    }
+
     onunload() {
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);
@@ -2489,8 +2503,10 @@ export default class PluginSample extends Plugin {
     /**
      * 加载设置
      */
-    async loadSettings() {
-        const settings = (await this.loadData(SETTINGS_FILE)) || {};
+    async loadSettings({ persistMigrations = false } = {}) {
+        // 默认只读，不修改 SDK 缓存；仅 onload 持久化真实的旧数据迁移。
+        const settings = JSON.parse(JSON.stringify((await this.loadData(SETTINGS_FILE)) || {}));
+        const migrationMessages: string[] = [];
 
         // 迁移：如果存在旧的 aiProviders.v3 配置，迁移为自定义平台（customProviders）
         try {
@@ -2526,9 +2542,7 @@ export default class PluginSample extends Plugin {
                 // 如果存在老的单个平台字段，也一并清理（兼容旧版本）
                 if (settings.aiProvider === 'v3') delete settings.aiProvider;
 
-                // 持久化迁移结果
-                await this.saveData(SETTINGS_FILE, settings);
-                pushMsg('检测到旧的 V3 配置，已迁移为自定义平台');
+                migrationMessages.push('检测到旧的 V3 配置，已迁移为自定义平台');
             }
         } catch (e) {
             console.error('Settings migration failed:', e);
@@ -2600,8 +2614,7 @@ export default class PluginSample extends Plugin {
                     }
 
                     settings.dataTransfer.autoSetModelCapabilities = true;
-                    await this.saveData(SETTINGS_FILE, settings);
-                    pushMsg('已自动为现有模型设置能力');
+                    migrationMessages.push('已自动为现有模型设置能力');
                 } else {
                     // 首次安装或没有实际模型的用户，直接标记为已完成，不显示消息
                     settings.dataTransfer.autoSetModelCapabilities = true;
@@ -2614,9 +2627,6 @@ export default class PluginSample extends Plugin {
         const defaultSettings = getDefaultSettings();
         const mergedSettings = { ...defaultSettings, ...settings };
 
-        // 检测是否需要保存设置
-        let needsSave = false;
-
         // 如果是首次安装（settings.json 不存在或为空，或只有 dataTransfer 字段），不需要保存
         // 注意：dataTransfer 是迁移标志，不计入用户实际配置
         const settingsKeys = Object.keys(settings);
@@ -2628,17 +2638,19 @@ export default class PluginSample extends Plugin {
             // 从默认设置中获取内置 webApps
             if (defaultSettings.webApps && Array.isArray(defaultSettings.webApps) && defaultSettings.webApps.length > 0) {
                 mergedSettings.webApps = defaultSettings.webApps;
-                needsSave = true;
             }
         }
 
-        // 保存合并后的设置，确保内置 webApps 能在 onLayoutReady 中正确注册
-        if (needsSave) {
-            await this.saveData(SETTINGS_FILE, mergedSettings);
+        // 默认值只补充到内存。真实的旧配置/会话迁移合并为一次设置写入。
+        if (persistMigrations) {
+            const sessionsMigrated = await this.migrateSessions(mergedSettings);
+            if (migrationMessages.length > 0 || sessionsMigrated) {
+                await this.saveData(SETTINGS_FILE, mergedSettings);
+                for (const message of migrationMessages) {
+                    pushMsg(message);
+                }
+            }
         }
-
-        // 迁移旧会话数据（如果存在）
-        await this.migrateSessions(mergedSettings);
 
         // 更新 store
         updateSettings(mergedSettings);
@@ -2775,7 +2787,8 @@ export default class PluginSample extends Plugin {
             } else {
                 settings.dataTransfer.sessionData = true;
             }
-            await this.saveSettings(settings);
+            // 由 loadSettings 统一保存配置，避免同一次迁移重复写入。
+            return true;
         }
     }
 
