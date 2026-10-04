@@ -24,6 +24,7 @@ import "@/index.scss";
 
 import SettingPanel from "./SettingsPannel.svelte";
 import { getDefaultSettings } from "./defaultSettings";
+import { disposeChatGPTClient } from "./chatgpt/client";
 import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
@@ -2366,6 +2367,7 @@ export default class PluginSample extends Plugin {
     }
 
     onunload() {
+        disposeChatGPTClient();
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);
         this.eventBus.off("click-editortitleicon", this.clickEditorTitleIconBindThis);
@@ -2626,6 +2628,13 @@ export default class PluginSample extends Plugin {
 
         const defaultSettings = getDefaultSettings();
         const mergedSettings = { ...defaultSettings, ...settings };
+        // 新平台只补充到内存，避免打开多个窗口时触发配置写入/重载。
+        if (defaultSettings.aiProviders.codex) {
+            mergedSettings.aiProviders = {
+                ...mergedSettings.aiProviders,
+                codex: mergedSettings.aiProviders?.codex || defaultSettings.aiProviders.codex,
+            };
+        }
 
         // 如果是首次安装（settings.json 不存在或为空，或只有 dataTransfer 字段），不需要保存
         // 注意：dataTransfer 是迁移标志，不计入用户实际配置

@@ -5,6 +5,8 @@
  */
 
 import { forwardProxyFetch } from './api';
+import { chatChatGPT } from './chatgpt/chat';
+import { getChatGPTClient } from './chatgpt/client';
 import {
     type ThinkingEffort,
     isSupportedThinkingGeminiModel,
@@ -78,6 +80,7 @@ export interface Message {
     reasoning_content?: string; // DeepSeek 思考模式下的思维链内容
     editOperations?: EditOperation[]; // 编辑操作
     tool_calls?: ToolCall[]; // Tool Calls
+    openaiResponseTurns?: any[][]; // Responses 工具轮次，保留加密推理上下文及原始调用
     tool_call_id?: string; // Tool 结果的 call_id
     name?: string; // Tool 的名称
     finalReply?: string; // Agent模式：工具调用后的最终回复
@@ -173,7 +176,7 @@ export interface ChatOptions {
     onThinkingComplete?: (thinking: string) => void; // 思考完成回调
     tools?: any[]; // Agent模式的工具列表
     onToolCall?: (toolCall: ToolCall) => void | Promise<void>; // Tool Call 回调
-    onToolCallComplete?: (toolCalls: ToolCall[]) => void | Promise<void>; // Tool Calls 完成回调
+    onToolCallComplete?: (toolCalls: ToolCall[], responseItems?: any[]) => void | Promise<void>; // Tool Calls 完成回调
     customBody?: any; // 自定义请求体参数
     enableImageGeneration?: boolean; // 是否启用图片生成
     onImageGenerated?: (images: GeneratedImageData[]) => void; // 图片生成回调
@@ -644,6 +647,9 @@ export async function fetchModels(
     useForwardProxy?: boolean,
     chatInterface?: ChatInterfaceType // 根据不同的平台接口，走不同的 API Key 认证方式
 ): Promise<ModelInfo[]> {
+    if (provider === 'codex') {
+        return getChatGPTClient().models();
+    }
     const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const fallbackProviderName = isBuiltIn ? config.name : provider;
@@ -2296,6 +2302,10 @@ export async function chat(
     customApiUrl?: string,
     advancedConfig?: AdvancedProviderConfig
 ): Promise<void> {
+    if (provider === 'codex') {
+        await chatChatGPT(options);
+        return;
+    }
     const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const chatInterface = advancedConfig?.chatInterface || getDefaultChatInterface(provider);

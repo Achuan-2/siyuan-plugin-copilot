@@ -1422,7 +1422,7 @@
         }
 
         const { providerConfig, modelConfig } = config;
-        if (!providerConfig || !providerConfig.apiKey) {
+        if (!providerConfig || (response.provider !== 'codex' && !providerConfig.apiKey)) {
             pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             return;
         }
@@ -1591,7 +1591,7 @@
                                 multiModelResponses = [...multiModelResponses];
                             }
                         },
-                        onToolCallComplete: async (toolCalls: ToolCall[]) => {
+                        onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                             hasNewToolCalls = true;
 
                             // 1. 将 assistant 消息（包含 tool_calls）添加到当前模型的上下文
@@ -1603,6 +1603,7 @@
                                 role: 'assistant',
                                 content: lastAssistantContent,
                                 tool_calls: toolCalls,
+                                openaiResponseTurns: responseItems ? [responseItems] : undefined,
                             };
 
                             // 特别是 Kimi 等模型，如果启用了 thinking，assistant 消息必须包含 reasoning_content
@@ -1751,7 +1752,7 @@
         }
 
         const { providerConfig, modelConfig } = config;
-        if (!providerConfig || !providerConfig.apiKey) {
+        if (!providerConfig || (response.provider !== 'codex' && !providerConfig.apiKey)) {
             pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             return;
         }
@@ -4482,7 +4483,7 @@
             if (!config) return;
 
             const { providerConfig, modelConfig } = config;
-            if (!providerConfig.apiKey) return;
+            if (model.provider !== 'codex' && !providerConfig.apiKey) return;
 
             // 解析自定义参数
             let customBody = {};
@@ -4589,7 +4590,7 @@
                                     multiModelResponses = [...multiModelResponses];
                                 }
                             },
-                            onToolCallComplete: async (toolCalls: ToolCall[]) => {
+                            onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                                 hasNewToolCalls = true;
 
                                 // 1. 将 assistant 消息（包含 tool_calls）添加到当前模型的上下文
@@ -4601,6 +4602,7 @@
                                     role: 'assistant',
                                     content: lastAssistantContent,
                                     tool_calls: toolCalls,
+                                    openaiResponseTurns: responseItems ? [responseItems] : undefined,
                                 };
 
                                 // 特别是 Kimi 等模型，如果启用了 thinking，assistant 消息必须包含 reasoning_content
@@ -4932,6 +4934,10 @@
 
                 if (msg.tool_calls) {
                     baseMsg.tool_calls = msg.tool_calls;
+                    if (msg.openaiResponseTurns) {
+                        baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
+                        baseMsg.finalReply = msg.finalReply;
+                    }
                 }
                 if (msg.tool_call_id) {
                     baseMsg.tool_call_id = msg.tool_call_id;
@@ -5490,7 +5496,7 @@
         }
 
         const { providerConfig, modelConfig } = config;
-        if (!providerConfig.apiKey) {
+        if (settings.autoRenameProvider !== 'codex' && !providerConfig.apiKey) {
             console.log('Auto-rename model API key not configured');
             return;
         }
@@ -6421,7 +6427,7 @@
             return;
         }
 
-        if (!providerConfig.apiKey) {
+        if (currentProvider !== 'codex' && !providerConfig.apiKey) {
             pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             isLoading = false;
             return;
@@ -6615,6 +6621,10 @@
                 // 只在字段存在时才包含，避免传递 undefined 字段给 API
                 if (msg.tool_calls) {
                     baseMsg.tool_calls = msg.tool_calls;
+                    if (msg.openaiResponseTurns) {
+                        baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
+                        baseMsg.finalReply = msg.finalReply;
+                    }
                 }
                 if (msg.tool_call_id) {
                     baseMsg.tool_call_id = msg.tool_call_id;
@@ -7130,7 +7140,7 @@
                                       };
                                   }
                                 : undefined,
-                            onToolCallComplete: async (toolCalls: ToolCall[]) => {
+                            onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                                 receivedToolCalls = true;
 
                                 // 获取当前工具调用的起始索引
@@ -7152,6 +7162,7 @@
                                         role: 'assistant',
                                         content: streamingMessage || '',
                                         tool_calls: toolCalls,
+                                        openaiResponseTurns: responseItems ? [responseItems] : undefined,
                                         toolCallThinkings: [
                                             {
                                                 toolCallIndex: 0,
@@ -7175,6 +7186,9 @@
                                     // 如果不是第一次，更新现有消息的tool_calls（合并工具调用）
                                     const existingMessage = messages[firstToolCallMessageIndex];
 
+                                    if (responseItems) {
+                                        existingMessage.openaiResponseTurns = [...(existingMessage.openaiResponseTurns || []), responseItems];
+                                    }
                                     existingMessage.tool_calls = [
                                         ...(existingMessage.tool_calls || []),
                                         ...toolCalls,
@@ -7358,6 +7372,10 @@
                                         // 只在有工具调用相关字段时才包含
                                         if (msg.tool_calls) {
                                             baseMsg.tool_calls = msg.tool_calls;
+                                            if (msg.openaiResponseTurns) {
+                                                baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
+                                                baseMsg.finalReply = msg.finalReply;
+                                            }
                                         }
                                         if (msg.tool_call_id) {
                                             baseMsg.tool_call_id = msg.tool_call_id;
@@ -12187,6 +12205,11 @@
                     baseMsg.name = msg.name;
                 }
 
+                if (msg.openaiResponseTurns) {
+                    baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
+                    baseMsg.finalReply = msg.finalReply;
+                }
+
                 // 检测是否是 DeepSeek 推理模型
                 const isDeepSeekReasonerModel3 = modelConfig
                     ? /deepseek-(reasoner|r1)/i.test(modelConfig.id)
@@ -12624,7 +12647,7 @@
                                       };
                                   }
                                 : undefined,
-                            onToolCallComplete: async (toolCalls: ToolCall[]) => {
+                            onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                                 receivedToolCalls = true;
 
                                 // 获取当前工具调用的起始索引
@@ -12646,6 +12669,7 @@
                                         role: 'assistant',
                                         content: streamingMessage || '',
                                         tool_calls: toolCalls,
+                                        openaiResponseTurns: responseItems ? [responseItems] : undefined,
                                         toolCallThinkings: [
                                             {
                                                 toolCallIndex: 0,
@@ -12686,6 +12710,9 @@
                                         thinkingCollapsed[prevAfterIndex] = true;
                                     }
 
+                                    if (responseItems) {
+                                        existingMessage.openaiResponseTurns = [...(existingMessage.openaiResponseTurns || []), responseItems];
+                                    }
                                     existingMessage.tool_calls = [
                                         ...(existingMessage.tool_calls || []),
                                         ...toolCalls,
@@ -12869,6 +12896,10 @@
                                         // 只在有工具调用相关字段时才包含
                                         if (msg.tool_calls) {
                                             baseMsg.tool_calls = msg.tool_calls;
+                                            if (msg.openaiResponseTurns) {
+                                                baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
+                                                baseMsg.finalReply = msg.finalReply;
+                                            }
                                         }
                                         if (msg.tool_call_id) {
                                             baseMsg.tool_call_id = msg.tool_call_id;

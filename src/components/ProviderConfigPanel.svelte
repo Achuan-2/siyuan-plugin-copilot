@@ -5,6 +5,8 @@
     import type { ProviderConfig, ModelConfig } from '../defaultSettings';
     import { i18n } from '../utils/i18n';
     import { getModelCapabilities } from '../utils/modelCapabilities';
+    import ChatGPTAccountPanel from './ChatGPTAccountPanel.svelte';
+    import { isChatGPTDesktop } from '../chatgpt/http';
 
     export let providerId: string;
     export let providerName: string;
@@ -220,8 +222,8 @@
     $: apiPreview = buildApiPreview(config.customApiUrl || defaultApiUrl || '', currentChatInterface);
 
     // 获取模型列表
-    async function loadModels() {
-        if (!config.apiKey) {
+    async function loadModels(openSearch = true) {
+        if (providerId !== 'codex' && !config.apiKey) {
             pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
             return;
         }
@@ -243,13 +245,12 @@
                     uniqueModelsMap.set(m.id, { id: m.id, name: m.name });
                 }
             });
-            // 按模型ID升序排序
-            availableModels = Array.from(uniqueModelsMap.values()).sort((a, b) =>
-                a.id.localeCompare(b.id)
-            );
-            showModelSearchModal = true;
+            // ChatGPT 目录顺序由账号服务提供，其他平台保持原有排序。
+            availableModels = Array.from(uniqueModelsMap.values());
+            if (providerId !== 'codex') availableModels.sort((a, b) => a.id.localeCompare(b.id));
+            showModelSearchModal = openSearch;
             searchQuery = '';
-            pushMsg(
+            if (openSearch) pushMsg(
                 i18n('modelsFetchSuccess').replace('{count}', availableModels.length.toString())
             );
         } catch (error) {
@@ -262,7 +263,7 @@
 
     // 打开模型搜索弹窗
     function openModelSearchModal() {
-        if (!config.apiKey) {
+        if (providerId !== 'codex' && !config.apiKey) {
             pushErrMsg('请先设置 API Key');
             return;
         }
@@ -285,7 +286,9 @@
         }
 
         // 自动检测模型能力
-        const capabilities = getModelCapabilities(modelId);
+        const capabilities = providerId === 'codex'
+            ? { thinking: true, vision: true, toolCalling: true, imageGeneration: false, webSearch: false }
+            : getModelCapabilities(modelId);
 
         const newModel: ModelConfig = {
             id: modelId,
@@ -534,7 +537,7 @@
                 keyword => modelId.includes(keyword) || modelName.includes(keyword)
             );
         })
-        .sort((a, b) => a.id.localeCompare(b.id));
+        .sort((a, b) => providerId === 'codex' ? 0 : a.id.localeCompare(b.id));
 
     // 已添加模型过滤
     $: filteredAddedModels = config.models.filter(model => {
@@ -668,6 +671,13 @@
     </div>
 
     <div class="provider-config__section">
+        {#if providerId === 'codex'}
+            <ChatGPTAccountPanel on:accountChange={event => {
+                availableModels = [];
+                showModelSearchModal = false;
+                if (event.detail.connected) loadModels(false);
+            }} />
+        {:else}
         <div>
             <div class="b3-label__text">
                 {i18n('platformApiUrl')}
@@ -771,13 +781,15 @@
             </div>
         </div>
 
+        {/if}
         <div>
             <div class="b3-label__text">{i18n('modelsManagement')}</div>
+            {#if providerId === 'codex'}<p class="b3-label__text label-description">{i18n('chatgptModelsHint')}</p>{/if}
             <div class="provider-config__model-buttons">
                 <button
                     class="b3-button b3-button--outline"
                     on:click={openModelSearchModal}
-                    disabled={isLoadingModels || !config.apiKey}
+                    disabled={isLoadingModels || (providerId === 'codex' ? !isChatGPTDesktop() : !config.apiKey)}
                 >
                     {isLoadingModels ? i18n('commonLoading') : i18n('commonSearchAndAdd')}
                 </button>
@@ -788,6 +800,7 @@
         </div>
 
         <!-- 高级自定义设置 -->
+        {#if providerId !== 'codex'}
         <div class="advanced-config-section">
             <button
                 class="b3-button b3-button--text advanced-toggle"
@@ -851,6 +864,7 @@
                 </div>
             {/if}
         </div>
+        {/if}
     </div>
 
     <!-- 模型搜索弹窗 -->
@@ -998,6 +1012,7 @@
                     </div>
                     {#if showConfigForModel[model.id]}
                         <div class="model-item__config">
+                        {#if providerId !== 'codex'}
                         <div class="model-config-item">
                             <span>{i18n('modelsTemperature')}: {model.temperature}</span>
                             <input
@@ -1022,6 +1037,7 @@
                                     updateModel(model.id, 'maxTokens', model.maxTokens)}
                             />
                         </div>
+                        {/if}
                         <div class="model-config-item">
                             <span>{i18n('modelsCapabilities')}</span>
                                 <div class="model-capabilities">
@@ -1066,6 +1082,7 @@
                                         type="checkbox"
                                         class="b3-switch"
                                         checked={model.capabilities?.imageGeneration || false}
+                                        disabled={providerId === 'codex'}
                                         on:change={e => {
                                             if (!model.capabilities) model.capabilities = {};
                                             model.capabilities.imageGeneration =
@@ -1106,6 +1123,7 @@
                                         type="checkbox"
                                         class="b3-switch"
                                         checked={model.capabilities?.webSearch || false}
+                                        disabled={providerId === 'codex'}
                                         on:change={e => {
                                             if (!model.capabilities) model.capabilities = {};
                                             model.capabilities.webSearch = e.currentTarget.checked;
@@ -1122,7 +1140,8 @@
                                 </label>
                                 </div>
                         </div>
-                        <!-- 自定义参数设置（所有平台都显示，默认折叠） -->
+                        {#if providerId !== 'codex'}
+                        <!-- 自定义参数设置，默认折叠 -->
                         <div class="model-config-item">
                             <button
                                 class="custom-body-toggle"
@@ -1183,6 +1202,7 @@
                                 </div>
                             {/if}
                         </div>
+                        {/if}
                         </div>
                     {/if}
                 </div>

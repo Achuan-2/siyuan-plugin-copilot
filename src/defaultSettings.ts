@@ -78,6 +78,12 @@ export const getDefaultSettings = () => ({
             models: [],
             enabled: true,
         },
+        codex: { // 保留早期接入的平台 ID，当前使用 ChatGPT OAuth 直连。
+            apiKey: '',
+            customApiUrl: '',
+            models: [],
+            enabled: true,
+        },
         moonshot: {
             apiKey: '',
             customApiUrl: '',
