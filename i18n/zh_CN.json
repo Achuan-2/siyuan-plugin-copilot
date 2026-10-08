@@ -29,7 +29,7 @@
     "chatgptUsageLimit": "ChatGPT 订阅额度已用尽，请在“查看订阅额度”中检查重置时间。",
     "chatgptUsageUnavailable": "暂时无法使用 ChatGPT 订阅额度，请稍后重试或检查账号权限。",
     "chatgptRevocationPending": "本机登录凭据已清除，但无法确认远程授权撤销。可在 ChatGPT 设置中断开此应用。",
-    "chatgptModelsHint": "登录后点击“搜索并添加”读取模型列表，再在聊天中选择模型。列表缺少 GPT-6.1-Sol 时会自动补充，实际可用性以账号授权为准。支持文字、图片输入及 Copilot 工具调用；温度、最大输出和自定义请求体不用于此接入。切换账号后请重新获取模型列表。",
+    "chatgptModelsHint": "登录后点击“搜索并添加”读取模型列表，再在聊天中选择模型。列表缺少 GPT-6.1-Sol 或 GPT-6.1-Luna 时会自动补充，实际可用性以账号授权为准。支持文字、图片输入及 Copilot 工具调用；温度、最大输出和自定义请求体不用于此接入。切换账号后请重新获取模型列表。",
     "aiSidebarActionsAddCurrentDoc": "添加当前文档到上下文",
     "aiSidebarActionsAddWebLink": "添加网页链接",
     "aiSidebarActionsApplied": "已应用",

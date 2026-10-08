@@ -5,6 +5,10 @@ import { i18n } from '../utils/i18n';
 
 const UNUSABLE_REFRESH_CODES = new Set(['invalid_grant', 'invalid_refresh_token', 'token_expired',
     'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused']);
+const DEFAULT_MODELS = [
+    { id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol' },
+    { id: 'gpt-6.1-luna', name: 'GPT-6.1-Luna' },
+];
 
 export interface ChatGPTAccount {
     id: string;
@@ -170,8 +174,10 @@ export class ChatGPTClient {
         const models = result.models.filter(model => model.visibility === 'list' && typeof model.slug === 'string')
             .map(model => ({ id: model.slug, name: model.display_name || model.slug, provider: 'ChatGPT' }));
         // 按用户要求补充目录未返回的新模型；调用权限仍由服务端验证。
-        if (!models.some(model => model.id === 'gpt-6.1-sol')) {
-            models.push({ id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol', provider: 'ChatGPT' });
+        for (const model of DEFAULT_MODELS) {
+            if (!models.some(item => item.id === model.id)) {
+                models.push({ ...model, provider: 'ChatGPT' });
+            }
         }
         return models;
     }

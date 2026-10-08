@@ -29,7 +29,7 @@
     "chatgptUsageLimit": "ChatGPT plan allowance is exhausted. View plan usage to check its reset time.",
     "chatgptUsageUnavailable": "ChatGPT plan allowance is temporarily unavailable. Retry later or check account access.",
     "chatgptRevocationPending": "Local credentials were cleared, but remote revocation could not be confirmed. Disconnect this app in ChatGPT settings.",
-    "chatgptModelsHint": "After signing in, use Search and Add to load models, then select one in chat. GPT-6.1-Sol is added automatically if missing from the catalog; actual access depends on account authorization. Text, image input and Copilot tools are supported. Temperature, max output and custom bodies do not apply. Reload the catalog after switching accounts.",
+    "chatgptModelsHint": "After signing in, use Search and Add to load models, then select one in chat. GPT-6.1-Sol and GPT-6.1-Luna are added automatically if missing from the catalog; actual access depends on account authorization. Text, image input and Copilot tools are supported. Temperature, max output and custom bodies do not apply. Reload the catalog after switching accounts.",
     "aiSidebarActionsAddCurrentDoc": "Add Current Document to Context",
     "aiSidebarActionsAddWebLink": "Add Web Link",
     "aiSidebarActionsApplied": "Applied",
