@@ -26,6 +26,7 @@
     "chatgptToolResultMissing": "工具调用结果缺失，请重新发送消息。",
     "chatgptUnknownTool": "ChatGPT 请求了未启用的工具，已停止执行。",
     "chatgptIncompleteStream": "ChatGPT 响应中断，未收到完成确认，请重试。",
+    "chatgptEmptyResponse": "ChatGPT 已结束响应，但没有返回正文或工具调用。请重试或切换模型；若仍为空，请提供模型名称和此错误信息。",
     "chatgptUsageLimit": "ChatGPT 订阅额度已用尽，请在“查看订阅额度”中检查重置时间。",
     "chatgptUsageUnavailable": "暂时无法使用 ChatGPT 订阅额度，请稍后重试或检查账号权限。",
     "chatgptRevocationPending": "本机登录凭据已清除，但无法确认远程授权撤销。可在 ChatGPT 设置中断开此应用。",

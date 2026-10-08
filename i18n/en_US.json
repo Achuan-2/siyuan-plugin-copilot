@@ -26,6 +26,7 @@
     "chatgptToolResultMissing": "A tool result is missing. Send the message again.",
     "chatgptUnknownTool": "ChatGPT requested a tool that is not enabled. Execution was stopped.",
     "chatgptIncompleteStream": "ChatGPT stream ended without completion. Please retry.",
+    "chatgptEmptyResponse": "ChatGPT completed the response without text or tool calls. Retry or switch models. If it remains empty, provide the model name and this error message.",
     "chatgptUsageLimit": "ChatGPT plan allowance is exhausted. View plan usage to check its reset time.",
     "chatgptUsageUnavailable": "ChatGPT plan allowance is temporarily unavailable. Retry later or check account access.",
     "chatgptRevocationPending": "Local credentials were cleared, but remote revocation could not be confirmed. Disconnect this app in ChatGPT settings.",

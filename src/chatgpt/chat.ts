@@ -86,6 +86,7 @@ export async function consumeResponses(response: any, options: ChatOptions): Pro
     let buffer = '';
     let data: string[] = [];
     let completed: any;
+    const finishedItems = new Map<number, any>();
     let text = '';
     let thinking = '';
     const requestId = response.headers?.['x-request-id'] || '';
@@ -102,6 +103,12 @@ export async function consumeResponses(response: any, options: ChatOptions): Pro
         } else if (event.type === 'response.reasoning_summary_text.delta') {
             thinking += event.delta;
             options.onThinkingChunk?.(event.delta);
+        } else if (event.type === 'response.output_item.done') {
+            if (!Number.isInteger(event.output_index) || event.output_index < 0 || !event.item?.type) {
+                throw new Error(i18n('chatgptInvalidResponse'));
+            }
+            // Keep final items, including encrypted reasoning, even if the terminal output is empty.
+            finishedItems.set(event.output_index, event.item);
         } else if (event.type === 'response.completed') {
             if (!event.response || event.response.status !== 'completed') throw streamFailure(event, requestId);
             completed = event.response;
@@ -124,7 +131,12 @@ export async function consumeResponses(response: any, options: ChatOptions): Pro
     dispatch();
     if (options.signal?.aborted) throw new Error('Request aborted');
     if (!completed || !Array.isArray(completed.output)) throw new Error(i18n('chatgptIncompleteStream'));
-    const calls: ToolCall[] = completed.output.filter(item => item.type === 'function_call').map(item => {
+    // The terminal snapshot and item events describe the same output indexes; never append both.
+    completed.output.forEach((item: any, index: number) => {
+        finishedItems.set(index, { ...finishedItems.get(index), ...item });
+    });
+    const output = [...finishedItems.entries()].sort(([left], [right]) => left - right).map(([, item]) => item);
+    const calls: ToolCall[] = output.filter(item => item.type === 'function_call').map(item => {
         if ((item.namespace && item.namespace !== TOOL_NAMESPACE) || !item.call_id
             || !options.tools?.some(tool => tool.function?.name === item.name)) {
             throw new Error(i18n('chatgptUnknownTool'));
@@ -134,12 +146,13 @@ export async function consumeResponses(response: any, options: ChatOptions): Pro
     if (thinking) options.onThinkingComplete?.(thinking);
     if (calls.length) {
         if (!options.onToolCallComplete) throw new Error(i18n('chatgptUnknownTool'));
-        await options.onToolCallComplete(calls, completed.output);
+        await options.onToolCallComplete(calls, output);
     } else {
-        if (!text) text = completed.output.filter(item => item.type === 'message')
+        if (!text) text = output.filter(item => item.type === 'message')
             .flatMap(item => item.content || []).filter(part => part.type === 'output_text' || part.type === 'refusal')
             .map(part => part.text || part.refusal || '').join('');
-        options.onComplete?.(text);
+        if (!text.trim()) throw new ChatGPTHttpError(200, 'empty_response', i18n('chatgptEmptyResponse'), requestId);
+        await options.onComplete?.(text);
     }
 }
 

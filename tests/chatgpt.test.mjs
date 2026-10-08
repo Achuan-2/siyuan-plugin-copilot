@@ -294,6 +294,141 @@ test('stream failures after partial text and unconfirmed termination never repor
     }
 });
 
+test('item completion events preserve tools and reasoning when the terminal output is empty', async t => {
+    const f = fixture(t);
+    const { consumeResponses, buildResponsesInput } = f.load('src/chatgpt/chat.ts');
+    const reasoning = { type: 'reasoning', id: 'reasoning-id', encrypted_content: 'final-context', summary: [] };
+    const call = { type: 'function_call', id: 'item-id', name: 'siyuan', namespace: 'siyuan_copilot',
+        call_id: 'call-id', arguments: '{"action":"search"}' };
+    let executions = 0;
+    await consumeResponses(response(events(
+        { type: 'response.output_item.added', output_index: 0, item: { ...reasoning, encrypted_content: 'partial-context' } },
+        { type: 'response.output_item.done', output_index: 1, item: call },
+        { type: 'response.output_item.done', output_index: 0, item: reasoning },
+        { type: 'response.completed', response: { status: 'completed', output: [] } },
+    )), {
+        tools: [{ function: { name: 'siyuan' } }],
+        onComplete: () => assert.fail('A tool turn must not become an empty answer'),
+        onToolCallComplete: async (calls, raw) => {
+            executions++;
+            assert.equal(calls[0].function.arguments, call.arguments);
+            assert.equal(raw[0].encrypted_content, 'final-context');
+            const next = buildResponsesInput([
+                { role: 'assistant', content: '', tool_calls: calls, openaiResponseTurns: [raw] },
+                { role: 'tool', tool_call_id: 'call-id', content: 'search result' },
+            ]);
+            assert.equal(next.input.map(item => item.type).join(','), 'reasoning,function_call,function_call_output');
+            assert.equal(next.input[2].output, 'search result');
+        },
+    });
+    assert.equal(executions, 1);
+});
+
+test('item and terminal output are merged without executing a tool twice', async t => {
+    const f = fixture(t);
+    const { consumeResponses } = f.load('src/chatgpt/chat.ts');
+    const item = { type: 'function_call', name: 'siyuan', call_id: 'call-id', arguments: '{}' };
+    await consumeResponses(response(events(
+        { type: 'response.output_item.done', output_index: 0, item },
+        { type: 'response.completed', response: { status: 'completed', output: [item] } },
+    )), { tools: [{ function: { name: 'siyuan' } }], onToolCallComplete: (calls, raw) => {
+        assert.equal(calls.length, 1);
+        assert.equal(raw.length, 1);
+    } });
+});
+
+test('ChatGPT request continues with an approved tool result and produces the final answer', async t => {
+    const f = fixture(t);
+    saved(f);
+    const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
+    t.after(() => f.load('src/chatgpt/client.ts').getChatGPTClient().dispose());
+    let turns = 0;
+    f.route(async (url, options, body) => {
+        if (url.pathname !== '/v1/responses') return;
+        turns++;
+        const request = JSON.parse(body);
+        assert.equal(request.tools[0].tools[0].name, 'siyuan');
+        if (turns === 1) return response(events(
+            { type: 'response.output_item.done', output_index: 0, item: {
+                type: 'reasoning', encrypted_content: 'final-context', summary: [],
+            } },
+            { type: 'response.output_item.done', output_index: 1, item: {
+                type: 'function_call', name: 'siyuan', namespace: 'siyuan_copilot', call_id: 'call-id', arguments: '{}',
+            } },
+            { type: 'response.completed', response: { status: 'completed', output: [] } },
+        ));
+        assert.equal(turns, 2);
+        assert.equal(request.input[1].encrypted_content, 'final-context');
+        assert.equal(request.input[2].call_id, 'call-id');
+        assert.equal(request.input[3].type, 'function_call_output');
+        assert.equal(request.input[3].output, 'approved result');
+        return response(events(
+            { type: 'response.output_text.delta', delta: '查找完成' },
+            { type: 'response.completed', response: { status: 'completed', output: [] } },
+        ));
+    });
+    let answer = '';
+    let approved = 0;
+    const options = { model: 'account-model', messages: [{ role: 'user', content: '查找笔记' }],
+        tools: [{ function: { name: 'siyuan' } }],
+        onComplete: value => { answer = value; },
+        onToolCallComplete: async (calls, raw) => {
+            approved++;
+            options.messages.push({ role: 'assistant', content: '', tool_calls: calls, openaiResponseTurns: [raw] },
+                { role: 'tool', tool_call_id: calls[0].id, content: 'approved result' });
+            await chatChatGPT(options);
+        },
+    };
+    await chatChatGPT(options);
+    assert.equal(approved, 1);
+    assert.equal(turns, 2);
+    assert.equal(answer, '查找完成');
+});
+
+test('item-only text or refusal produces a final answer and awaits its callback', async t => {
+    const f = fixture(t);
+    const { consumeResponses } = f.load('src/chatgpt/chat.ts');
+    for (const part of [{ type: 'output_text', text: '中文回复' }, { type: 'refusal', refusal: '无法执行' }]) {
+        let saved = false;
+        await consumeResponses(response(events(
+            { type: 'response.output_item.done', output_index: 0, item: { type: 'message', content: [part] } },
+            { type: 'response.completed', response: { status: 'completed', output: [] } },
+        )), { onComplete: async text => {
+            assert.equal(text, part.text || part.refusal);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            saved = true;
+        } });
+        assert.equal(saved, true);
+    }
+});
+
+test('empty and reasoning-only completions report an error instead of saving a blank reply', async t => {
+    const f = fixture(t);
+    const { consumeResponses } = f.load('src/chatgpt/chat.ts');
+    for (const output of [[], [{ type: 'reasoning', summary: [] }]]) {
+        await assert.rejects(consumeResponses(response(events(
+            { type: 'response.completed', response: { status: 'completed', output } },
+        ), 200, { 'x-request-id': 'empty-request' }), {
+            onComplete: () => assert.fail('Empty responses cannot succeed'),
+        }), /chatgptEmptyResponse.*empty-request/);
+    }
+});
+
+test('item-only tools remain blocked on failure, missing completion or unknown namespace', async t => {
+    const f = fixture(t);
+    const { consumeResponses } = f.load('src/chatgpt/chat.ts');
+    const item = { type: 'function_call', name: 'siyuan', namespace: 'other_namespace', call_id: 'call-id', arguments: '{}' };
+    for (const terminal of [null, { type: 'response.failed', response: { error: { message: 'failed turn' } } },
+        { type: 'response.completed', response: { status: 'completed', output: [] } }]) {
+        await assert.rejects(consumeResponses(response(events(
+            { type: 'response.output_item.done', output_index: 0, item }, ...(terminal ? [terminal] : []),
+        )), { tools: [{ function: { name: 'siyuan' } }],
+            onComplete: () => assert.fail('Invalid tool turn cannot succeed'),
+            onToolCallComplete: () => assert.fail('Invalid tool turn cannot execute'),
+        }), /chatgptIncompleteStream|failed turn|chatgptUnknownTool/);
+    }
+});
+
 test('unknown function namespaces are rejected before tool execution', async t => {
     const f = fixture(t);
     const { consumeResponses } = f.load('src/chatgpt/chat.ts');
