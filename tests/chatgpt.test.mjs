@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -27,6 +27,20 @@ function response(body, statusCode = 200, headers = {}) {
 
 function fixture(t) {
     const directory = mkdtempSync(path.join(tmpdir(), 'siyuan-chatgpt-test-'));
+    let workspace = path.join(directory, 'workspace');
+    let saveCode = 0;
+    const writes = [];
+    const plugin = {
+        name: 'siyuan-plugin-copilot',
+        async saveData(filename, data) {
+            if (saveCode !== 0) return { code: saveCode };
+            const target = path.join(workspace, 'data', 'storage', 'petal', this.name, filename);
+            mkdirSync(path.dirname(target), { recursive: true });
+            writeFileSync(target, JSON.stringify(data));
+            writes.push(filename);
+            return { code: 0 };
+        },
+    };
     const requests = [];
     let opened;
     let browser = async () => {};
@@ -59,7 +73,8 @@ function fixture(t) {
     };
     const cache = new Map();
     const context = vm.createContext({ console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout,
-        setInterval, clearInterval, Date, Error, window: { require: native } });
+        setInterval, clearInterval, Date, Error, window: { require: native,
+            siyuan: { config: { system: { workspaceDir: workspace } } } } });
     function load(relative) {
         const filename = path.resolve(root, relative);
         if (cache.has(filename)) return cache.get(filename);
@@ -77,7 +92,9 @@ function fixture(t) {
         vm.runInContext(`(function(require, module, exports) { ${code}\n})`, context, { filename })(localRequire, module, module.exports);
         return module.exports;
     }
-    const storage = new (load('src/chatgpt/storage.ts').ChatGPTStorage)();
+    const storageModule = load('src/chatgpt/storage.ts');
+    storageModule.configureChatGPTStorage(plugin);
+    const storage = new storageModule.ChatGPTStorage();
     const clients = [];
     const client = () => { const value = new (load('src/chatgpt/client.ts').ChatGPTClient)(); clients.push(value); return value; };
     t.after(() => {
@@ -87,7 +104,11 @@ function fixture(t) {
         rmSync(directory, { recursive: true, force: true });
     });
     const defaultRoute = route;
-    return { load, storage, requests, client, get opened() { return opened; },
+    return { load, storage, requests, client, writes, directory, get workspace() { return workspace; },
+        newStorage() { return new storageModule.ChatGPTStorage(); },
+        setSaveCode(code) { saveCode = code; },
+        switchWorkspace(target) { workspace = target; context.window.siyuan.config.system.workspaceDir = target; },
+        get opened() { return opened; },
         route(handler) { route = async (url, options, body) => await handler(url, options, body) ?? defaultRoute(url, options, body); },
         browser(handler) { browser = handler; } };
 }
@@ -97,8 +118,8 @@ async function identity(clientId, nonce, overrides = {}) {
         .setIssuer(issuer).setAudience(clientId).setSubject('test-subject').setIssuedAt().setExpirationTime('1h').sign(privateKey);
 }
 
-function saved(f, expiresAt = Date.now() + 3600000) {
-    f.storage.write({ activeId: 'issued-client', profiles: [{ id: 'issued-client', clientId: 'issued-client', issuer,
+async function saved(f, expiresAt = Date.now() + 3600000) {
+    await f.storage.write({ activeId: 'issued-client', profiles: [{ id: 'issued-client', clientId: 'issued-client', issuer,
         subject: 'test-subject', email: 'test@example.com', accessToken: 'fake-access', refreshToken: 'fake-refresh',
         scopes: scope.split(' '), expiresAt }] });
 }
@@ -107,7 +128,69 @@ function events(...values) {
     return values.map(value => Buffer.from(`data: ${JSON.stringify(value)}\r\n\r\n`));
 }
 
-test('browser PKCE validates state, exchanges issued client id and stores verified credentials locally', async t => {
+test('existing local credentials migrate once through SiYuan without syncing the host identity or lock', async t => {
+    const f = fixture(t);
+    const legacy = path.join(f.directory, 'siyuan-plugin-copilot', 'chatgpt', 'accounts.json');
+    const data = { activeId: 'legacy-client', profiles: [{ id: 'legacy-client', clientId: 'legacy-client',
+        accessToken: 'legacy-access', refreshToken: 'legacy-refresh' }] };
+    writeFileSync(legacy, JSON.stringify(data));
+    const hostId = f.storage.hostId();
+    const accounts = await Promise.all([f.storage.read(), f.newStorage().read()]);
+    for (const account of accounts) assert.equal(account.profiles[0].refreshToken, 'legacy-refresh');
+    assert.deepEqual(f.writes, ['chatgpt/accounts.json']);
+    assert.equal(existsSync(legacy), false);
+    assert.equal(f.newStorage().hostId(), hostId);
+    assert.deepEqual(require('fs').readdirSync(f.storage.directory), ['accounts.json']);
+});
+
+test('failed migration retains local credentials and retries; existing synced data takes precedence', async t => {
+    const f = fixture(t);
+    const legacy = path.join(f.directory, 'siyuan-plugin-copilot', 'chatgpt', 'accounts.json');
+    writeFileSync(legacy, JSON.stringify({ profiles: [{ id: 'legacy', clientId: 'legacy', accessToken: 'old' }] }));
+    f.setSaveCode(403);
+    await assert.rejects(f.storage.read(), /Failed to save ChatGPT accounts/);
+    assert.equal(existsSync(legacy), true);
+    f.setSaveCode(0);
+    assert.equal((await f.storage.read()).profiles[0].accessToken, 'old');
+    await f.storage.write({ profiles: [{ id: 'synced', clientId: 'synced' }] });
+    writeFileSync(legacy, JSON.stringify({ profiles: [{ id: 'legacy', clientId: 'legacy', accessToken: 'old' }] }));
+    const writesBefore = f.writes.length;
+    const account = (await f.newStorage().read()).profiles[0];
+    assert.equal(account.id, 'synced');
+    assert.equal(account.accessToken, undefined);
+    assert.equal(f.writes.length, writesBefore);
+});
+
+test('another workspace can use synced credentials; open clients observe synced account selection and logout', async t => {
+    const f = fixture(t);
+    await saved(f);
+    const originalWorkspace = f.workspace;
+    const sourceClient = f.client();
+    const secondWorkspace = path.join(f.directory, 'other-workspace');
+    cpSync(originalWorkspace, secondWorkspace, { recursive: true });
+    f.switchWorkspace(secondWorkspace);
+    const syncedClient = f.client();
+    assert.equal((await syncedClient.account()).sharing, true);
+    f.route(async url => {
+        if (url.pathname === '/v1/models') return response({ models: [] });
+        if (url.pathname.endsWith('/oauth/revoke')) return response({});
+    });
+    await syncedClient.models();
+    assert.equal(f.requests.some(request => request.url.pathname.endsWith('/oauth/token')), false);
+    const remoteStorage = f.newStorage();
+    const data = await remoteStorage.read();
+    data.profiles.push({ ...data.profiles[0], id: 'second-client', clientId: 'second-client' });
+    await remoteStorage.write(data);
+    await syncedClient.selectAccount('second-client');
+    cpSync(secondWorkspace, originalWorkspace, { recursive: true });
+    assert.equal((await sourceClient.account()).id, 'second-client');
+    assert.equal(await syncedClient.logout(), true);
+    cpSync(secondWorkspace, originalWorkspace, { recursive: true });
+    assert.equal((await sourceClient.account()).connected, false);
+    assert.equal((await f.storage.read()).profiles[1].refreshToken, undefined);
+});
+
+test('browser PKCE validates state, exchanges issued client id and saves verified credentials through SiYuan', async t => {
     const f = fixture(t);
     f.browser(async url => {
         assert.equal(url.origin, issuer);
@@ -134,10 +217,11 @@ test('browser PKCE validates state, exchanges issued client id and stores verifi
     });
     const client = f.client();
     await client.login(new AbortController().signal);
-    assert.equal(client.account().email, 'test@example.com');
-    assert.equal(client.account().sharing, true);
-    assert.equal('accessToken' in client.account(), false);
-    assert.equal(f.storage.read().profiles[0].clientId, 'issued-client');
+    assert.equal((await client.account()).email, 'test@example.com');
+    assert.equal((await client.account()).sharing, true);
+    assert.equal('accessToken' in await client.account(), false);
+    assert.equal((await f.storage.read()).profiles[0].clientId, 'issued-client');
+    assert.ok(f.writes.every(filename => filename === 'chatgpt/accounts.json'));
 });
 
 test('identity signature, audience and nonce are required; failed exchange retains inactive registration', async t => {
@@ -156,9 +240,9 @@ test('identity signature, audience and nonce are required; failed exchange retai
     });
     f.route(async url => url.pathname.endsWith('/oauth/token') ? response({ error: 'invalid_grant' }, 400) : undefined);
     await assert.rejects(f.client().login(new AbortController().signal), /invalid_grant/);
-    assert.equal(f.storage.read().activeId, undefined);
-    assert.equal(f.storage.read().profiles[0].clientId, 'issued-client');
-    assert.equal(f.storage.read().profiles[0].accessToken, undefined);
+    assert.equal((await f.storage.read()).activeId, undefined);
+    assert.equal((await f.storage.read()).profiles[0].clientId, 'issued-client');
+    assert.equal((await f.storage.read()).profiles[0].accessToken, undefined);
 });
 
 test('cancelled authorization closes callback listener and performs no token exchange', async t => {
@@ -172,7 +256,7 @@ test('cancelled authorization closes callback listener and performs no token exc
 
 test('rotating refresh is serialized across windows; account model order and visibility are respected', async t => {
     const f = fixture(t);
-    saved(f, 0);
+    await saved(f, 0);
     let refreshes = 0;
     f.route(async (url, options, body) => {
         if (url.pathname.endsWith('/oauth/token')) {
@@ -190,7 +274,7 @@ test('rotating refresh is serialized across windows; account model order and vis
     const lists = await Promise.all([f.client().models(), f.client().models()]);
     assert.equal(refreshes, 1);
     assert.equal(lists[0].map(model => model.id).join(','), 'second,first,gpt-6.1-sol,gpt-6.1-luna');
-    assert.equal(f.storage.read().profiles[0].refreshToken, 'rotated-refresh');
+    assert.equal((await f.storage.read()).profiles[0].refreshToken, 'rotated-refresh');
     f.route(async url => url.pathname === '/v1/models' ? response({ models: [
         { slug: 'gpt-6.1-sol', display_name: 'Official Sol', visibility: 'list' },
         { slug: 'first', display_name: 'First', visibility: 'list' },
@@ -209,28 +293,28 @@ test('rotating refresh is serialized across windows; account model order and vis
 
 test('invalid refresh clears tokens but retains account mapping; transient failure preserves session', async t => {
     const f = fixture(t);
-    saved(f, 0);
+    await saved(f, 0);
     f.route(async url => url.pathname.endsWith('/oauth/token') ? response({ error: 'server_error' }, 503) : undefined);
     await assert.rejects(f.client().models(), /server_error/);
-    assert.equal(f.storage.read().profiles[0].refreshToken, 'fake-refresh');
+    assert.equal((await f.storage.read()).profiles[0].refreshToken, 'fake-refresh');
     f.route(async url => url.pathname.endsWith('/oauth/token') ? response({ error: 'invalid_grant' }, 400) : undefined);
     await assert.rejects(f.client().models(), /chatgptSignInRequired/);
-    assert.equal(f.storage.read().profiles[0].refreshToken, undefined);
-    assert.equal(f.storage.read().profiles[0].clientId, 'issued-client');
+    assert.equal((await f.storage.read()).profiles[0].refreshToken, undefined);
+    assert.equal((await f.storage.read()).profiles[0].clientId, 'issued-client');
 });
 
-test('missing plan consent blocks inference and logout clears local credentials after revocation failure', async t => {
+test('missing plan consent blocks inference and logout syncs cleared credentials after revocation failure', async t => {
     const f = fixture(t);
-    saved(f);
-    const data = f.storage.read();
+    await saved(f);
+    const data = await f.storage.read();
     data.profiles[0].scopes = ['openid'];
-    f.storage.write(data);
+    await f.storage.write(data);
     await assert.rejects(f.client().models(), /chatgptPermissionRequired/);
     assert.equal(f.requests.length, 0);
     f.route(async url => url.pathname.endsWith('/oauth/revoke') ? response({ error: 'server_error' }, 503) : undefined);
     assert.equal(await f.client().logout(), false);
-    assert.equal(f.storage.read().profiles[0].accessToken, undefined);
-    assert.equal(f.storage.read().profiles[0].clientId, 'issued-client');
+    assert.equal((await f.storage.read()).profiles[0].accessToken, undefined);
+    assert.equal((await f.storage.read()).profiles[0].clientId, 'issued-client');
 });
 
 test('Responses body preserves images and tool-round reasoning with ordered results and no unsupported fields', t => {
@@ -339,7 +423,7 @@ test('item and terminal output are merged without executing a tool twice', async
 
 test('ChatGPT request continues with an approved tool result and produces the final answer', async t => {
     const f = fixture(t);
-    saved(f);
+    await saved(f);
     const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
     t.after(() => f.load('src/chatgpt/client.ts').getChatGPTClient().dispose());
     let turns = 0;

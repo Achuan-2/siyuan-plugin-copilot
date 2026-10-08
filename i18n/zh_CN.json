@@ -1,7 +1,7 @@
 {
     "platformBuiltInCodex": "ChatGPT（账号登录）",
     "chatgptAccountTitle": "ChatGPT 账号",
-    "chatgptAccountHint": "通过官方浏览器授权直接调用 GPT，使用账号订阅额度，无需 API Key 或 Codex CLI。授权凭据仅存本机，不随思源工作空间同步；可用模型及额度以账号授权为准。",
+    "chatgptAccountHint": "通过官方浏览器授权直接调用 GPT，使用账号订阅额度，无需 API Key 或 Codex CLI。登录状态与授权凭据随思源工作空间同步；可用模型及额度以账号授权为准。",
     "chatgptDesktopOnly": "ChatGPT 账号登录仅支持思源桌面版。",
     "chatgptNotConnected": "尚未登录 ChatGPT",
     "chatgptConnected": "已登录并授权使用订阅额度",
@@ -29,7 +29,7 @@
     "chatgptEmptyResponse": "ChatGPT 已结束响应，但没有返回正文或工具调用。请重试或切换模型；若仍为空，请提供模型名称和此错误信息。",
     "chatgptUsageLimit": "ChatGPT 订阅额度已用尽，请在“查看订阅额度”中检查重置时间。",
     "chatgptUsageUnavailable": "暂时无法使用 ChatGPT 订阅额度，请稍后重试或检查账号权限。",
-    "chatgptRevocationPending": "本机登录凭据已清除，但无法确认远程授权撤销。可在 ChatGPT 设置中断开此应用。",
+    "chatgptRevocationPending": "工作空间中的登录凭据已清除，但无法确认远程授权撤销。可在 ChatGPT 设置中断开此应用。",
     "chatgptModelsHint": "登录后点击“搜索并添加”读取模型列表，再在聊天中选择模型。",
     "aiSidebarActionsAddCurrentDoc": "添加当前文档到上下文",
     "aiSidebarActionsAddWebLink": "添加网页链接",

@@ -41,23 +41,23 @@ export class ChatGPTClient {
         } };
     }
 
-    accounts(): { activeId?: string; profiles: ChatGPTAccount[] } {
-        const data = this.storage.read();
+    async accounts(): Promise<{ activeId?: string; profiles: ChatGPTAccount[] }> {
+        const data = await this.storage.read();
         return { activeId: data.activeId, profiles: data.profiles.map(publicAccount) };
     }
 
-    account(): ChatGPTAccount | null {
-        const data = this.accounts();
+    async account(): Promise<ChatGPTAccount | null> {
+        const data = await this.accounts();
         return data.profiles.find(profile => profile.id === data.activeId) || null;
     }
 
     async selectAccount(id: string): Promise<void> {
         this.dispose();
         await this.storage.locked(async () => {
-            const data = this.storage.read();
+            const data = await this.storage.read();
             if (!data.profiles.some(profile => profile.id === id)) throw new Error(i18n('chatgptSignInRequired'));
             data.activeId = id;
-            this.storage.write(data);
+            await this.storage.write(data);
         });
     }
 
@@ -67,16 +67,16 @@ export class ChatGPTClient {
         const operation = this.operation(signal);
         try {
             const { hostId, selected } = await this.storage.locked(async () => ({
-                hostId: this.storage.hostId(), selected: this.storage.read().profiles.find(profile => profile.id === profileId),
+                hostId: this.storage.hostId(), selected: (await this.storage.read()).profiles.find(profile => profile.id === profileId),
             }), operation.signal);
             if (profileId && !selected) throw new Error(i18n('chatgptInvalidRegistration'));
             const registration = await authorize(hostId, selected, operation.signal);
             // Retain the issued client even if code exchange fails; never make it active before validation.
             await this.storage.locked(async () => {
-                const data = this.storage.read();
+                const data = await this.storage.read();
                 if (!data.profiles.some(profile => profile.id === registration.clientId)) {
                     data.profiles.push({ id: registration.clientId, clientId: registration.clientId });
-                    this.storage.write(data);
+                    await this.storage.write(data);
                 }
             }, operation.signal);
             const tokens = await exchangeTokens(new URLSearchParams({
@@ -89,7 +89,7 @@ export class ChatGPTClient {
                 throw new Error(i18n('chatgptAccountMismatch'));
             }
             await this.storage.locked(async () => {
-                const data = this.storage.read();
+                const data = await this.storage.read();
                 const previous = data.profiles.find(profile => profile.id === registration.clientId)!;
                 Object.assign(previous, this.tokenUpdate(tokens), {
                     issuer: identity.iss, subject: identity.sub, signingOut: false,
@@ -97,7 +97,7 @@ export class ChatGPTClient {
                     name: typeof identity.name === 'string' ? identity.name : undefined,
                 });
                 data.activeId = previous.id;
-                this.storage.write(data);
+                await this.storage.write(data);
             }, operation.signal);
         } finally {
             operation.cleanup();
@@ -118,7 +118,7 @@ export class ChatGPTClient {
 
     private async accessToken(id: string, signal: AbortSignal, force = false): Promise<string> {
         return this.storage.locked(async () => {
-            const data = this.storage.read();
+            const data = await this.storage.read();
             const profile = data.profiles.find(item => item.id === id);
             if (!profile?.accessToken || profile.signingOut) throw new Error(i18n('chatgptSignInRequired'));
             if (!profile.scopes?.includes('chatgpt.tokens.use.direct')) throw new Error(i18n('chatgptPermissionRequired'));
@@ -132,13 +132,13 @@ export class ChatGPTClient {
                     if (identity.sub !== profile.subject || identity.iss !== profile.issuer) throw new Error(i18n('chatgptAccountMismatch'));
                 }
                 Object.assign(profile, this.tokenUpdate(tokens, profile));
-                this.storage.write(data);
+                await this.storage.write(data);
                 if (!profile.scopes?.includes('chatgpt.tokens.use.direct')) throw new Error(i18n('chatgptPermissionRequired'));
                 return profile.accessToken!;
             } catch (error) {
                 if (error instanceof ChatGPTHttpError && UNUSABLE_REFRESH_CODES.has(error.code)) {
                     this.clearTokens(profile);
-                    this.storage.write(data);
+                    await this.storage.write(data);
                     throw new Error(i18n('chatgptSignInRequired'));
                 }
                 throw error;
@@ -149,7 +149,7 @@ export class ChatGPTClient {
     async authenticatedRequest(endpoint: 'models' | 'responses', options: {
         body?: string; signal?: AbortSignal;
     } = {}): Promise<any> {
-        const id = this.storage.read().activeId;
+        const id = (await this.storage.read()).activeId;
         if (!id) throw new Error(i18n('chatgptSignInRequired'));
         const operation = this.operation(options.signal);
         try {
@@ -194,12 +194,12 @@ export class ChatGPTClient {
     async logout(): Promise<boolean> {
         this.dispose();
         const profile = await this.storage.locked(async () => {
-            const data = this.storage.read();
+            const data = await this.storage.read();
             const profile = data.profiles.find(item => item.id === data.activeId);
             if (!profile) return undefined;
             const snapshot = { ...profile };
             profile.signingOut = true; // Block new requests across windows while retaining the token for revocation.
-            this.storage.write(data);
+            await this.storage.write(data);
             return snapshot;
         });
         if (!profile) return true;
@@ -225,12 +225,12 @@ export class ChatGPTClient {
         } finally {
             operation.cleanup();
             await this.storage.locked(async () => {
-                const data = this.storage.read();
+                const data = await this.storage.read();
                 const current = data.profiles.find(item => item.id === profile.id);
                 // A successful concurrent reauthorization creates a fresh session; preserve it.
                 if (current?.signingOut && current.accessToken === profile.accessToken) {
                     this.clearTokens(current);
-                    this.storage.write(data);
+                    await this.storage.write(data);
                 }
             });
         }

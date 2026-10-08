@@ -3,6 +3,7 @@
     import { getChatGPTClient, type ChatGPTAccount } from '../chatgpt/client';
     import { isChatGPTDesktop } from '../chatgpt/http';
     import { i18n } from '../utils/i18n';
+    import { PLUGIN_DATA_CHANGED_EVENT } from '../stores/settings';
 
     const desktop = isChatGPTDesktop();
     const dispatch = createEventDispatcher();
@@ -11,11 +12,15 @@
     let busy = false;
     let error = '';
     let loginController: AbortController | undefined;
+    let destroyed = false;
+    let refreshVersion = 0;
     $: account = profiles.find(profile => profile.id === activeId);
 
-    function refresh() {
+    async function refresh() {
         if (!desktop) return;
-        const saved = getChatGPTClient().accounts();
+        const version = ++refreshVersion;
+        const saved = await getChatGPTClient().accounts();
+        if (destroyed || version !== refreshVersion) return;
         profiles = saved.profiles;
         activeId = saved.activeId || '';
     }
@@ -39,7 +44,7 @@
             loginController = undefined;
             busy = false;
             try {
-                refresh();
+                await refresh();
                 if (action !== 'usage') dispatch('accountChange', {
                     connected: !!profiles.find(profile => profile.id === activeId)?.sharing,
                 });
@@ -47,8 +52,16 @@
         }
     }
 
-    onMount(() => { try { refresh(); } catch (failure) { error = failure.message; } });
-    onDestroy(() => loginController?.abort());
+    function refreshFromSync() {
+        void refresh().catch(failure => { if (!destroyed) error = failure.message; });
+    }
+
+    onMount(() => {
+        refreshFromSync();
+        window.addEventListener(PLUGIN_DATA_CHANGED_EVENT, refreshFromSync);
+        return () => window.removeEventListener(PLUGIN_DATA_CHANGED_EVENT, refreshFromSync);
+    });
+    onDestroy(() => { destroyed = true; loginController?.abort(); });
 </script>
 
 <div class="chatgpt-account">

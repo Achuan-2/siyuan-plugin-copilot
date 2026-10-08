@@ -24,7 +24,9 @@ import "@/index.scss";
 
 import SettingPanel from "./SettingsPannel.svelte";
 import { getDefaultSettings } from "./defaultSettings";
-import { disposeChatGPTClient } from "./chatgpt/client";
+import { disposeChatGPTClient, getChatGPTClient } from "./chatgpt/client";
+import { isChatGPTDesktop } from "./chatgpt/http";
+import { configureChatGPTStorage } from "./chatgpt/storage";
 import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
@@ -1961,6 +1963,12 @@ export default class PluginSample extends Plugin {
     async onload() {
         // 插件被启用时会自动调用这个函数
         setPluginInstance(this);
+        configureChatGPTStorage(this);
+        if (isChatGPTDesktop()) {
+            // 启用插件即迁移已有登录，使其无需重新授权即可参与工作空间同步。
+            try { await getChatGPTClient().accounts(); }
+            catch { console.error('Failed to initialize ChatGPT workspace accounts'); }
+        }
 
 
 
@@ -2368,6 +2376,7 @@ export default class PluginSample extends Plugin {
 
     onunload() {
         disposeChatGPTClient();
+        configureChatGPTStorage(null);
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);
         this.eventBus.off("click-editortitleicon", this.clickEditorTitleIconBindThis);
