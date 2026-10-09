@@ -1357,7 +1357,8 @@
         }
 
         try {
-            const data = await exportMdContent(doc.id, false, false, 2, 0, false);
+            // 保留 [/]、[-] 等任务状态标记，避免导出时归一化为标准复选框。
+            const data = await exportMdContent(doc.id, false, false, 2, 0, false, true);
             if (data && data.content) {
                 return data.content;
             }
@@ -6469,9 +6470,8 @@
         }
 
         // 获取所有上下文文档的最新内容
-        // ask模式：使用 exportMdContent 获取 Markdown 格式
-        // edit模式：使用 getBlockKramdown 获取 kramdown 格式（包含块ID信息）
-        // agent模式：文档块只传递ID，普通块获取kramdown
+        // ask/edit 模式：使用 preserveTaskMarkers 导出 Markdown，保留任务状态。
+        // agent 模式：文档块只传递 ID，普通块使用同一内容读取逻辑。
         // 上下文文档以上下文数组为准（chips 形式），并合并编辑器中通过 (( 插入的原生块引用
         const editorDocs: { id: string; title: string; type: string; content?: string }[] =
             contextDocuments.map(doc => ({
