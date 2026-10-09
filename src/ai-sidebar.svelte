@@ -1341,11 +1341,26 @@
         updateContextDocumentsForMode();
     }
 
+    // 3.8.7 正式版开始支持保留任务状态；同版本的预发布版仍按旧版处理。
+    function shouldUseKramdownForContext(version: string): boolean {
+        const match = version?.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/i);
+        if (!match) return false;
+
+        const minimum = [3, 8, 7];
+        for (let index = 0; index < minimum.length; index++) {
+            const current = Number(match[index + 1]);
+            if (current !== minimum[index]) {
+                return current < minimum[index];
+            }
+        }
+        return Boolean(match[4]);
+    }
+
     /**
      * 获取上下文文档/块的最新内容
      * - 如果是 webpage 类型，直接使用已有 content
      * - 在 agent 模式下，如果 type === 'doc'，不需要直接传输文档全文（仅保留ID供工具读取）
-     * - 优先使用 exportMdContent 获取 Markdown 内容；若失败或无内容，降级使用 getBlockKramdown
+     * - 低于 3.8.7 使用 Kramdown；3.8.7 及以上通过 preserveTaskMarkers 导出 Markdown
      */
     async function fetchContextDocContent(doc: { id: string; type?: string; content?: string }): Promise<string> {
         if (doc.type === 'webpage') {
@@ -1357,19 +1372,17 @@
         }
 
         try {
-            // 保留 [/]、[-] 等任务状态标记，避免导出时归一化为标准复选框。
-            const data = await exportMdContent(doc.id, false, false, 2, 0, false, true);
-            if (data && data.content) {
-                return data.content;
-            }
-        } catch (e) {
-            // ignore
-        }
-
-        try {
-            const blockData = await getBlockKramdown(doc.id);
-            if (blockData && blockData.kramdown) {
-                return blockData.kramdown;
+            const kernelVersion = window.siyuan?.config?.system?.kernelVersion || '';
+            if (shouldUseKramdownForContext(kernelVersion)) {
+                const blockData = await getBlockKramdown(doc.id, 'textmark');
+                if (blockData && blockData.kramdown) {
+                    return blockData.kramdown;
+                }
+            } else {
+                const data = await exportMdContent(doc.id, false, false, 2, 0, false, true);
+                if (data && data.content) {
+                    return data.content;
+                }
             }
         } catch (e) {
             // ignore
@@ -6470,7 +6483,7 @@
         }
 
         // 获取所有上下文文档的最新内容
-        // ask/edit 模式：使用 preserveTaskMarkers 导出 Markdown，保留任务状态。
+        // ask/edit 模式：按内核版本选择 Kramdown 或保留任务状态的 Markdown 导出。
         // agent 模式：文档块只传递 ID，普通块使用同一内容读取逻辑。
         // 上下文文档以上下文数组为准（chips 形式），并合并编辑器中通过 (( 插入的原生块引用
         const editorDocs: { id: string; title: string; type: string; content?: string }[] =
