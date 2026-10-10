@@ -81,9 +81,11 @@
         ? account.sharing ? i18n('chatgptConnected') : i18n('chatgptPermissionRequired')
         : i18n('chatgptNotConnected')}</span>
     <div class="account-actions">
-        <button class="b3-button" disabled={busy || !desktop} on:click={() => perform('login')}>
-            {loginController ? i18n('chatgptWaitingLogin') : i18n('chatgptLogin')}
-        </button>
+        {#if !account?.connected}
+            <button class="b3-button" disabled={busy || !desktop} on:click={() => perform('login')}>
+                {loginController ? i18n('chatgptWaitingLogin') : i18n('chatgptLogin')}
+            </button>
+        {/if}
         {#if loginController}
             <button class="b3-button b3-button--outline" on:click={() => loginController?.abort()}>{i18n('chatgptCancelLogin')}</button>
         {/if}

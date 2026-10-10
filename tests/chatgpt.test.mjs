@@ -286,14 +286,14 @@ test('rotating refresh is serialized across windows; account model order and vis
     });
     const lists = await Promise.all([f.client().models(), f.client().models()]);
     assert.equal(refreshes, 1);
-    assert.equal(lists[0].map(model => model.id).join(','), 'second,first,gpt-6.1-sol,gpt-6.1-luna');
+    assert.equal(lists[0].map(model => model.id).join(','), 'second,first');
     assert.equal((await f.storage.read()).profiles[0].refreshToken, 'rotated-refresh');
     f.route(async url => url.pathname === '/v1/models' ? response({ models: [
         { slug: 'gpt-6.1-sol', display_name: 'Official Sol', visibility: 'list' },
         { slug: 'first', display_name: 'First', visibility: 'list' },
     ] }) : undefined);
     const current = await f.client().models();
-    assert.equal(current.map(model => model.id).join(','), 'gpt-6.1-sol,first,gpt-6.1-luna');
+    assert.equal(current.map(model => model.id).join(','), 'gpt-6.1-sol,first');
     assert.equal(current[0].name, 'Official Sol');
     f.route(async url => url.pathname === '/v1/models' ? response({ models: [
         { slug: 'gpt-6.1-luna', display_name: 'Official Luna', visibility: 'list' },
@@ -302,6 +302,8 @@ test('rotating refresh is serialized across windows; account model order and vis
     const listed = await f.client().models();
     assert.equal(listed.map(model => model.id).join(','), 'gpt-6.1-luna,gpt-6.1-sol');
     assert.equal(listed[0].name, 'Official Luna');
+    f.route(async url => url.pathname === '/v1/models' ? response({ models: [] }) : undefined);
+    assert.equal((await f.client().models()).length, 0);
 });
 
 test('invalid refresh clears tokens but retains account mapping; transient failure preserves session', async t => {
