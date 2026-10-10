@@ -59,6 +59,7 @@
     import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
     import { settingsStore, PLUGIN_DATA_CHANGED_EVENT } from './stores/settings';
+    import { cloneSettings } from './utils/settingsStorage';
     import {
         enqueueSessionMetadataSave,
         getSessionTaskStatus,
@@ -1273,7 +1274,7 @@
     async function saveWebApps(event: CustomEvent<{ webApps: any[] }>) {
         webApps = event.detail.webApps;
         settings.webApps = webApps;
-        await plugin.saveData('settings.json', settings);
+        await plugin.saveSettings(settings);
 
         // 为每个小程序注册图标
         for (const app of webApps) {
@@ -2562,12 +2563,12 @@
         unsubscribe = settingsStore.subscribe(newSettings => {
             if (newSettings && Object.keys(newSettings).length > 0) {
                 // 更新本地设置
-                settings = newSettings;
-                webApps = newSettings.webApps || [];
+                settings = cloneSettings(newSettings);
+                webApps = settings.webApps || [];
 
                 // 更新提供商信息
                 if (newSettings.aiProviders) {
-                    providers = newSettings.aiProviders;
+                    providers = settings.aiProviders;
                 }
 
                 // 更新当前选择（如果设置中有保存）
@@ -3320,7 +3321,7 @@
         const shouldPersist = newSettings.persist !== false;
         if (!shouldPersist) {
             // 自动恢复预设属于视图初始化，不能修改 store 共享的配置对象。
-            settings = { ...settings };
+            settings = cloneSettings(settings);
         }
 
         // 更新tempModelSettings，保持所有字段的状态

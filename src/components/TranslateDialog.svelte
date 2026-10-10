@@ -191,7 +191,7 @@
     async function saveTranslateLanguageSettings() {
         settings.translateInputLanguage = translateInputLanguage;
         settings.translateOutputLanguage = translateOutputLanguage;
-        await plugin.saveData('settings.json', settings);
+        await plugin.saveSettings(settings);
     }
 
     // 交换语言（仅交换语言，不交换文本）
@@ -230,7 +230,7 @@
 
         settings.translateProvider = translateProvider;
         settings.translateModelId = translateModelId;
-        await plugin.saveData('settings.json', settings);
+        await plugin.saveSettings(settings);
     }
 
     // 加载历史项

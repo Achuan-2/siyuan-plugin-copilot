@@ -3,6 +3,8 @@
     import SettingPanel from '@/libs/components/setting-panel.svelte';
     import { i18n } from './utils/i18n';
     import { getDefaultSettings } from './defaultSettings';
+    import { settingsStore } from './stores/settings';
+    import { cloneSettings, rebaseSettings } from './utils/settingsStorage';
     import {
         pushMsg,
         pushErrMsg,
@@ -467,6 +469,10 @@ description: 描述这个 Skill 的功能
 
     // 使用动态默认设置
     let settings = { ...getDefaultSettings() };
+    let unsubscribeSettings: (() => void) | undefined;
+    let pendingSettingsSaves = 0;
+    let settingsSaveVersion = 0;
+    let isDestroyed = false;
 
     // 笔记本列表
     let notebookOptions: Record<string, string> = {};
@@ -1307,7 +1313,7 @@ description: 描述这个 Skill 的功能
                                     // 确认回调
                                     settings = { ...getDefaultSettings() };
                                     updateGroupItems();
-                                    await saveSettings();
+                                    await saveSettings({ replace: true });
                                     await pushMsg(i18n('settingsResetMessage'));
                                 },
                                 () => {
@@ -1371,17 +1377,40 @@ description: 描述这个 Skill 的功能
         }
     };
 
-    async function saveSettings() {
-        await plugin.saveSettings(settings);
+    async function saveSettings(options: { replace?: boolean } = {}) {
+        const version = ++settingsSaveVersion;
+        pendingSettingsSaves++;
+        try {
+            const saved = await plugin.saveSettings(settings, options);
+            if (!isDestroyed && version === settingsSaveVersion) {
+                settings = cloneSettings(saved);
+                normalizeProviderSettings();
+                updateGroupItems();
+            }
+        } finally {
+            pendingSettingsSaves--;
+        }
     }
 
     onMount(async () => {
         await runload();
+        if (isDestroyed) return;
+        unsubscribeSettings = settingsStore.subscribe(handleSettingsUpdate);
         document.addEventListener('click', closePlatformContextMenu);
         window.addEventListener('blur', closePlatformContextMenu);
     });
 
+    function handleSettingsUpdate(value: any) {
+        // 保存中的输入保留在本地；最后一次保存成功后会合并到最新配置。
+        if (isDestroyed || pendingSettingsSaves || !value || Object.keys(value).length === 0) return;
+        settings = cloneSettings(value);
+        normalizeProviderSettings();
+        updateGroupItems();
+    }
+
     onDestroy(() => {
+        isDestroyed = true;
+        unsubscribeSettings?.();
         document.removeEventListener('click', closePlatformContextMenu);
         window.removeEventListener('blur', closePlatformContextMenu);
         clearPlatformTouchDragTimer();
@@ -1393,8 +1422,20 @@ description: 描述这个 Skill 的功能
 
     async function runload() {
         const loadedSettings = await plugin.loadSettings();
-        settings = { ...loadedSettings };
+        if (isDestroyed) return;
+        settings = cloneSettings(loadedSettings);
+        normalizeProviderSettings();
 
+        // 加载笔记本列表
+        await loadNotebooks();
+
+        // 如果有设置 SOUL 文档 ID，自动验证
+        if (settings.soulDocId) await validateSoulDocId();
+        await refreshSkills();
+        if (!isDestroyed) updateGroupItems();
+    }
+
+    function normalizeProviderSettings() {
         // 确保 aiProviders 存在
         if (!settings.aiProviders) {
             settings.aiProviders = {
@@ -1475,22 +1516,12 @@ description: 描述这个 Skill 的功能
         // 优先使用 selectedProviderId，如果不存在则使用 currentProvider 作为初始值
         selectedProviderId = settings.selectedProviderId || settings.currentProvider || 'apimart';
 
-        // 确保 selectedProviderId 设置被保存
+        // 补全设置面板显示所需字段，用户实际修改时再保存。
         if (!settings.selectedProviderId) {
             settings.selectedProviderId = selectedProviderId;
         }
 
-        // 加载笔记本列表
-        await loadNotebooks();
-
-        // 如果有设置 SOUL 文档 ID，自动验证
-        if (settings.soulDocId) {
-            await validateSoulDocId();
-        }
-
-        await refreshSkills();
-
-        updateGroupItems();
+        settings = rebaseSettings(settings);
     }
 
     // 加载笔记本列表

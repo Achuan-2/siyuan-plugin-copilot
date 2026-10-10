@@ -32,6 +32,7 @@ import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
 import { updateSettings, getSettings, PLUGIN_DATA_CHANGED_EVENT } from "./stores/settings";
+import { SettingsStorage, SettingsConflictError, cloneSettings, type SettingsSaveOptions } from "./utils/settingsStorage";
 import { getModelCapabilities } from "./utils/modelCapabilities";
 import { matchHotKey, getCustomHotKey } from "./utils/hotkey";
 import { ChangelogUtils } from "./utils/changelogNotify";
@@ -67,6 +68,11 @@ export default class PluginSample extends Plugin {
     private openMenuLinkBindThis = this.openMenuLink.bind(this);
     private domainIconMap: Map<string, string> = new Map(); // 缓存域名与图标文件名的映射
     private registeredDocks: Set<string> = new Set();
+    private settingsStorage?: SettingsStorage;
+
+    private getSettingsStorage(): SettingsStorage {
+        return this.settingsStorage ||= new SettingsStorage(this);
+    }
 
     /**
      * 加载 WebView 历史记录
@@ -2375,6 +2381,7 @@ export default class PluginSample extends Plugin {
     }
 
     onunload() {
+        this.settingsStorage?.dispose();
         disposeChatGPTClient();
         configureChatGPTStorage(null);
         //当插件被禁用的时候，会自动调用这个函数
@@ -2514,9 +2521,23 @@ export default class PluginSample extends Plugin {
     /**
      * 加载设置
      */
-    async loadSettings({ persistMigrations = false } = {}) {
-        // 默认只读，不修改 SDK 缓存；仅 onload 持久化真实的旧数据迁移。
-        const settings = JSON.parse(JSON.stringify((await this.loadData(SETTINGS_FILE)) || {}));
+    async loadSettings({ persistMigrations = false } = {}): Promise<Record<string, any>> {
+        return this.getSettingsStorage().run(() => this.loadSettingsInternal({ persistMigrations }));
+    }
+
+    private async loadSettingsInternal({ persistMigrations = false } = {}): Promise<Record<string, any>> {
+        const storage = this.getSettingsStorage();
+        let storedSettings: Record<string, any> | null;
+        try {
+            storedSettings = await storage.read();
+        } catch (error) {
+            console.error('Failed to load Copilot settings:', error);
+            const fallback = storage.fallback(getDefaultSettings());
+            updateSettings(cloneSettings(fallback));
+            return fallback;
+        }
+        // 仅成功读取的配置参与迁移，缺失文件不能触发默认配置自动回写。
+        const settings = JSON.parse(JSON.stringify(storedSettings || {}));
         const migrationMessages: string[] = [];
 
         // 迁移：如果存在旧的 aiProviders.v3 配置，迁移为自定义平台（customProviders）
@@ -2636,7 +2657,7 @@ export default class PluginSample extends Plugin {
         }
 
         const defaultSettings = getDefaultSettings();
-        const mergedSettings = { ...defaultSettings, ...settings };
+        let mergedSettings = { ...defaultSettings, ...settings };
         // 新平台只补充到内存，避免打开多个窗口时触发配置写入/重载。
         if (defaultSettings.aiProviders.codex) {
             mergedSettings.aiProviders = {
@@ -2660,28 +2681,59 @@ export default class PluginSample extends Plugin {
         }
 
         // 默认值只补充到内存。真实的旧配置/会话迁移合并为一次设置写入。
-        if (persistMigrations) {
+        if (persistMigrations && storedSettings) {
             const sessionsMigrated = await this.migrateSessions(mergedSettings);
             if (migrationMessages.length > 0 || sessionsMigrated) {
-                await this.saveData(SETTINGS_FILE, mergedSettings);
-                for (const message of migrationMessages) {
-                    pushMsg(message);
+                let migrationSaved = false;
+                try {
+                    mergedSettings = await storage.save(storage.capture(mergedSettings, {
+                        replace: true, expected: storedSettings,
+                    })) as typeof mergedSettings;
+                    migrationSaved = true;
+                } catch (error) {
+                    // 等待迁移时同步可能已更新配置，重新只读加载，不能覆盖新配置。
+                    if (error instanceof SettingsConflictError) return this.loadSettingsInternal();
+                    // 自动迁移保存失败时继续使用已读到的配置，不阻断整个插件启动。
+                    console.error('Failed to persist Copilot settings migration:', error);
+                }
+                if (migrationSaved) {
+                    for (const message of migrationMessages) pushMsg(message);
                 }
             }
         }
 
         // 更新 store
-        updateSettings(mergedSettings);
-        return mergedSettings;
+        const view = storage.view(mergedSettings);
+        storage.remember(view);
+        updateSettings(cloneSettings(view));
+        return view;
     }
 
     /**
      * 保存设置
      */
-    async saveSettings(settings: any) {
-        await this.saveData(SETTINGS_FILE, settings);
-        // 更新 store，通知所有订阅者
-        updateSettings(settings);
+    async saveSettings(settings: any, options: SettingsSaveOptions = {}) {
+        const storage = this.getSettingsStorage();
+        const request = storage.capture(settings, options);
+        try {
+            return await storage.run(async () => {
+                const persisted = await storage.save(request);
+                const defaults = getDefaultSettings();
+                const saved = { ...defaults, ...persisted };
+                if (defaults.aiProviders.codex && !saved.aiProviders?.codex) {
+                    saved.aiProviders = { ...saved.aiProviders, codex: defaults.aiProviders.codex };
+                }
+                // 补全后的默认值也是编辑基线，后续普通保存不能将它们误认为用户改动。
+                const view = storage.view(saved);
+                storage.remember(view);
+                // 视图持有独立编辑副本，失败或尚未保存的改动不能污染 store。
+                updateSettings(cloneSettings(view));
+                return view;
+            });
+        } catch (error) {
+            pushErrMsg(error instanceof Error ? error.message : '设置保存失败');
+            throw error;
+        }
     }
 
     /**
