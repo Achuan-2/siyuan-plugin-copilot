@@ -59,14 +59,8 @@ GPL3 License
 
 If you have any issues or suggestions, please feel free to raise them in [GitHub Issues](https://github.com/Achuan-2/SiYuan-plugin-ai-sidebar/issues).
 
-## ❤️ Powered by Love
+## ❤️ Tips Are Welcome
 
-If you like my plugin, you are welcome to give a star on the GitHub repository and offer appreciation via WeChat. This will motivate me to continue improving this plugin and developing new ones.
+If you find this plugin useful, you're welcome to leave a tip or give the repository a star on GitHub. Your support helps me maintain and improve this plugin and develop new ones. Thank you for your support!
 
-Maintaining plugins is time-consuming and labor-intensive. Personal time and energy are limited. Open source is about sharing, but it does not mean I have to waste my time implementing features for users for free.
-
-I will gradually improve features that I need. Appreciation can expedite updates. For some features I think can be improved but are not currently necessary, they may require appreciation to be prioritized (marked with an appreciation tag and the required amount). Features that are not needed or are very complicated to implement will have their issues closed directly without consideration.
-
-Friends who have accumulated appreciation totaling 50 RMB and wish to add me on WeChat can send an email to <span data-type="a" data-href="mailto:achuan-2@outlook.com">achuan-2@outlook.com</span> to request adding as a friend (If the appreciation does not reach 50 RMB, I will not reply to the email or add you as a friend, as I do not wish to be a free customer service representative).
-
-![image](https://camo.githubusercontent.com/8052f6f2e7dafba534e781934efa9bcb084fa3a9dfa5c221a85ac63db8b043cb/68747470733a2f2f6173736574732e62336c6f6766696c652e636f6d2f73697975616e2f313631303230353735393030352f6173736574732f6e6574776f726b2d61737365742d696d6167652d32303235303631343132333535382d667568697235762e706e67)
+[Leave a tip](https://pancake.waffo.ai/store/achuan-2-fdbho4ye/product/PROD_3F7Aa7c2NQlz9KmxcgxjQ7?type=onetime&currency=USD)
