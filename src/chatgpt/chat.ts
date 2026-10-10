@@ -72,6 +72,40 @@ export function buildResponsesBody(options: ChatOptions): any {
     return body;
 }
 
+/** Blob previews only exist in the renderer; send their bytes without changing saved messages. */
+async function prepareResponsesMessages(messages: Message[], signal?: AbortSignal): Promise<Message[]> {
+    const images = new Map<string, Promise<string>>();
+    const imageDataUrl = (url: string): Promise<string> => {
+        if (!images.has(url)) images.set(url, (async () => {
+            const response = await fetch(url, { signal });
+            if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
+            const blob = await response.blob();
+            if (!blob.size) throw new Error('Image is empty');
+            return new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                const cleanup = () => signal?.removeEventListener('abort', abort);
+                const abort = () => reader.abort();
+                reader.onload = () => { cleanup(); resolve(reader.result as string); };
+                reader.onerror = () => { cleanup(); reject(reader.error || new Error('Failed to read image')); };
+                reader.onabort = () => { cleanup(); reject(new Error('Request aborted')); };
+                reader.readAsDataURL(blob);
+                signal?.addEventListener('abort', abort, { once: true });
+                if (signal?.aborted) abort();
+            });
+        })());
+        return images.get(url)!;
+    };
+    return Promise.all(messages.map(async message => {
+        if (!Array.isArray(message.content)) return message;
+        const content = await Promise.all(message.content.map(async part => {
+            const url = part.image_url?.url;
+            if (part.type !== 'image_url' || !url?.startsWith('blob:')) return part;
+            return { ...part, image_url: { ...part.image_url, url: await imageDataUrl(url) } };
+        }));
+        return { ...message, content };
+    }));
+}
+
 function streamFailure(event: any, requestId: string): Error {
     const error = event.response?.error || event.error || event;
     const code = error.code || event.response?.incomplete_details?.reason || '';
@@ -159,8 +193,9 @@ export async function consumeResponses(response: any, options: ChatOptions): Pro
 export async function chatChatGPT(options: ChatOptions): Promise<void> {
     let response: any;
     try {
+        const messages = await prepareResponsesMessages(options.messages, options.signal);
         response = await getChatGPTClient().authenticatedRequest('responses', {
-            body: JSON.stringify(buildResponsesBody(options)), signal: options.signal,
+            body: JSON.stringify(buildResponsesBody({ ...options, messages })), signal: options.signal,
         });
         await consumeResponses(response, options);
     } catch (error) {

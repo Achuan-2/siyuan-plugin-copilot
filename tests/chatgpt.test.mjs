@@ -25,6 +25,19 @@ function response(body, statusCode = 200, headers = {}) {
     return stream;
 }
 
+// Node has Blob/fetch but no FileReader; emulate its asynchronous read and abort events.
+class TestFileReader {
+    aborted = false;
+    readAsDataURL(blob) {
+        blob.arrayBuffer().then(bytes => {
+            if (this.aborted) return;
+            this.result = `data:${blob.type || 'application/octet-stream'};base64,${Buffer.from(bytes).toString('base64')}`;
+            this.onload?.();
+        }).catch(error => { this.error = error; this.onerror?.(); });
+    }
+    abort() { this.aborted = true; this.onabort?.(); }
+}
+
 function fixture(t) {
     const directory = mkdtempSync(path.join(tmpdir(), 'siyuan-chatgpt-test-'));
     let workspace = path.join(directory, 'workspace');
@@ -72,7 +85,7 @@ function fixture(t) {
         return require(name);
     };
     const cache = new Map();
-    const context = vm.createContext({ console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout,
+    const context = vm.createContext({ console, URL, URLSearchParams, AbortController, fetch, FileReader: TestFileReader, setTimeout, clearTimeout,
         setInterval, clearInterval, Date, Error, window: { require: native,
             siyuan: { config: { system: { workspaceDir: workspace } } } } });
     function load(relative) {
@@ -341,6 +354,81 @@ test('Responses body preserves images and tool-round reasoning with ordered resu
     assert.equal(body.store, false);
     assert.equal(body.stream, true);
     for (const field of ['temperature', 'max_output_tokens', 'previous_response_id', 'customBody']) assert.equal(field in body, false);
+});
+
+test('ChatGPT sends blob image bytes with the original MIME type, including history, without mutating messages', async t => {
+    const f = fixture(t);
+    await saved(f);
+    const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
+    t.after(() => f.load('src/chatgpt/client.ts').getChatGPTClient().dispose());
+    const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=', 'base64');
+    const types = ['image/png', 'image/jpeg', 'image/webp'];
+    const urls = types.map(type => URL.createObjectURL(new Blob([bytes], { type })));
+    t.after(() => urls.forEach(url => URL.revokeObjectURL(url)));
+    const image = url => ({ type: 'image_url', image_url: { url } });
+    const remote = 'https://example.com/image.png';
+    const dataUrl = `data:image/png;base64,${bytes.toString('base64')}`;
+    const messages = [
+        { role: 'user', content: [{ type: 'text', text: '历史图片' }, image(urls[0])] },
+        { role: 'assistant', content: '收到' },
+        { role: 'user', content: [{ type: 'text', text: '翻译图片' }, ...urls.map(image), image(dataUrl), image(remote)] },
+    ];
+    const original = JSON.stringify(messages);
+    let requests = 0;
+    f.route(async (url, options, body) => {
+        if (url.pathname !== '/v1/responses') return;
+        requests++;
+        const { input } = JSON.parse(body);
+        assert.equal(input[0].content[1].image_url, dataUrl);
+        assert.equal(input[2].content[0].text, '翻译图片');
+        types.forEach((type, index) => {
+            const part = input[2].content[index + 1];
+            assert.equal(part.type, 'input_image');
+            assert.equal(part.image_url, `data:${type};base64,${bytes.toString('base64')}`);
+        });
+        assert.equal(input[2].content[4].image_url, dataUrl);
+        assert.equal(input[2].content[5].image_url, remote);
+        return response(events({ type: 'response.completed', response: { status: 'completed',
+            output: [{ type: 'message', content: [{ type: 'output_text', text: 'Translation' }] }] } }));
+    });
+    let answer = '';
+    await chatChatGPT({ model: 'account-model', messages, onComplete: text => { answer = text; } });
+    assert.equal(requests, 1);
+    assert.equal(answer, 'Translation');
+    assert.equal(JSON.stringify(messages), original);
+});
+
+test('unreadable or empty blob images report an error before sending a ChatGPT request', async t => {
+    const f = fixture(t);
+    const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
+    const revoked = URL.createObjectURL(new Blob(['image'], { type: 'image/png' }));
+    URL.revokeObjectURL(revoked);
+    const empty = URL.createObjectURL(new Blob([], { type: 'image/png' }));
+    t.after(() => URL.revokeObjectURL(empty));
+    for (const url of [revoked, empty]) {
+        let failure;
+        await chatChatGPT({ model: 'account-model', messages: [{ role: 'user',
+            content: [{ type: 'image_url', image_url: { url } }] }],
+            onError: error => { failure = error; },
+            onComplete: () => assert.fail('An unreadable image cannot succeed'),
+        });
+        assert.ok(failure instanceof Error);
+        assert.match(failure.message, /fetch failed|Image is empty/);
+    }
+    assert.equal(f.requests.length, 0);
+});
+
+test('aborting image preparation does not send a ChatGPT request', async t => {
+    const f = fixture(t);
+    const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
+    const url = URL.createObjectURL(new Blob(['image'], { type: 'image/png' }));
+    t.after(() => URL.revokeObjectURL(url));
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(chatChatGPT({ model: 'account-model', signal: controller.signal,
+        messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url } }] }],
+    }), /Request aborted/);
+    assert.equal(f.requests.length, 0);
 });
 
 test('fragmented UTF-8 SSE completes text and preserves tool output for sidebar approval', async t => {
