@@ -34,6 +34,7 @@ export default defineConfig({
                 { src: "./README*.md", dest: "./" },
                 { src: "./CHANGELOG.md", dest: "./" },
                 { src: "./plugin.json", dest: "./" },
+                { src: "./devtools-hook.cjs", dest: "./" },
                 { src: "./preview.png", dest: "./" },
                 { src: "./icon.png", dest: "./" },
                 { src: "./assets/*", dest: "./assets/" },
@@ -46,16 +47,20 @@ export default defineConfig({
         // Auto copy to SiYuan plugins directory after build
         {
             name: 'auto-copy-to-siyuan',
-            writeBundle() {
-                try {
-                    // Run the copy script after build, using the current output directory
-                    execSync(`node --no-warnings ./scripts/make_dev_copy.js --source ${outputDir}`, {
-                        stdio: 'inherit',
-                        cwd: process.cwd()
-                    });
-                } catch (error) {
-                    console.warn('Auto copy to SiYuan failed:', error instanceof Error ? error.message : String(error));
-                    console.warn('You can manually run: pnpm run make_dev_copy');
+            // 等静态资源复制完成，确保首次构建也会同步主进程挂钩模块。
+            writeBundle: {
+                sequential: true,
+                handler() {
+                    try {
+                        // Run the copy script after build, using the current output directory
+                        execSync(`node --no-warnings ./scripts/make_dev_copy.js --source ${outputDir}`, {
+                            stdio: 'inherit',
+                            cwd: process.cwd()
+                        });
+                    } catch (error) {
+                        console.warn('Auto copy to SiYuan failed:', error instanceof Error ? error.message : String(error));
+                        console.warn('You can manually run: pnpm run make_dev_copy');
+                    }
                 }
             }
         },

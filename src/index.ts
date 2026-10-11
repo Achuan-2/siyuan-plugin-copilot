@@ -36,6 +36,7 @@ import { SettingsStorage, SettingsConflictError, cloneSettings, type SettingsSav
 import { getModelCapabilities } from "./utils/modelCapabilities";
 import { matchHotKey, getCustomHotKey } from "./utils/hotkey";
 import { ChangelogUtils } from "./utils/changelogNotify";
+import { bindWebviewDevTools, disposeWebviewDevTools } from "./utils/webviewDevTools";
 export const SETTINGS_FILE = "settings.json";
 import { initializeMcpTools } from "./tools";
 const WEBVIEW_HISTORY_FILE = "webview-history.json";
@@ -63,6 +64,7 @@ export default class PluginSample extends Plugin {
     private chatDialogs: Map<string, { dialog: Dialog; app: ChatDialog }> = new Map();
     private webApps: Map<string, any> = new Map(); // 存储待打开的小程序数据
     private webViewHistory: WebViewHistory[] = []; // WebView 历史记录
+    private webViewDevToolsCleanups = new Map<HTMLElement, () => void>();
     private openMenuDoctreeBindThis = this.openMenuDoctree.bind(this);
     private clickEditorTitleIconBindThis = this.clickEditorTitleIcon.bind(this);
     private openMenuLinkBindThis = this.openMenuLink.bind(this);
@@ -814,7 +816,13 @@ export default class PluginSample extends Plugin {
         }
     }
 
+    disposeWebAppView(element: HTMLElement) {
+        this.webViewDevToolsCleanups.get(element)?.();
+        this.webViewDevToolsCleanups.delete(element);
+    }
+
     initWebAppView(element: HTMLElement, app: any, tabInstance?: any, showFullscreenButton: boolean = true, isCollectionDock: boolean = false) {
+        this.disposeWebAppView(element);
         const pluginInstance = this;
         element.style.display = 'flex';
                 element.style.flexDirection = 'column';
@@ -1400,7 +1408,10 @@ export default class PluginSample extends Plugin {
                     webview.setAttribute('allowpopups', 'true');
 
                     // 禁止 guest webview 自己响应 Ctrl+Shift+I 打开小程序开发者工具。
-                    webview.setAttribute('webpreferences', 'devTools=false');
+                    webview.setAttribute('webpreferences', 'devTools=no');
+                    if (isElec) {
+                        this.webViewDevToolsCleanups.set(element, bindWebviewDevTools(webview, this.name));
+                    }
 
 
 
@@ -2053,9 +2064,10 @@ export default class PluginSample extends Plugin {
                 pluginInstance.initWebAppView(element, app, this);
             },
             beforeDestroy() {
+                pluginInstance.disposeWebAppView(this.element);
             },
             destroy() {
-                // 清理工作（如果需要）
+                pluginInstance.disposeWebAppView(this.element);
             }
         });
 
@@ -2381,6 +2393,8 @@ export default class PluginSample extends Plugin {
     }
 
     onunload() {
+        for (const element of this.webViewDevToolsCleanups.keys()) this.disposeWebAppView(element);
+        disposeWebviewDevTools();
         this.settingsStorage?.dispose();
         disposeChatGPTClient();
         configureChatGPTStorage(null);

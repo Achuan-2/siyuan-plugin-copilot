@@ -325,6 +325,7 @@
         const visibleIds = new Set(visibleApps.map(app => app.id));
         for (const [id, wrapper] of wrapperMap) {
             if (!visibleIds.has(id)) {
+                plugin.disposeWebAppView(slotMap.get(id));
                 wrapper.remove();
                 wrapperMap.delete(id);
                 slotMap.delete(id);
@@ -347,6 +348,9 @@
     });
 
     onDestroy(() => {
+        for (const slot of slotMap.values()) {
+            plugin.disposeWebAppView(slot);
+        }
         for (const wrapper of wrapperMap.values()) {
             wrapper.remove();
         }
