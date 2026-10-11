@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { i18n, tf } from '../utils/i18n';
     import { createEventDispatcher } from 'svelte';
     import { pushMsg, pushErrMsg } from '../api';
 
@@ -118,11 +119,11 @@
     // 保存小程序
     async function saveWebApp() {
         if (!editForm.name.trim()) {
-            pushErrMsg('请输入小程序名称');
+            pushErrMsg(i18n('webappNameRequired'));
             return;
         }
         if (!editForm.url.trim()) {
-            pushErrMsg('请输入网站链接');
+            pushErrMsg(i18n('webappUrlRequired'));
             return;
         }
 
@@ -132,7 +133,7 @@
         try {
             new URL(normalizedUrl);
         } catch (e) {
-            pushErrMsg('网站链接格式不正确');
+            pushErrMsg(i18n('webappUrlInvalid'));
             return;
         }
 
@@ -159,7 +160,7 @@
                         sidebarPosition: 'RightBottom',
                         updatedAt: Date.now(),
                     };
-                    pushMsg('小程序已更新');
+                    pushMsg(i18n('webappUpdated'));
                 }
             } else {
                 // 添加新小程序
@@ -174,7 +175,7 @@
                     updatedAt: Date.now(),
                 };
                 webApps = [...webApps, newApp];
-                pushMsg('小程序已添加');
+                pushMsg(i18n('webappAdded'));
             }
 
             // 通知父组件保存设置
@@ -184,21 +185,21 @@
             cancelEdit();
         } catch (e) {
             console.error('保存小程序失败:', e);
-            pushErrMsg('保存小程序失败: ' + e.message);
+            pushErrMsg(i18n('webappSaveFailed') + e.message);
             isUploadingIcon = false;
         }
     }
 
     // 删除小程序
     async function deleteWebApp(app: any) {
-        if (confirm(`确定要删除小程序"${app.name}"吗？`)) {
+        if (confirm(tf('webappDeleteConfirm', app.name))) {
             try {
                 webApps = webApps.filter(a => a.id !== app.id);
                 dispatch('save', { webApps });
-                pushMsg('小程序已删除');
+                pushMsg(i18n('webappDeleted'));
             } catch (e) {
                 console.error('删除小程序失败:', e);
-                pushErrMsg('删除小程序失败: ' + e.message);
+                pushErrMsg(i18n('webappDeleteFailed') + e.message);
             }
         }
     }
@@ -234,13 +235,13 @@
 
             // 验证文件类型
             if (!file.type.startsWith('image/')) {
-                pushErrMsg('请选择图片文件');
+                pushErrMsg(i18n('webappImageRequired'));
                 return;
             }
 
             // 验证文件大小（限制为 2MB）
             if (file.size > 2 * 1024 * 1024) {
-                pushErrMsg('图片文件不能超过 2MB');
+                pushErrMsg(i18n('webappIconTooLarge'));
                 return;
             }
 
@@ -251,7 +252,7 @@
     // 从 URL 获取图标
     async function fetchIconFromUrl() {
         if (!editForm.url.trim()) {
-            pushErrMsg('请先输入网站链接');
+            pushErrMsg(i18n('webappEnterUrlFirst'));
             return;
         }
 
@@ -291,12 +292,12 @@
             });
 
             if (fetchedIcons.length === 0) {
-                pushErrMsg('无法获取网站图标，请手动上传');
+                pushErrMsg(i18n('webappIconUnavailable'));
                 showIconSelector = false;
             }
         } catch (e) {
             console.error('获取网站图标失败:', e);
-            pushErrMsg('获取网站图标失败，请手动上传');
+            pushErrMsg(i18n('webappIconFetchFailed'));
             showIconSelector = false;
         } finally {
             isFetchingIcons = false;
@@ -450,7 +451,7 @@
                 });
 
                 results.push({
-                    source: `网站源文件 (${path})`,
+                    source: tf('webappSourceFile', path),
                     url: faviconUrl,
                     dataUrl: dataUrl,
                 });
@@ -469,7 +470,7 @@
         iconFile = null;
         showIconSelector = false;
         fetchedIcons = [];
-        pushMsg('已选择图标');
+        pushMsg(i18n('webappIconSelected'));
     }
 
     // 取消图标选择
@@ -591,7 +592,7 @@
     <div class="webapp-manager-overlay" on:click={close}>
         <div class="webapp-manager" on:click|stopPropagation>
             <div class="webapp-manager__header">
-                <h3 class="webapp-manager__title">小程序管理</h3>
+                <h3 class="webapp-manager__title">{i18n('webappManagement')}</h3>
                 <button class="b3-button b3-button--text" on:click={close}>
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                 </button>
@@ -604,15 +605,15 @@
                         <div class="webapp-manager__list-header">
                             <button class="b3-button b3-button--primary" on:click={openAddDialog}>
                                 <svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>
-                                添加小程序
+                                {i18n('webappAdd')}
                             </button>
                         </div>
 
                         {#if webApps.length === 0}
                             <div class="webapp-manager__empty">
-                                <p>还没有添加小程序</p>
+                                <p>{i18n('webappEmpty')}</p>
                                 <p class="webapp-manager__empty-hint">
-                                    点击"添加小程序"按钮来添加你的第一个小程序
+                                    {i18n('webappEmptyHint')}
                                 </p>
                             </div>
                         {:else}
@@ -635,7 +636,7 @@
                                         on:dragover={handleDragOver}
                                         on:dragend={handleDragEnd}
                                     >
-                                        <div class="webapp-item__drag-handle" title="拖动排序">
+                                        <div class="webapp-item__drag-handle" title={i18n('modelsDragToSort')}>
                                             <svg><use xlink:href="#iconMove"></use></svg>
                                         </div>
                                         <div class="webapp-item__icon">
@@ -653,7 +654,7 @@
                                             <button
                                                 class="b3-button b3-button--text"
                                                 on:click={() => openWebApp(app)}
-                                                title="打开"
+                                                title={i18n('aiSidebarContextOpen')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconOpenWindow"></use>
@@ -662,7 +663,7 @@
                                             <button
                                                 class="b3-button b3-button--text"
                                                 on:click={() => openEditDialog(app)}
-                                                title="编辑"
+                                                title={i18n('commonEdit')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconEdit"></use>
@@ -671,7 +672,7 @@
                                             <button
                                                 class="b3-button b3-button--text"
                                                 on:click={() => deleteWebApp(app)}
-                                                title="删除"
+                                                title={i18n('commonDelete')}
                                             >
                                                 <svg class="b3-button__icon">
                                                     <use xlink:href="#iconTrashcan"></use>
@@ -687,7 +688,7 @@
                     <!-- 编辑/添加表单 -->
                     <div class="webapp-manager__form">
                         <div class="webapp-manager__form-header">
-                            <h4>{isEditMode ? '编辑小程序' : '添加小程序'}</h4>
+                            <h4>{isEditMode ? i18n('webappEdit') : i18n('webappAdd')}</h4>
                             <button class="b3-button b3-button--text" on:click={cancelEdit}>
                                 <svg class="b3-button__icon">
                                     <use xlink:href="#iconClose"></use>
@@ -697,27 +698,27 @@
 
                         <div class="webapp-manager__form-body">
                             <div class="webapp-manager__form-item">
-                                <label class="webapp-manager__form-label">名称 *</label>
+                                <label class="webapp-manager__form-label">{i18n('webappNameLabel')}</label>
                                 <input
                                     type="text"
                                     class="b3-text-field"
                                     bind:value={editForm.name}
-                                    placeholder="请输入小程序名称"
+                                    placeholder={i18n('webappNameRequired')}
                                 />
                             </div>
 
                             <div class="webapp-manager__form-item">
-                                <label class="webapp-manager__form-label">网站链接 *</label>
+                                <label class="webapp-manager__form-label">{i18n('webappUrlLabel')}</label>
                                 <input
                                     type="text"
                                     class="b3-text-field"
                                     bind:value={editForm.url}
-                                    placeholder="https://example.com 或 www.example.com"
+                                    placeholder={i18n('webappUrlPlaceholder')}
                                 />
                             </div>
 
                             <div class="webapp-manager__form-item">
-                                <label class="webapp-manager__form-label">图标</label>
+                                <label class="webapp-manager__form-label">{i18n('webappIcon')}</label>
                                 <div class="webapp-manager__icon-selector">
                                     <div class="webapp-manager__icon-preview">
                                         {#if iconFile}
@@ -743,7 +744,7 @@
                                             <svg class="b3-button__icon">
                                                 <use xlink:href="#iconUpload"></use>
                                             </svg>
-                                            上传图标
+                                            {i18n('webappIconUpload')}
                                         </button>
                                         <button
                                             class="b3-button"
@@ -753,7 +754,7 @@
                                             <svg class="b3-button__icon">
                                                 <use xlink:href="#iconDownload"></use>
                                             </svg>
-                                            {isFetchingIcons ? '获取中...' : '获取网站图标'}
+                                            {isFetchingIcons ? i18n('settingsAiFetchModelsLoading') : i18n('webappIconFetch')}
                                         </button>
                                         <input
                                             type="file"
@@ -767,27 +768,27 @@
                             </div>
 
                             <div class="webapp-manager__form-item">
-                                <label class="webapp-manager__form-label">注册到侧栏</label>
+                                <label class="webapp-manager__form-label">{i18n('webappRegisterDock')}</label>
                                 <label class="fn__flex" style="align-items: center; gap: 8px; cursor: pointer;">
                                     <input
                                         type="checkbox"
                                         class="b3-switch"
                                         bind:checked={editForm.showInSidebar}
                                     />
-                                    <span>在思源侧边栏中作为一个独立面板显示</span>
+                                    <span>{i18n('webappRegisterDockHint')}</span>
                                 </label>
                             </div>
 
                             <!-- 侧栏位置选项已取消，默认即为右下角，用户可通过思源笔记拖拽调整 -->
 
                             <div class="webapp-manager__form-item" style="color: var(--b3-theme-on-surface-light); font-size: 12px; margin-top: 8px;">
-                                <span>* 修改侧栏设置需重新加载/启用插件以生效</span>
+                                <span>{i18n('webappReloadHint')}</span>
                             </div>
                         </div>
 
                         <div class="webapp-manager__form-footer">
                             <button class="b3-button b3-button--cancel" on:click={cancelEdit}>
-                                取消
+                                {i18n('platformCancel')}
                             </button>
                             <button
                                 class="b3-button b3-button--primary"
@@ -795,10 +796,10 @@
                                 disabled={isUploadingIcon || isFetchingIcons}
                             >
                                 {isUploadingIcon
-                                    ? '上传中...'
+                                    ? i18n('commonUploading')
                                     : isFetchingIcons
-                                      ? '获取中...'
-                                      : '保存'}
+                                      ? i18n('settingsAiFetchModelsLoading')
+                                      : i18n('commonSave')}
                             </button>
                         </div>
                     </div>
@@ -813,7 +814,7 @@
     <div class="icon-selector-overlay" on:click={cancelIconSelection}>
         <div class="icon-selector" on:click|stopPropagation>
             <div class="icon-selector__header">
-                <h3 class="icon-selector__title">选择图标</h3>
+                <h3 class="icon-selector__title">{i18n('webappIconSelect')}</h3>
                 <button class="b3-button b3-button--text" on:click={cancelIconSelection}>
                     <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                 </button>
@@ -823,7 +824,7 @@
                 {#if isFetchingIcons}
                     <div class="icon-selector__loading">
                         <div class="icon-selector__spinner"></div>
-                        <p>正在获取图标...</p>
+                        <p>{i18n('webappIconFetching')}</p>
                     </div>
                 {:else if fetchedIcons.length > 0}
                     <div class="icon-selector__options">
@@ -841,7 +842,7 @@
                     </div>
                 {:else}
                     <div class="icon-selector__empty">
-                        <p>未能获取到图标</p>
+                        <p>{i18n('webappIconEmpty')}</p>
                     </div>
                 {/if}
             </div>

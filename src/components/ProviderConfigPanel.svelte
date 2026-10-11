@@ -3,7 +3,7 @@
     import { fetchModels, getDefaultChatInterface } from '../ai-chat';
     import { pushMsg, pushErrMsg } from '../api';
     import type { ProviderConfig, ModelConfig } from '../defaultSettings';
-    import { i18n } from '../utils/i18n';
+    import { i18n, tf } from '../utils/i18n';
     import { getModelCapabilities } from '../utils/modelCapabilities';
     import ChatGPTAccountPanel from './ChatGPTAccountPanel.svelte';
     import { isChatGPTDesktop } from '../chatgpt/http';
@@ -63,20 +63,20 @@
             const parsed = JSON.parse(str);
             // 确保是对象类型
             if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-                return { valid: false, error: '必须是 JSON 对象格式' };
+                return { valid: false, error: i18n('providerJsonObjectRequired') };
             }
             // 返回格式化的 JSON（保持嵌套结构）
             return { valid: true, formatted: JSON.stringify(parsed, null, 2) };
         } catch (e: any) {
             // 提取更友好的错误信息
-            const message = e.message || '无效的 JSON 格式';
+            const message = e.message || i18n('providerJsonInvalid');
             // 尝试提取位置信息
             const posMatch = message.match(/position\s+(\d+)/i);
             if (posMatch) {
                 const pos = parseInt(posMatch[1]);
-                return { valid: false, error: `JSON 格式错误：第 ${pos} 个字符处` };
+                return { valid: false, error: tf('providerJsonPositionError', pos) };
             }
-            return { valid: false, error: `JSON 格式错误：${message}` };
+            return { valid: false, error: tf('providerJsonError', message) };
         }
     }
 
@@ -95,7 +95,7 @@
             updateModel(modelId, 'customBody', result.formatted);
             customBodyErrors[modelId] = null;
             customBodyErrors = { ...customBodyErrors };
-            pushMsg('JSON 已格式化');
+            pushMsg(i18n('providerJsonFormatted'));
         }
     }
 
@@ -264,7 +264,7 @@
     // 打开模型搜索弹窗
     function openModelSearchModal() {
         if (providerId !== 'codex' && !config.apiKey) {
-            pushErrMsg('请先设置 API Key');
+            pushErrMsg(i18n('providerApiKeyRequired'));
             return;
         }
         loadModels();
@@ -281,7 +281,7 @@
     function addModel(modelId: string, modelName: string) {
         // 检查是否已存在
         if (config.models.some(m => m.id === modelId)) {
-            pushErrMsg('该模型已添加');
+            pushErrMsg(i18n('providerModelAlreadyAdded'));
             return;
         }
 
@@ -302,7 +302,7 @@
 
         config.models = [...config.models, newModel];
         dispatch('change');
-        pushMsg(`已添加模型: ${modelName}`);
+        pushMsg(tf('providerModelAdded', modelName));
         // 不再清空搜索关键词，方便连续添加多个模型
     }
 
@@ -337,7 +337,7 @@
     function removeModel(modelId: string) {
         config.models = config.models.filter(m => m.id !== modelId);
         dispatch('change');
-        pushMsg('已删除模型');
+        pushMsg(i18n('providerModelDeleted'));
     }
 
     // 切换模型添加/删除状态
@@ -601,14 +601,14 @@
                         if (e.key === 'Enter') saveName();
                         if (e.key === 'Escape') cancelEditName();
                     }}
-                    placeholder="输入平台名称"
+                    placeholder={i18n('platformNameInput')}
                 />
-                <button class="b3-button b3-button--text" on:click={saveName} title="保存">
+                <button class="b3-button b3-button--text" on:click={saveName} title={i18n('commonSave')}>
                     <svg class="b3-button__icon">
                         <use xlink:href="#iconCheck"></use>
                     </svg>
                 </button>
-                <button class="b3-button b3-button--text" on:click={cancelEditName} title="取消">
+                <button class="b3-button b3-button--text" on:click={cancelEditName} title={i18n('platformCancel')}>
                     <svg class="b3-button__icon">
                         <use xlink:href="#iconClose"></use>
                     </svg>
@@ -624,12 +624,12 @@
                             target="_blank"
                             rel="noopener noreferrer"
                             class="platform-link"
-                            title="访问平台官网"
+                            title={i18n('platformVisitWebsite')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconLink"></use>
                             </svg>
-                            <span>访问平台</span>
+                            <span>{i18n('platformVisit')}</span>
                         </a>
                     {/if}
                 </div>
@@ -648,12 +648,12 @@
                             target="_blank"
                             rel="noopener noreferrer"
                             class="platform-link"
-                            title="Achuan API 使用帮助"
+                            title={i18n('platformAchuanHelp')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconHelp"></use>
                             </svg>
-                            <span>帮助指南</span>
+                            <span>{i18n('platformHelp')}</span>
                         </a>
                     </div>
                 {/if}
@@ -661,7 +661,7 @@
             <button
                 class="b3-button b3-button--text edit-name-button"
                 on:click={startEditName}
-                title="编辑名称"
+                title={i18n('platformEditName')}
             >
                 <svg class="b3-button__icon">
                     <use xlink:href="#iconEdit"></use>
@@ -769,7 +769,7 @@
                         }
                     }}
                     disabled={!(config.customWebsiteUrl || websiteUrl)?.trim()}
-                    title="打开官网"
+                    title={i18n('platformOpenWebsite')}
                 >
                     <svg class="b3-button__icon">
                         <use xlink:href="#iconOpenWindow"></use>
@@ -911,7 +911,7 @@
                                         on:click={() => toggleModel(model.id, model.name)}
                                     >
                                         {config.models.some(m => m.id === model.id)
-                                            ? i18n('modelsRemove') || '移除'
+                                            ? i18n('modelsRemove')
                                             : i18n('modelsAdd')}
                                     </button>
                                 </div>
@@ -944,7 +944,7 @@
                     class="b3-text-field fn__flex-1"
                     type="text"
                     bind:value={addedModelsSearchQuery}
-                    placeholder={i18n('modelsSearchPlaceholder') || '搜索模型...'}
+                    placeholder={i18n('modelsSearchPlaceholder')}
                 />
             </div>
             {#if filteredAddedModels.length === 0}
@@ -1003,7 +1003,7 @@
                         <button
                             class="b3-button b3-button--text b3-button--error"
                             on:click={() => removeModel(model.id)}
-                            title="删除"
+                            title={i18n('commonDelete')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconTrashcan"></use>
@@ -1165,7 +1165,7 @@
                                         {#if model.customBody && validateJsonString(model.customBody).valid}
                                             <button
                                                 class="format-json-btn"
-                                                title="格式化 JSON"
+                                                title={i18n('providerJsonFormat')}
                                                 on:click={() =>
                                                     formatCustomBodyJson(
                                                         model.id,
@@ -1189,7 +1189,7 @@
                                             validateJsonString(model.customBody).valid}
                                         style="width: 100%; height: 80px; resize: vertical; font-family: monospace; font-size: 12px;"
                                         value={model.customBody || ''}
-                                        placeholder={'支持嵌套 JSON，例如：\n{\n  "key": "value",\n  "nested": { "a": 1 }\n}'}
+                                        placeholder={i18n('providerJsonPlaceholder')}
                                         spellcheck={false}
                                         on:input={e =>
                                             handleCustomBodyChange(model.id, e.currentTarget.value)}

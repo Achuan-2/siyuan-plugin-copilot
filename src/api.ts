@@ -1,3 +1,4 @@
+import { i18n } from './utils/i18n';
 /**
  * See API Document in [API.md](https://github.com/siyuan-note/siyuan/blob/master/API.md)
  * API 文档见 [API_zh_CN.md](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
@@ -431,7 +432,7 @@ export async function openBlock(blockId: string) {
     // 检测块是否存在
     const block = await getBlockByID(blockId);
     if (!block) {
-        throw new Error('块不存在');
+        throw new Error(i18n('commonBlockMissing'));
     }
     // 判断是否是移动端
     const isMobile = getFrontend().endsWith('mobile');

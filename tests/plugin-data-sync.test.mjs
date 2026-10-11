@@ -11,6 +11,7 @@ function compile(source) {
 }
 
 const indexSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+const translations = JSON.parse(readFileSync(new URL('../i18n/zh_CN.json', import.meta.url), 'utf8'));
 const sidebarSource = readFileSync(new URL('../src/ai-sidebar.svelte', import.meta.url), 'utf8')
     .split('<script lang="ts">')[1].split('</script>')[0];
 const sidebarAst = ts.createSourceFile('sidebar.ts', sidebarSource, ts.ScriptTarget.Latest, true);
@@ -61,6 +62,9 @@ function createPlugin(files = {}, transport = {}) {
         window: { dispatchEvent: event => events.push(event.type) },
         CustomEvent: class { constructor(type) { this.type = type; } },
         require(id) {
+            if (id === './i18n' || id === './utils/i18n') return {
+                i18n: key => translations[key] ?? key,
+            };
             if (id === 'siyuan') return { Plugin };
             if (id === './defaultSettings') return {
                 getDefaultSettings: () => ({ aiProviders: {}, webApps: [{ id: 'default-app' }], translateTemperature: undefined }),

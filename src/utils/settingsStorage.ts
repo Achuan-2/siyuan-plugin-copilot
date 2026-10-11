@@ -1,3 +1,4 @@
+import { i18n } from './i18n';
 type Settings = Record<string, any>;
 interface SettingsPlugin {
     name: string;
@@ -86,7 +87,7 @@ function mergeChanges(baseline: any, edited: any, current: any): any {
 }
 
 export class SettingsConflictError extends Error {
-    constructor() { super('迁移期间设置已更新，取消旧配置回写'); }
+    constructor() { super(i18n('settingsStorageMigrationChanged')); }
 }
 
 /** 仅处理设置；正常写入仍通过 SDK，以保留思源同步与生命周期检查。 */
@@ -102,7 +103,7 @@ export class SettingsStorage {
     dispose(): void { this.disposed = true; }
 
     private assertActive(): void {
-        if (this.disposed) throw new Error('插件已卸载，停止读写设置');
+        if (this.disposed) throw new Error(i18n('settingsStorageUnloaded'));
     }
 
     async run<T>(action: () => Promise<T>): Promise<T> {
@@ -137,13 +138,13 @@ export class SettingsStorage {
             if (!response.ok || response.status === 202 || !isObject(value) ||
                 Object.keys(value).length === 0 ||
                 (typeof value.code === 'number' && typeof value.msg === 'string')) {
-                throw new Error('设置文件暂时无法读取，已阻止覆盖，请同步完成后重试');
+                throw new Error(i18n('settingsStorageUnreadable'));
             }
             this.existingFileSeen = true;
             return copy(value);
         } catch (error) {
             if (this.disposed) throw error;
-            throw new Error('设置文件暂时无法读取，已阻止覆盖，请同步完成后重试');
+            throw new Error(i18n('settingsStorageUnreadable'));
         } finally {
             clearTimeout(timer);
         }
@@ -174,9 +175,9 @@ export class SettingsStorage {
     async save(request: ReturnType<SettingsStorage['capture']>): Promise<Settings> {
         const { source, edited, snapshot, options } = request;
         this.assertActive();
-        if (this.writeTimedOut) throw new Error('上次设置保存尚未确认，请重新加载插件后重试');
+        if (this.writeTimedOut) throw new Error(i18n('settingsStorageSaveUnconfirmed'));
         if (!options.replace && !snapshot?.writable) {
-            throw new Error('尚未成功加载设置，已阻止覆盖，请重新打开设置面板后重试');
+            throw new Error(i18n('settingsStorageNotLoaded'));
         }
         const current = await this.read();
         if (options.expected && !equal(current, options.expected)) throw new SettingsConflictError();
@@ -191,11 +192,11 @@ export class SettingsStorage {
                         timer = setTimeout(() => {
                             // SDK 请求无法取消；禁止后续写入，避免迟到的旧请求覆盖新请求。
                             this.writeTimedOut = true;
-                            reject(new Error('设置保存超时，请重新加载插件后重试'));
+                            reject(new Error(i18n('settingsStorageSaveTimeout')));
                         }, REQUEST_TIMEOUT);
                     }),
                 ]);
-                if (result?.code !== 0) throw new Error('设置保存失败，未更新已保存的配置');
+                if (result?.code !== 0) throw new Error(i18n('settingsStorageSaveFailed'));
             } finally {
                 clearTimeout(timer);
             }

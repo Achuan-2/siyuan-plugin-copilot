@@ -1,3 +1,4 @@
+import { i18n } from './utils/i18n';
 /**
  * AI Chat API 调用模块
  * 支持多个AI平台的API调用和流式输出
@@ -276,7 +277,7 @@ const PROVIDER_CONFIGS: Record<AIProvider, ProviderConfig> = {
         websiteUrl: 'https://platform.moonshot.cn/'
     },
     volcano: {
-        name: '火山引擎',
+        name: i18n('platformBuiltInVolcano'),
         baseUrl: 'https://ark.cn-beijing.volces.com',
         modelsEndpoint: '/api/v3/models',
         chatEndpoint: '/api/v3/chat/completions',

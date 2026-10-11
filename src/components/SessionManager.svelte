@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
     import { pushMsg } from '../api';
-    import { i18n } from '../utils/i18n';
+    import { i18n, tf, getCurrentLanguage } from '../utils/i18n';
 
     export let sessions: ChatSession[] = [];
     export let currentSessionId: string = '';
@@ -156,18 +156,18 @@
             return (
                 i18n('aiSidebarSessionToday') +
                 ' ' +
-                date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                date.toLocaleTimeString(getCurrentLanguage(), { hour: '2-digit', minute: '2-digit' })
             );
         } else if (days === 1) {
             return (
                 i18n('aiSidebarSessionYesterday') +
                 ' ' +
-                date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                date.toLocaleTimeString(getCurrentLanguage(), { hour: '2-digit', minute: '2-digit' })
             );
         } else if (days < 7) {
             return `${days}${i18n('aiSidebarSessionDaysAgo')}`;
         } else {
-            return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+            return date.toLocaleDateString(getCurrentLanguage(), { month: 'short', day: 'numeric' });
         }
     }
 
@@ -227,7 +227,7 @@
     // 批量删除选中的会话
     function batchDeleteSessions() {
         if (selectedSessionIds.size === 0) {
-            pushMsg('请先选择要删除的会话');
+            pushMsg(i18n('sessionSelectToDelete'));
             return;
         }
 
@@ -417,13 +417,13 @@
     // 生成会话的Markdown内容
     function generateSessionMarkdown(session: ChatSession): string {
         const header = `# ${session.title}\n\n`;
-        const date = `> 创建时间：${new Date(session.createdAt).toLocaleString('zh-CN')}\n`;
-        const updateDate = `> 更新时间：${new Date(session.updatedAt).toLocaleString('zh-CN')}\n\n`;
+        const date = tf('sessionCreatedAt', new Date(session.createdAt).toLocaleString(getCurrentLanguage()));
+        const updateDate = tf('sessionUpdatedAt', new Date(session.updatedAt).toLocaleString(getCurrentLanguage()));
 
         const messages = (session.messages || [])
             .filter(msg => msg.role !== 'system')
             .map(msg => {
-                const role = msg.role === 'user' ? '👤 **用户**' : '🤖 **助手**';
+                const role = msg.role === 'user' ? i18n('sessionUserHeading') : i18n('sessionAssistantHeading');
                 let content = '';
 
                 if (typeof msg.content === 'string') {
@@ -464,7 +464,7 @@
     // 确认重命名
     function confirmRename() {
         if (!renameSession || !renameSessionTitle.trim()) {
-            pushMsg('会话标题不能为空');
+            pushMsg(i18n('sessionTitleRequired'));
             return;
         }
 
@@ -473,7 +473,7 @@
             session.title = renameSessionTitle.trim();
             sessions = [...sessions];
             dispatch('update', { sessions });
-            pushMsg(i18n('aiSidebarSessionRenameSuccess') || '重命名成功');
+            pushMsg(i18n('aiSidebarSessionRenameSuccess'));
         }
 
         isRenameDialogOpen = false;
@@ -513,7 +513,7 @@
                         <button
                             class="b3-button b3-button--text"
                             on:click={toggleSelectAll}
-                            title={isAllSelected ? '取消全选' : '全选'}
+                            title={isAllSelected ? i18n('toolsSelectorDeselectAll') : i18n('toolsSelectorSelectAll')}
                         >
                             <svg class="b3-button__icon">
                                 <use
@@ -525,17 +525,17 @@
                             class="b3-button b3-button--error"
                             on:click={batchDeleteSessions}
                             disabled={selectedSessionIds.size === 0}
-                            title="删除选中 ({selectedSessionIds.size})"
+                            title={tf('sessionDeleteSelectedCount', selectedSessionIds.size)}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconTrashcan"></use>
                             </svg>
-                            <span>删除 ({selectedSessionIds.size})</span>
+                            <span>{tf('sessionDeleteCount', selectedSessionIds.size)}</span>
                         </button>
                         <button
                             class="b3-button b3-button--text"
                             on:click={toggleMultiSelectMode}
-                            title="退出多选"
+                            title={i18n('sessionExitSelection')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconClose"></use>
@@ -546,7 +546,7 @@
                         <button
                             class="b3-button b3-button--text"
                             on:click|stopPropagation={toggleMultiSelectMode}
-                            title="多选删除"
+                            title={i18n('sessionMultiSelectDelete')}
                         >
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconList"></use>
@@ -568,18 +568,17 @@
                     type="text"
                     class="session-manager__search-input"
                     bind:value={searchQuery}
-                    placeholder={i18n('aiSidebarSessionSearchPlaceholder') ||
-                        '搜索会话标题或对话内容'}
+                    placeholder={i18n('aiSidebarSessionSearchPlaceholder')}
                 />
                 {#if isSearchLoading}
-                    <span class="session-manager__search-loading" title="正在加载会话内容…">…</span>
+                    <span class="session-manager__search-loading" title={i18n('sessionLoadingContent')}>…</span>
                 {/if}
                 {#if searchQuery}
                     <button
                         type="button"
                         class="session-manager__search-clear"
                         on:click={() => (searchQuery = '')}
-                        title={i18n('aiSidebarSessionSearchClear') || '清除搜索'}
+                        title={i18n('aiSidebarSessionSearchClear')}
                     >
                         <svg class="b3-button__icon">
                             <use xlink:href="#iconClose"></use>
@@ -593,8 +592,8 @@
                     <div class="session-manager__empty">
                         {searchQuery.trim()
                             ? isSearchLoading
-                                ? i18n('aiSidebarSessionSearching') || '正在搜索…'
-                                : i18n('aiSidebarSessionSearchNoResults') || '没有匹配的会话'
+                                ? i18n('aiSidebarSessionSearching')
+                                : i18n('aiSidebarSessionSearchNoResults')
                             : i18n('aiSidebarSessionEmpty')}
                     </div>
                 {:else}
@@ -632,8 +631,8 @@
                                     {#if session.isLoading}
                                         <svg
                                             class="session-item__loading-icon"
-                                            title="后台任务进行中"
-                                            aria-label="后台任务进行中"
+                                            title={i18n('sessionBackgroundTask')}
+                                            aria-label={i18n('sessionBackgroundTask')}
                                         >
                                             <use xlink:href="#iconRefresh"></use>
                                         </svg>
@@ -701,7 +700,7 @@
                 <svg class="b3-menu__icon">
                     <use xlink:href="#iconEdit"></use>
                 </svg>
-                <span>{i18n('aiSidebarSessionRename') || '重命名'}</span>
+                <span>{i18n('aiSidebarSessionRename')}</span>
             </div>
             <div
                 class="session-context-menu__item"
@@ -713,7 +712,7 @@
                 <svg class="b3-menu__icon">
                     <use xlink:href="#iconDownload"></use>
                 </svg>
-                <span>{i18n('aiSidebarActionsSaveToNote') || '保存为笔记'}</span>
+                <span>{i18n('aiSidebarActionsSaveToNote')}</span>
             </div>
             <div
                 class="session-context-menu__item"
@@ -735,11 +734,11 @@
         <div class="session-rename-dialog-overlay" on:click={cancelRename}>
             <div class="session-rename-dialog" on:click|stopPropagation>
                 <div class="session-rename-dialog__header">
-                    <h3>{i18n('aiSidebarSessionRename') || '重命名会话'}</h3>
+                    <h3>{i18n('aiSidebarSessionRename')}</h3>
                     <button
                         class="b3-button b3-button--text"
                         on:click={cancelRename}
-                        title={i18n('commonCancel') || '取消'}
+                        title={i18n('commonCancel')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -749,17 +748,17 @@
                         type="text"
                         class="b3-text-field"
                         bind:value={renameSessionTitle}
-                        placeholder={i18n('aiSidebarSessionTitlePlaceholder') || '请输入会话标题'}
+                        placeholder={i18n('aiSidebarSessionTitlePlaceholder')}
                         on:keydown={e => e.key === 'Enter' && confirmRename()}
                         autofocus
                     />
                 </div>
                 <div class="session-rename-dialog__footer">
                     <button class="b3-button b3-button--text" on:click={cancelRename}>
-                        {i18n('commonCancel') || '取消'}
+                        {i18n('commonCancel')}
                     </button>
                     <button class="b3-button b3-button--primary" on:click={confirmRename}>
-                        {i18n('commonConfirm') || '确定'}
+                        {i18n('commonConfirm')}
                     </button>
                 </div>
             </div>

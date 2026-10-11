@@ -363,7 +363,7 @@
                 class="b3-button b3-button--text webapp-collection__toolbar-btn"
                 bind:this={appMenuButton}
                 on:click={toggleAppMenu}
-                title={i18n('aiSidebarWebappTitle') || '小程序'}
+                title={i18n('aiSidebarWebappTitle')}
             >
                 <svg class="b3-button__icon">
                     <use xlink:href="#iconCopilotWebApp"></use>
@@ -376,7 +376,7 @@
                         <svg class="b3-menu__icon">
                             <use xlink:href="#iconSettings"></use>
                         </svg>
-                        <span class="b3-menu__label">管理小程序</span>
+                        <span class="b3-menu__label">{i18n('webappManage')}</span>
                     </button>
                     <div class="b3-menu__separator"></div>
                     {#each (webApps || []).filter(app => !app.id.startsWith('weblink_')) as app (app.id)}
@@ -404,7 +404,7 @@
                     {/each}
                     {#if (webApps || []).filter(app => !app.id.startsWith('weblink_')).length === 0}
                         <div class="webapp-collection__app-menu-empty">
-                            {i18n('settingsWebAppCollectionDockNoApps') || '暂无小程序'}
+                            {i18n('settingsWebAppCollectionDockNoApps')}
                         </div>
                     {/if}
                 </div>
@@ -414,7 +414,7 @@
         <div class="webapp-collection__toolbar-right">
             <button
                 class="b3-button b3-button--text webapp-collection__toolbar-btn"
-                title={isFullscreen ? '退出全屏' : '全屏'}
+                title={isFullscreen ? i18n('fullscreenExit') : i18n('commonFullscreen')}
                 on:click={toggleFullscreen}
             >
                 <svg class="b3-button__icon">
@@ -451,7 +451,7 @@
                     <span class="webapp-collection__tab-name">{app.name}</span>
                     <button
                         class="webapp-collection__tab-close"
-                        title="关闭"
+                        title={i18n('commonClose')}
                         on:click={e => closeAppTab(e, app)}
                     >
                         <svg>

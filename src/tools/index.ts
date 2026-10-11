@@ -24,7 +24,7 @@ import { parseWebPageToMarkdown, fetchWithWebView } from '../utils/webParser';
 import { settingsStore } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
-import { i18n, i18nKey } from '../utils/i18n';
+import { i18n, i18nKey, tf } from '../utils/i18n';
 import { getSubToolConfig, getSubToolNames, type ToolConfig } from './toolSelection';
 
 /**
@@ -182,7 +182,7 @@ function registerBuiltinToolSkillDescriptions() {
 registerBuiltinToolSkillDescriptions();
 
 function getBuiltinToolSkillDescription(toolName: string): string {
-    return TOOL_FULL_DESCRIPTIONS[toolName] || `工具 "${toolName}" 的说明文档缺失。`;
+    return TOOL_FULL_DESCRIPTIONS[toolName] || tf('toolsDocumentMissing', toolName);
 }
 
 function isSafeBuiltinToolSkillName(toolName: string): boolean {
@@ -347,7 +347,7 @@ function formatEnabledToolNames(allowedToolNames: Set<string>): string {
     const enabledToolNames = Array.from(allowedToolNames).filter(
         name => !TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES.has(name)
     );
-    return enabledToolNames.length > 0 ? enabledToolNames.join(', ') : '无';
+    return enabledToolNames.length > 0 ? enabledToolNames.join(', ') : i18n('toolsNone');
 }
 
 function stripYamlFrontmatter(content: string): string {
@@ -381,7 +381,7 @@ export async function getSiyuanSkills(
             TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES.has(normalizedToolName)
         )
     ) {
-        return `工具 "${toolName}" 当前未启用。当前可用工具: ${formatEnabledToolNames(allowedToolNameSet)}`;
+        return tf('toolsDisabledDescription', toolName, formatEnabledToolNames(allowedToolNameSet));
     }
 
     const description =
@@ -392,7 +392,7 @@ export async function getSiyuanSkills(
         const availableTools = allowedToolNameSet
             ? formatEnabledToolNames(allowedToolNameSet)
             : Object.keys(TOOL_FULL_DESCRIPTIONS).join(', ');
-        return `未找到工具 "${toolName}" 的详细描述。可用工具: ${availableTools}`;
+        return tf('toolsDescriptionMissing', toolName, availableTools);
     }
     return stripYamlFrontmatter(description);
 }
@@ -654,7 +654,7 @@ export async function siyuan_insert_block(
 ): Promise<any> {
     try {
         if (!parentID && !appendParentID && !previousID && !nextID) {
-            throw new Error('必须至少指定一个位置参数：parentID、appendParentID、previousID 或 nextID');
+            throw new Error(i18n('toolsInsertPositionRequired'));
         }
 
         // 使用 insertBlock API 插入块
@@ -749,7 +749,7 @@ export async function siyuan_insert_block(
         return insertResult;
     } catch (error) {
         console.error('Insert block error:', error);
-        throw new Error(`插入块失败: ${(error as Error).message}`);
+        throw new Error(tf('toolsInsertFailed', (error as Error).message));
     }
 }
 
@@ -791,7 +791,7 @@ export async function siyuan_update_block(
         return { success: true, id };
     } catch (error) {
         console.error('Update block error:', error);
-        throw new Error(`更新块失败: ${(error as Error).message}`);
+        throw new Error(tf('toolsUpdateFailed', (error as Error).message));
     }
 }
 
@@ -849,7 +849,7 @@ export async function siyuan_get_doc_tree(notebook: string, path: string = '/', 
         return await fetchDocsRecursively(path);
     } catch (error) {
         console.error('Get doc tree error:', error);
-        throw new Error(`获取文档树失败: ${(error as Error).message}`);
+        throw new Error(tf('toolsDocTreeFailed', (error as Error).message));
     }
 }
 
@@ -864,34 +864,34 @@ async function executeToolInput(toolInput: { tool: string; params: any }): Promi
     switch (tool) {
         case 'sql': {
             if (!params?.query) {
-                throw new Error('sql 工具需要 query 参数');
+                throw new Error(i18n('toolsSqlQueryRequired'));
             }
             result = await siyuan_sql_query(params.query);
             break;
         }
         case 'get_block_content': {
             if (!params?.id || !params?.format) {
-                throw new Error('get_block_content 工具需要 id 和 format 参数');
+                throw new Error(i18n('toolsBlockParamsRequired'));
             }
             result = await siyuan_get_block_content(params.id, params.format, params.command);
             break;
         }
         case 'fetch': {
             if (!params?.url) {
-                throw new Error('fetch 工具需要 url 参数');
+                throw new Error(i18n('toolsFetchUrlRequired'));
             }
             result = await web_fetch(params.url, params.useWebView);
             break;
         }
         case 'get_doc_tree': {
             if (!params?.notebook) {
-                throw new Error('get_doc_tree 工具需要 notebook 参数');
+                throw new Error(i18n('toolsDocTreeNotebookRequired'));
             }
             result = await siyuan_get_doc_tree(params.notebook, params.path || '/', params.sortMode);
             break;
         }
         default:
-            throw new Error(`不支持的 tool_input 类型: ${tool}`);
+            throw new Error(tf('toolsInputTypeUnsupported', tool));
     }
 
     // 将结果转为字符串
@@ -922,7 +922,7 @@ export async function run_js(
 ): Promise<string> {
     try {
         if (!code || code.trim() === '') {
-            throw new Error('代码内容是必需的');
+            throw new Error(i18n('toolsCodeRequired'));
         }
 
         // 如果提供了 tool_input，先执行工具获取结果
@@ -931,7 +931,7 @@ export async function run_js(
             try {
                 actualInput = await executeToolInput(tool_input);
             } catch (toolError) {
-                throw new Error(`执行 tool_input 失败: ${(toolError as Error).message}`);
+                throw new Error(tf('toolsInputExecutionFailed', (toolError as Error).message));
             }
         }
 
@@ -1007,7 +1007,7 @@ export async function run_js(
 
         // 设置 5 秒超时
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('代码执行超时（超过 5 秒）')), 5000);
+            setTimeout(() => reject(new Error(i18n('toolsCodeTimeout'))), 5000);
         });
 
         const executionPromise = Promise.resolve(asyncFn(...sandboxValues));
@@ -1047,7 +1047,7 @@ export async function run_js(
         return output;
     } catch (error) {
         console.error('Run JS error:', error);
-        throw new Error(`JavaScript 执行失败: ${(error as Error).message}`);
+        throw new Error(tf('toolsJavaScriptFailed', (error as Error).message));
     }
 }
 
@@ -1060,13 +1060,13 @@ export async function run_js(
 export async function run_python(code: string, pythonPath?: string): Promise<string> {
     try {
         if (!code || code.trim() === '') {
-            throw new Error('代码内容是必需的');
+            throw new Error(i18n('toolsCodeRequired'));
         }
 
         // 检查是否在桌面环境
         // @ts-ignore
         if (!window?.require) {
-            throw new Error('当前环境不支持执行系统命令，请在思源笔记桌面版中使用此功能。');
+            throw new Error(i18n('toolsCommandDesktopOnly'));
         }
 
         // 动态引入 Node.js 模块
@@ -1080,7 +1080,7 @@ export async function run_python(code: string, pythonPath?: string): Promise<str
         const os = window.require('os');
 
         if (!fs || !path || !childProcess || !os) {
-            throw new Error('所需的 Node.js 模块不可用');
+            throw new Error(i18n('toolsNodeModulesUnavailable'));
         }
 
         // 使用用户配置的 Python 路径或默认命令
@@ -1278,7 +1278,7 @@ print(json.dumps(__output, ensure_ascii=False))
 
             // 处理执行结果
             if (!result.success && result.exitCode !== 0) {
-                throw new Error(`Python 错误 (退出码 ${result.exitCode}): ${result.stderr || result.error || '未知错误'}`);
+                throw new Error(tf('toolsPythonExitError', result.exitCode, result.stderr || result.error || i18n('commonUnknownError')));
             }
 
             // 解析 JSON 输出
@@ -1307,7 +1307,7 @@ print(json.dumps(__output, ensure_ascii=False))
                 finalResult += `[Stderr]:\n${result.stderr}`;
             }
             if (!finalResult) {
-                finalResult = '[执行成功，无输出]';
+                finalResult = i18n('toolsExecutionNoOutput');
             }
 
             return finalResult;
@@ -1326,13 +1326,13 @@ print(json.dumps(__output, ensure_ascii=False))
         const errorMsg = (error as Error).message;
 
         if (errorMsg.includes('window.require is not a function')) {
-            throw new Error('当前环境不支持执行系统命令，请在思源笔记桌面版中使用此功能。');
+            throw new Error(i18n('toolsCommandDesktopOnly'));
         }
         if (errorMsg.includes('ENOENT') || errorMsg.includes('No such file')) {
-            throw new Error(`Python 解释器未找到。请在设置中配置正确的 Python 路径，或将 Python 添加到系统 PATH。`);
+            throw new Error(i18n('toolsPythonMissing'));
         }
 
-        throw new Error(`Python 执行失败: ${errorMsg}`);
+        throw new Error(tf('toolsPythonFailed', errorMsg));
     }
 }
 
@@ -1350,11 +1350,11 @@ export async function web_fetch(url: string, useWebView: boolean = false): Promi
             if (webviewResult.success) {
                 return `# ${webviewResult.title}\n\n来源: ${url}\n\n---\n\n${webviewResult.markdown}`;
             } else {
-                return `WebView 模式获取失败: ${webviewResult.error}`;
+                return tf('toolsWebViewFetchFailed', webviewResult.error);
             }
         } catch (error) {
             console.error('WebView fetch error:', error);
-            return `WebView 模式获取失败: ${(error as Error).message}`;
+            return tf('toolsWebViewFetchFailed', (error as Error).message);
         }
     }
 
@@ -1366,7 +1366,7 @@ export async function web_fetch(url: string, useWebView: boolean = false): Promi
     }
 
     // 普通模式失败，提示用户可以尝试 WebView 模式
-    return `获取网页内容失败: ${result.error}\n\n提示: 如果该网站需要登录、使用 JavaScript 动态加载内容或有反爬虫机制，请使用 WebView 模式重试。设置 useWebView: true 即可。`;
+    return tf('toolsWebFetchRetryHint', result.error);
 }
 
 /**
@@ -1414,16 +1414,16 @@ export async function soul(params: {
     const soulDocId = settings?.soulDocId;
 
     if (!soulDocId) {
-        throw new Error('SOUL 文档未设置。请在插件设置中设置 SOUL 文档ID。');
+        throw new Error(i18n('toolsSoulNotConfigured'));
     }
 
     // 验证 SOUL 文档是否存在
     const soulDoc = await getBlockByID(soulDocId);
     if (!soulDoc) {
-        throw new Error(`SOUL 文档不存在，ID: ${soulDocId}`);
+        throw new Error(tf('toolsSoulMissing', soulDocId));
     }
     if (soulDoc.type !== 'd') {
-        throw new Error(`设置的 SOUL ID 不是文档类型，当前类型: ${soulDoc.type}`);
+        throw new Error(tf('toolsSoulInvalidType', soulDoc.type));
     }
 
     const { operation } = params;
@@ -1432,14 +1432,14 @@ export async function soul(params: {
         case 'append': {
             const { content, parentId } = params;
             if (!content) {
-                throw new Error('append 操作需要提供 content 参数');
+                throw new Error(i18n('toolsSoulAppendContentRequired'));
             }
 
             // 如果提供了 parentId，验证它是否属于 SOUL 文档
             if (parentId) {
                 const isInSoul = await verifyBlockInSoulDoc(parentId, soulDocId);
                 if (!isInSoul) {
-                    throw new Error(`指定的 parentId 不属于 SOUL 文档，SOUL 文档ID: ${soulDocId}`);
+                    throw new Error(tf('toolsSoulParentOutside', soulDocId));
                 }
                 // 作为子块追加
                 const result = await appendBlock('markdown', content, parentId);
@@ -1454,13 +1454,13 @@ export async function soul(params: {
         case 'update': {
             const { blockId, content } = params;
             if (!blockId || !content) {
-                throw new Error('update 操作需要提供 blockId 和 content 参数');
+                throw new Error(i18n('toolsSoulUpdateParamsRequired'));
             }
 
             // 验证块是否属于 SOUL 文档
             const isInSoul = await verifyBlockInSoulDoc(blockId, soulDocId);
             if (!isInSoul) {
-                throw new Error(`不能更新不属于 SOUL 文档的块，SOUL 文档ID: ${soulDocId}`);
+                throw new Error(tf('toolsSoulUpdateOutside', soulDocId));
             }
 
             const result = await updateBlock('markdown', content, blockId);
@@ -1470,18 +1470,18 @@ export async function soul(params: {
         case 'delete': {
             const { blockId } = params;
             if (!blockId) {
-                throw new Error('delete 操作需要提供 blockId 参数');
+                throw new Error(i18n('toolsSoulDeleteBlockRequired'));
             }
 
             // 验证块是否属于 SOUL 文档
             const isInSoul = await verifyBlockInSoulDoc(blockId, soulDocId);
             if (!isInSoul) {
-                throw new Error(`不能删除不属于 SOUL 文档的块，SOUL 文档ID: ${soulDocId}`);
+                throw new Error(tf('toolsSoulDeleteOutside', soulDocId));
             }
 
             // 防止删除 SOUL 文档本身
             if (blockId === soulDocId) {
-                throw new Error('不能删除 SOUL 文档本身');
+                throw new Error(i18n('toolsSoulDeleteRoot'));
             }
 
             const result = await deleteBlock(blockId);
@@ -1491,31 +1491,31 @@ export async function soul(params: {
         case 'insert': {
             const { content, previousId, nextId, parentId } = params;
             if (!content) {
-                throw new Error('insert 操作需要提供 content 参数');
+                throw new Error(i18n('toolsSoulInsertContentRequired'));
             }
 
             // 检查至少提供了一个位置参数
             if (!previousId && !nextId && !parentId) {
-                throw new Error('insert 操作需要提供 previousId、nextId 或 parentId 中的至少一个参数');
+                throw new Error(i18n('toolsSoulInsertPositionRequired'));
             }
 
             // 验证位置参数对应的块是否都属于 SOUL 文档
             if (previousId) {
                 const isInSoul = await verifyBlockInSoulDoc(previousId, soulDocId);
                 if (!isInSoul) {
-                    throw new Error(`指定的 previousId 不属于 SOUL 文档，SOUL 文档ID: ${soulDocId}`);
+                    throw new Error(tf('toolsSoulPreviousOutside', soulDocId));
                 }
             }
             if (nextId) {
                 const isInSoul = await verifyBlockInSoulDoc(nextId, soulDocId);
                 if (!isInSoul) {
-                    throw new Error(`指定的 nextId 不属于 SOUL 文档，SOUL 文档ID: ${soulDocId}`);
+                    throw new Error(tf('toolsSoulNextOutside', soulDocId));
                 }
             }
             if (parentId) {
                 const isInSoul = await verifyBlockInSoulDoc(parentId, soulDocId);
                 if (!isInSoul) {
-                    throw new Error(`指定的 parentId 不属于 SOUL 文档，SOUL 文档ID: ${soulDocId}`);
+                    throw new Error(tf('toolsSoulParentOutside', soulDocId));
                 }
             }
 
@@ -1534,7 +1534,7 @@ export async function soul(params: {
         case 'sql': {
             const { query } = params;
             if (!query) {
-                throw new Error('sql 操作需要提供 query 参数');
+                throw new Error(i18n('toolsSoulSqlQueryRequired'));
             }
 
             // 构建限制在 SOUL 文档内的查询
@@ -1597,7 +1597,7 @@ export async function soul(params: {
             // 获取 SOUL 文档的完整 Markdown 内容
             const docContent = await exportMdContent(soulDocId, false, false, 2, 0, false);
             if (!docContent || !docContent.content) {
-                throw new Error('获取 SOUL 文档内容失败');
+                throw new Error(i18n('toolsSoulReadFailed'));
             }
 
             return {
@@ -1609,7 +1609,7 @@ export async function soul(params: {
         }
 
         default:
-            throw new Error(`未知的 SOUL 操作类型: ${operation}`);
+            throw new Error(tf('toolsSoulUnknownAction', operation));
     }
 }
 
@@ -1626,7 +1626,7 @@ export async function executeToolCall(
     const allowedToolNameSet = normalizeAllowedToolNames(allowedToolNames);
 
     if (allowedToolNameSet && !allowedToolNameSet.has(name)) {
-        return `工具 "${name}" 当前未启用，已拒绝执行。当前可用工具: ${formatEnabledToolNames(allowedToolNameSet)}`;
+        return tf('toolsDisabledExecution', name, formatEnabledToolNames(allowedToolNameSet));
     }
 
     try {
@@ -1639,7 +1639,7 @@ export async function executeToolCall(
                 const config = selectedTools.find(tool => tool.name === name);
                 if (typeof action !== 'string' || !actions.includes(action) ||
                     !config || !getSubToolConfig(config, action).enabled) {
-                    return `工具 "${name}" 的子工具 "${String(action ?? '')}" 当前未启用，已拒绝执行。`;
+                    return tf('toolsSubToolDisabled', name, String(action ?? ''));
                 }
             }
         }
@@ -1765,7 +1765,7 @@ export async function executeToolCall(
         }
     } catch (error) {
         console.error(`Execute tool ${name} error:`, error);
-        return `执行工具失败: ${(error as Error).message}`;
+        return tf('toolsExecutionFailed', (error as Error).message);
     }
 }
 
@@ -1922,10 +1922,10 @@ async function resolveSiyuanBlockSkillContent(rawContent: string, blockIds: stri
             const data = await exportMdContent(blockId, false, false, 2, 0, false);
             const content = data?.content?.trim();
             const sourceComment = `<!-- siyuan-block-id: ${blockId}${data?.hPath ? ` hPath: ${data.hPath}` : ''} -->`;
-            sections.push(`${sourceComment}\n${content || `无法获取块内容：${blockId}`}`);
+            sections.push(`${sourceComment}\n${content || tf('toolsBlockContentUnavailable', blockId)}`);
         } catch (error) {
             console.error('[Skills] Failed to export skill block:', blockId, error);
-            sections.push(`<!-- siyuan-block-id: ${blockId} -->\n无法获取块内容：${blockId}`);
+            sections.push(`<!-- siyuan-block-id: ${blockId} -->\n${tf('toolsBlockContentUnavailable', blockId)}`);
         }
     }
 
@@ -1961,7 +1961,7 @@ async function buildSkillReadResult(skillId: string, content: string, pathParts:
         skillId: skillId,
         source: isSiyuanBlockSkill ? 'siyuan-blocks' : 'markdown',
         blockIds: isSiyuanBlockSkill ? blockIds : undefined,
-        absolutePath: getSkillAbsolutePath(...pathParts) || '未知绝对路径（可能非桌面版运行）',
+        absolutePath: getSkillAbsolutePath(...pathParts) || i18n('toolsAbsolutePathUnavailable'),
         content: resolvedContent
     }, null, 2);
 }
@@ -1981,12 +1981,12 @@ const CUSTOM_SKILL_FILE_NAME = 'skill.md';
 
 function normalizeCustomSkillId(skillId: string): string {
     if (typeof skillId !== 'string') {
-        throw new Error('skillId 必须是字符串');
+        throw new Error(i18n('toolsSkillIdStringRequired'));
     }
 
     const normalizedSkillId = skillId.trim();
     if (!normalizedSkillId) {
-        throw new Error('skillId 不能为空');
+        throw new Error(i18n('toolsSkillIdEmpty'));
     }
 
     if (
@@ -1994,7 +1994,7 @@ function normalizeCustomSkillId(skillId: string): string {
         normalizedSkillId === '..' ||
         /[\u0000-\u001f\\/:*?"<>|]/.test(normalizedSkillId)
     ) {
-        throw new Error('skillId 不能包含路径分隔符、控制字符或文件名非法字符');
+        throw new Error(i18n('toolsSkillIdInvalid'));
     }
 
     return normalizedSkillId;
@@ -2043,7 +2043,7 @@ function normalizeOptionalSkillBlockIds(blockIds: unknown): string[] | undefined
         return normalizeSkillBlockIds(blockIds.split(/[\r\n,]+/));
     }
 
-    throw new Error('blockIds 必须是字符串数组');
+    throw new Error(i18n('toolsBlockIdsArrayRequired'));
 }
 
 function buildCustomSkillMarkdown(
@@ -2054,12 +2054,12 @@ function buildCustomSkillMarkdown(
     blockIds?: string[]
 ): string {
     if (typeof content !== 'string') {
-        throw new Error('content 必须是字符串');
+        throw new Error(i18n('toolsContentStringRequired'));
     }
 
     let markdown = content.trimStart();
     if (!markdown.trim()) {
-        throw new Error('content 不能为空');
+        throw new Error(i18n('toolsContentEmpty'));
     }
 
     if (!hasSkillYamlFrontmatter(markdown)) {
@@ -2194,7 +2194,7 @@ export async function create_skill(
         const fileBlob = new Blob([markdown], { type: 'text/markdown' });
         const result = await putFile(skillFilePath, false, fileBlob);
         if (!result) {
-            throw new Error(`写入 Skill 文件失败: ${skillFilePath}`);
+            throw new Error(tf('toolsSkillWriteFailed', skillFilePath));
         }
 
         const { yaml } = parseYamlFrontmatter(markdown);
@@ -2208,11 +2208,11 @@ export async function create_skill(
             source: savedBlockIds.length > 0 ? 'siyuan-blocks' : 'markdown',
             blockIds: savedBlockIds.length > 0 ? savedBlockIds : undefined,
             filePath: skillFilePath,
-            absolutePath: getSkillAbsolutePath(normalizedSkillId, CUSTOM_SKILL_FILE_NAME) || '未知绝对路径（可能非桌面版运行）',
+            absolutePath: getSkillAbsolutePath(normalizedSkillId, CUSTOM_SKILL_FILE_NAME) || i18n('toolsAbsolutePathUnavailable'),
         }, null, 2);
     } catch (e) {
         console.error('[Skills] Failed to create/update skill:', e);
-        return `错误：创建或更新 Skill "${skillId}" 失败。${e instanceof Error ? e.message : String(e)}`;
+        return tf('toolsSkillCreateFailed', skillId, e instanceof Error ? e.message : String(e));
     }
 }
 
@@ -2233,7 +2233,7 @@ export async function read_skill(skillId: string): Promise<string> {
                 const text = await blob.text();
                 return await buildSkillReadResult(skillId, text, normalizedSkillId.split('/'));
             } else {
-                return `错误：未找到文件 "${filePath}"。`;
+                return tf('toolsFileMissing', filePath);
             }
         } else {
             // 原有逻辑：读取 skillId 目录下的 skill.md
@@ -2252,11 +2252,11 @@ export async function read_skill(skillId: string): Promise<string> {
                     }
                 }
             }
-            return `错误：未找到 Skill "${skillId}" 对应的 skill.md 文件。`;
+            return tf('toolsSkillMissing', skillId);
         }
     } catch (e) {
         console.error('[Skills] Failed to read skill:', e);
-        return `错误：读取 Skill "${skillId}" 失败。${e instanceof Error ? e.message : String(e)}`;
+        return tf('toolsSkillReadFailed', skillId, e instanceof Error ? e.message : String(e));
     }
 }
 
@@ -2266,13 +2266,13 @@ export async function read_skill(skillId: string): Promise<string> {
 export async function run_command(command: string): Promise<string> {
     try {
         if (!command || command.trim() === '') {
-            throw new Error('命令内容是必需的');
+            throw new Error(i18n('toolsCommandRequired'));
         }
 
         // 检查是否在桌面环境
         // @ts-ignore
         if (!window?.require) {
-            throw new Error('当前环境不支持执行系统命令，请在思源笔记桌面版中使用此功能。');
+            throw new Error(i18n('toolsCommandDesktopOnly'));
         }
 
         // @ts-ignore
@@ -2303,17 +2303,17 @@ export async function run_command(command: string): Promise<string> {
                     result += stdout;
                 }
                 if (stderr) {
-                    result += `\n[标准错误输出]:\n${stderr}`;
+                    result += tf('toolsCommandStderr', stderr);
                 }
                 if (error) {
-                    result += `\n[执行错误]:\n${error.message}`;
+                    result += tf('toolsCommandError', error.message);
                 }
-                resolve(result.trim() || '[命令执行完毕，无输出内容]');
+                resolve(result.trim() || i18n('toolsCommandNoOutput'));
             });
         });
     } catch (e) {
         console.error('[Terminal] Failed to execute command:', e);
-        return `错误：执行命令失败。${e instanceof Error ? e.message : String(e)}`;
+        return tf('toolsCommandFailed', e instanceof Error ? e.message : String(e));
     }
 }
 

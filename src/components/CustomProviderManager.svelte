@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { i18n, tf } from '../utils/i18n';
     import { createEventDispatcher } from 'svelte';
     import { pushMsg, pushErrMsg } from '../api';
     import type { CustomProviderConfig } from '../defaultSettings';
@@ -31,7 +32,7 @@
 
         customProviders = [...customProviders, newProvider];
         dispatch('change');
-        pushMsg(`已添加自定义平台: ${newProviderName}`);
+        pushMsg(tf('platformAdded', newProviderName));
 
         newProviderName = '';
         showAddForm = false;
@@ -42,7 +43,7 @@
         if (provider) {
             customProviders = customProviders.filter(p => p.id !== id);
             dispatch('change');
-            pushMsg(`已删除平台: ${provider.name}`);
+            pushMsg(tf('platformDeleted', provider.name));
         }
     }
 
@@ -58,21 +59,21 @@
 
 <div class="custom-provider-manager">
     <div class="manager-header">
-        <h5>自定义平台</h5>
+        <h5>{i18n('platformCustomTitle')}</h5>
         <button class="b3-button b3-button--outline" on:click={() => (showAddForm = !showAddForm)}>
-            {showAddForm ? '取消' : '+ 添加平台'}
+            {showAddForm ? i18n('platformCancel') : i18n('platformAdd')}
         </button>
     </div>
 
     {#if showAddForm}
         <div class="add-form">
             <div class="b3-label">
-                <div class="b3-label__text">平台名称</div>
+                <div class="b3-label__text">{i18n('platformName')}</div>
                 <input
                     class="b3-text-field fn__flex-1"
                     type="text"
                     bind:value={newProviderName}
-                    placeholder="例如: Claude API, 本地LLM"
+                    placeholder={i18n('platformNamePlaceholder')}
                     on:keydown={e => e.key === 'Enter' && addCustomProvider()}
                 />
             </div>
@@ -81,7 +82,7 @@
                 on:click={addCustomProvider}
                 disabled={!newProviderName.trim()}
             >
-                确认添加
+                {i18n('platformConfirmAdd')}
             </button>
         </div>
     {/if}
@@ -98,14 +99,14 @@
                 <button
                     class="b3-button b3-button--text b3-button--error"
                     on:click={() => removeCustomProvider(provider.id)}
-                    title="删除平台"
+                    title={i18n('aiSidebarConfirmDeletePlatformTitle')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconTrashcan"></use></svg>
                 </button>
             </div>
         {/each}
         {#if customProviders.length === 0}
-            <div class="empty-hint">暂无自定义平台</div>
+            <div class="empty-hint">{i18n('platformNoCustom')}</div>
         {/if}
     </div>
 </div>

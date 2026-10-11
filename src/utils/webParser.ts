@@ -1,3 +1,4 @@
+import { i18n, tf } from './i18n';
 /**
  * 网页解析工具 - 将网页链接解析为 Markdown
  * @module webParser
@@ -340,7 +341,7 @@ async function fetchWithRetry(
         }
     }
 
-    throw lastError || new Error('所有请求方式均失败，无法获取网页内容');
+    throw lastError || new Error(i18n('webParserRequestsFailed'));
 }
 
 /**
@@ -362,7 +363,7 @@ export async function parseWebPageToMarkdown(
         if (url.includes('zhihu.com')) {
             return {
                 success: false,
-                error: '知乎网站有严格的反爬虫机制，暂不支持解析知乎链接。',
+                error: i18n('webParserZhihuUnsupported'),
                 url
             };
         }
@@ -399,7 +400,7 @@ export async function parseWebPageToMarkdown(
             const article = reader.parse();
 
             if (!article) {
-                throw new Error('无法解析网页内容');
+                throw new Error(i18n('webParserParseFailed'));
             }
 
             articleContent = article.content;
@@ -442,15 +443,15 @@ export async function parseWebPageToMarkdown(
 
         // 为常见错误提供更友好的提示
         if (errorMessage.includes('429')) {
-            errorMessage = '请求过于频繁，服务器限制访问。请稍后再试。';
+            errorMessage = i18n('webParserRateLimited');
         } else if (errorMessage.includes('403')) {
-            errorMessage = '访问被拒绝(403)。已尝试多种方式获取内容但均失败，该网站可能有严格的访问限制。';
+            errorMessage = i18n('webParserForbidden');
         } else if (errorMessage.includes('404')) {
-            errorMessage = '页面不存在(404)。';
+            errorMessage = i18n('webParserNotFound');
         } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-            errorMessage = '网络连接失败，请检查网络或网址是否正确。';
-        } else if (errorMessage.includes('所有请求方式均失败')) {
-            errorMessage = '无法获取网页内容。已尝试直接访问和多个代理服务，但都失败了。该网站可能有严格的反爬虫机制。';
+            errorMessage = i18n('webParserNetworkError');
+        } else if (errorMessage === i18n('webParserRequestsFailed')) {
+            errorMessage = i18n('webParserAccessRestricted');
         }
 
         return {
@@ -559,7 +560,7 @@ export async function fetchWithWebView(url: string): Promise<{ success: boolean;
         
         // 设置超时
         timeoutId = setTimeout(() => {
-            resolveOnce({ success: false, error: 'WebView 加载超时' });
+            resolveOnce({ success: false, error: i18n('webParserWebViewTimeout') });
         }, 30000); // 30秒超时
         
         // 页面加载完成
@@ -580,7 +581,7 @@ export async function fetchWithWebView(url: string): Promise<{ success: boolean;
                             const content = article || document.body;
                             
                             if (!content) {
-                                return { success: false, error: '无法找到页面内容' };
+                                return { success: false, error: ${JSON.stringify(i18n('webParserPageContentMissing'))} };
                             }
                             
                             // 获取 HTML 内容
@@ -611,12 +612,12 @@ export async function fetchWithWebView(url: string): Promise<{ success: boolean;
                         markdown: markdown
                     });
                 } else {
-                    resolveOnce({ success: false, error: result.error || '内容提取失败' });
+                    resolveOnce({ success: false, error: result.error || i18n('webParserExtractionFailed') });
                 }
             } catch (error) {
                 resolveOnce({ 
                     success: false, 
-                    error: `WebView 执行失败: ${error instanceof Error ? error.message : String(error)}` 
+                    error: tf('webParserWebViewError', error instanceof Error ? error.message : String(error))
                 });
             }
         });
@@ -624,7 +625,7 @@ export async function fetchWithWebView(url: string): Promise<{ success: boolean;
         // 加载失败
         webview.addEventListener('did-fail-load', (event: any) => {
             if (event.errorCode !== 0) {
-                resolveOnce({ success: false, error: `页面加载失败 (错误码: ${event.errorCode})` });
+                resolveOnce({ success: false, error: tf('webParserPageLoadFailed', event.errorCode) });
             }
         });
         

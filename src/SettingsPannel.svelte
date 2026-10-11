@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
     import SettingPanel from '@/libs/components/setting-panel.svelte';
-    import { i18n } from './utils/i18n';
+    import { i18n, tf } from './utils/i18n';
     import { getDefaultSettings } from './defaultSettings';
     import { settingsStore } from './stores/settings';
     import { cloneSettings, rebaseSettings } from './utils/settingsStorage';
@@ -36,10 +36,7 @@
         addedAt: number;
     }
 
-    const DEFAULT_SKILL_FRONTMATTER = `---
-name: 我的自定义 Skill
-description: 描述这个 Skill 的功能
----`;
+    const DEFAULT_SKILL_FRONTMATTER = i18n('settingsSkillDefaultFrontmatter');
 
     let loadedSkills: Skill[] = [];
 
@@ -51,7 +48,7 @@ description: 描述这个 Skill 的功能
         try {
             // @ts-ignore
             if (!window?.require) {
-                pushErrMsg('当前环境不支持打开本地文件夹，请在思源笔记桌面版中使用此功能。');
+                pushErrMsg(i18n('settingsFolderDesktopOnly'));
                 return;
             }
             const skillsDir = '/data/storage/ai/agent/skills';
@@ -65,7 +62,7 @@ description: 描述这个 Skill 的功能
             // @ts-ignore
             const dataDir = window.siyuan?.config?.system?.dataDir;
             if (!dataDir) {
-                pushErrMsg('无法获取思源笔记数据目录。');
+                pushErrMsg(i18n('settingsDataDirUnavailable'));
                 return;
             }
             const absolutePath = path.join(
@@ -78,7 +75,7 @@ description: 描述这个 Skill 的功能
             shell.openPath(absolutePath);
         } catch (e) {
             console.error('Failed to open skills folder:', e);
-            pushErrMsg('打开文件夹失败: ' + (e instanceof Error ? e.message : String(e)));
+            pushErrMsg(i18n('settingsFolderOpenFailed') + (e instanceof Error ? e.message : String(e)));
         }
     }
 
@@ -101,12 +98,7 @@ description: 描述这个 Skill 的功能
     }
 
     function buildDefaultMarkdownSkill(): string {
-        return `${DEFAULT_SKILL_FRONTMATTER}
-# 我的自定义 Skill 指令
-
-1. 第一步...
-2. 第二步...
-`;
+        return tf('settingsSkillDefaultContent', DEFAULT_SKILL_FRONTMATTER);
     }
 
     function buildSkillBlockTitle(content: string, blockId: string): string {
@@ -223,7 +215,7 @@ description: 描述这个 Skill 的功能
         );
 
         if (idsToAdd.length === 0) {
-            pushMsg('Skill 块已添加');
+            pushMsg(i18n('settingsSkillBlockAdded'));
             return;
         }
 
@@ -240,8 +232,8 @@ description: 描述这个 Skill 的功能
             syncSkillBlocksToEditorContent(nextBlocks);
             pushMsg(
                 newBlocks.length === 1
-                    ? '已添加 Skill 块'
-                    : `已添加 ${newBlocks.length} 个 Skill 块`
+                    ? i18n('settingsSkillBlockAddedToast')
+                    : tf('settingsSkillBlocksAdded', newBlocks.length)
             );
         } finally {
             isAddingSkillBlock = false;
@@ -252,7 +244,7 @@ description: 描述这个 Skill 的功能
     async function addCurrentBlockAsSkillBlock() {
         const blockId = getFocusedBlockId();
         if (!blockId) {
-            pushErrMsg('未找到当前块');
+            pushErrMsg(i18n('commonCurrentBlockMissing'));
             return;
         }
         await addSkillBlocksByIds([blockId]);
@@ -262,14 +254,14 @@ description: 描述这个 Skill 的功能
         const blockIds = extractSiyuanSkillBlockIds(editorContent);
         skillBlocks = await buildSkillBlocksFromIds(blockIds);
         pushMsg(
-            blockIds.length > 0 ? `已从源码同步 ${blockIds.length} 个块` : '源码中未找到思源块标记'
+            blockIds.length > 0 ? tf('settingsSkillBlocksSynced', blockIds.length) : i18n('settingsSkillBlocksMarkerMissing')
         );
     }
 
     async function addSkillBlockIdsFromInput() {
         const blockIds = parseBlockIdList(skillBlockIdInput);
         if (blockIds.length === 0) {
-            pushErrMsg('请输入块 ID');
+            pushErrMsg(i18n('settingsSkillBlockIdRequired'));
             return;
         }
         await addSkillBlocksByIds(blockIds);
@@ -297,7 +289,7 @@ description: 描述这个 Skill 的功能
             await openBlock(blockId);
         } catch (error) {
             console.error('Open skill block error:', error);
-            pushErrMsg(`打开块失败: ${blockId}`);
+            pushErrMsg(tf('commonOpenBlockFailed', blockId));
         }
     }
 
@@ -360,7 +352,7 @@ description: 描述这个 Skill 的功能
         try {
             // @ts-ignore
             if (!window?.require) {
-                pushErrMsg('当前环境不支持打开本地文件夹，请在思源笔记桌面版中使用此功能。');
+                pushErrMsg(i18n('settingsFolderDesktopOnly'));
                 return;
             }
             // @ts-ignore
@@ -370,7 +362,7 @@ description: 描述这个 Skill 的功能
             // @ts-ignore
             const dataDir = window.siyuan?.config?.system?.dataDir;
             if (!dataDir) {
-                pushErrMsg('无法获取思源笔记数据目录。');
+                pushErrMsg(i18n('settingsDataDirUnavailable'));
                 return;
             }
             const absolutePath = path.join(
@@ -384,7 +376,7 @@ description: 描述这个 Skill 的功能
             shell.openPath(absolutePath);
         } catch (e) {
             console.error('Failed to open skill folder:', e);
-            pushErrMsg('打开文件夹失败: ' + (e instanceof Error ? e.message : String(e)));
+            pushErrMsg(i18n('settingsFolderOpenFailed') + (e instanceof Error ? e.message : String(e)));
         }
     }
 
@@ -405,11 +397,11 @@ description: 描述这个 Skill 的功能
             skillBlocks =
                 editorMode === 'siyuan-blocks' ? await buildSkillBlocksFromIds(blockIds) : [];
             skillBlockIdInput = '';
-            editorTitle = '编辑 Skill: ' + skill.name;
+            editorTitle = i18n('settingsSkillEditTitle') + skill.name;
             showEditor = true;
         } catch (e) {
             console.error('Failed to load skill content:', e);
-            pushErrMsg('加载 Skill 内容失败: ' + (e instanceof Error ? e.message : String(e)));
+            pushErrMsg(i18n('settingsSkillLoadFailed') + (e instanceof Error ? e.message : String(e)));
         }
     }
 
@@ -420,19 +412,19 @@ description: 描述这个 Skill 的功能
         skillBlocks = [];
         skillBlockIdInput = '';
         editorContent = buildDefaultMarkdownSkill();
-        editorTitle = '创建自定义 Skill';
+        editorTitle = i18n('settingsSkillCreate');
         showEditor = true;
     }
 
     async function saveSkill() {
         const normalizedId = skillIdInput.trim().replace(/[\\/:*?"<>|]/g, '');
         if (!normalizedId) {
-            pushErrMsg('请输入有效的 Skill 标识符（不能包含 \\ / : * ? " < > | 等非法字符）');
+            pushErrMsg(i18n('settingsSkillInvalidId'));
             return;
         }
 
         if (!hasYamlFrontmatter(editorContent)) {
-            pushErrMsg('Skill 内容必须包含 YAML 头信息 (Frontmatter)');
+            pushErrMsg(i18n('settingsSkillFrontmatterRequired'));
             return;
         }
 
@@ -441,27 +433,27 @@ description: 描述这个 Skill 的功能
             const fileBlob = new Blob([editorContent], { type: 'text/markdown' });
             await putFile(skillFilePath, false, fileBlob);
 
-            pushMsg('保存成功');
+            pushMsg(i18n('commonSaveSuccess'));
             showEditor = false;
             await refreshSkills();
         } catch (e) {
             console.error('Failed to save skill:', e);
-            pushErrMsg('保存 Skill 失败: ' + (e instanceof Error ? e.message : String(e)));
+            pushErrMsg(i18n('settingsSkillSaveFailed') + (e instanceof Error ? e.message : String(e)));
         }
     }
 
     async function deleteSkill(skill: Skill) {
         confirm(
-            '确定删除',
-            `确定要删除 Skill "${skill.name}" (${skill.id}) 吗？此操作无法撤销。`,
+            i18n('settingsSkillDeleteTitle'),
+            tf('settingsSkillDeleteConfirm', skill.name, skill.id),
             async () => {
                 try {
                     await removeSkill(skill.id);
-                    pushMsg('删除成功');
+                    pushMsg(i18n('aiSidebarTranslateDeleteSuccess'));
                     await refreshSkills();
                 } catch (e) {
                     console.error('Failed to delete skill:', e);
-                    pushErrMsg('删除 Skill 失败: ' + (e instanceof Error ? e.message : String(e)));
+                    pushErrMsg(i18n('settingsSkillDeleteFailed') + (e instanceof Error ? e.message : String(e)));
                 }
             }
         );
@@ -680,7 +672,7 @@ description: 描述这个 Skill 的功能
         };
 
         saveSettings();
-        pushMsg(i18n('platformReorderSuccess') || '平台顺序已更新');
+        pushMsg(i18n('platformReorderSuccess'));
     }
 
     // 处理放置
@@ -800,7 +792,7 @@ description: 描述这个 Skill 的功能
                     },
                 };
                 saveSettings();
-                pushMsg(`平台已重命名为: ${newName}`);
+                pushMsg(tf('platformRenameSuccess', newName));
             }
             return;
         }
@@ -817,7 +809,7 @@ description: 描述这个 Skill 的功能
                 },
             };
             saveSettings();
-            pushMsg(`平台已重命名为: ${newName}`);
+            pushMsg(tf('platformRenameSuccess', newName));
         }
     }
 
@@ -1174,30 +1166,28 @@ description: 描述这个 Skill 的功能
             ],
         },
         {
-            name: i18n('settingsSettingsGroupSessionManagement') || '会话管理',
+            name: i18n('settingsSettingsGroupSessionManagement'),
             items: [
                 {
                     key: 'autoRenameSession',
                     value: settings.autoRenameSession,
                     type: 'checkbox',
-                    title: i18n('settingsAutoRenameSessionTitle') || '会话自动重命名',
+                    title: i18n('settingsAutoRenameSessionTitle'),
                     description:
-                        i18n('settingsAutoRenameSessionDescription') ||
-                        '在首次发送消息时，自动使用AI生成会话标题',
+                        i18n('settingsAutoRenameSessionDescription'),
                 },
             ],
         },
         {
-            name: i18n('settingsSettingsGroupTranslate') || '翻译设置',
+            name: i18n('settingsSettingsGroupTranslate'),
             items: [
                 {
                     key: 'translateTemperature',
                     value: settings.translateTemperature,
                     type: 'number',
-                    title: i18n('settingsTranslateTemperatureTitle') || '翻译 Temperature',
+                    title: i18n('settingsTranslateTemperatureTitle'),
                     description:
-                        i18n('settingsTranslateTemperatureDescription') ||
-                        '翻译专用的 temperature 参数（0-2），为空则使用模型默认值。值越小，翻译越准确一致；值越大，翻译越灵活多样',
+                        i18n('settingsTranslateTemperatureDescription'),
                     number: {
                         min: 0,
                         max: 2,
@@ -1208,78 +1198,71 @@ description: 描述这个 Skill 的功能
                     key: 'translatePrompt',
                     value: settings.translatePrompt,
                     type: 'textarea',
-                    title: i18n('settingsTranslatePromptTitle') || '翻译提示词',
+                    title: i18n('settingsTranslatePromptTitle'),
                     description:
-                        i18n('settingsTranslatePromptDescription') ||
-                        '翻译时使用的提示词模板，${content} 会被替换为要翻译的内容',
+                        i18n('settingsTranslatePromptDescription'),
                     direction: 'row',
                     rows: 8,
                     placeholder:
-                        i18n('settingsTranslatePromptPlaceholder') || '输入翻译提示词模板...',
+                        i18n('settingsTranslatePromptPlaceholder'),
                 },
             ],
         },
         {
-            name: i18n('settingsSettingsGroupTools') || '工具设置',
+            name: i18n('settingsSettingsGroupTools'),
             items: [
                 {
                     key: 'pythonPath',
                     value: settings.pythonPath,
                     type: 'textinput',
-                    title: i18n('settingsPythonPathTitle') || 'Python 解释器路径',
+                    title: i18n('settingsPythonPathTitle'),
                     description:
-                        i18n('settingsPythonPathDescription') ||
-                        '设置 Python 可执行文件的路径，用于运行 Python 代码工具。留空则使用系统默认的 python 命令',
+                        i18n('settingsPythonPathDescription'),
                     placeholder:
-                        i18n('settingsPythonPathPlaceholder') ||
-                        '例如：C:\\Python311\\python.exe 或 /usr/bin/python3',
+                        i18n('settingsPythonPathPlaceholder'),
                 },
             ],
         },
         {
-            name: i18n('settingsSettingsGroupSoul') || 'SOUL 文档',
+            name: i18n('settingsSettingsGroupSoul'),
             items: [
                 {
                     key: 'soulDocId',
                     value: settings.soulDocId,
                     type: 'textinput',
-                    title: i18n('settingsSoulDocIdTitle') || 'SOUL 文档 ID',
+                    title: i18n('settingsSoulDocIdTitle'),
                     description:
-                        i18n('settingsSoulDocIdDescription') ||
-                        '设置 SOUL 数据存储的文档 ID。SOUL 工具只能在此文档内进行增删改查操作。',
+                        i18n('settingsSoulDocIdDescription'),
                     placeholder:
-                        i18n('settingsSoulDocIdPlaceholder') ||
-                        '输入文档块 ID，如 20260312120000-xxxxxxxx',
+                        i18n('settingsSoulDocIdPlaceholder'),
                 },
             ],
         },
         {
-            name: i18n('settingsSettingsGroupWebApp') || '网页小程序',
+            name: i18n('settingsSettingsGroupWebApp'),
             items: [
                 {
                     key: 'openLinksInWebView',
                     value: settings.openLinksInWebView,
                     type: 'checkbox',
-                    title: i18n('settingsOpenLinksInWebViewTitle') || '在 WebView 中打开链接',
+                    title: i18n('settingsOpenLinksInWebViewTitle'),
                     description:
-                        i18n('settingsOpenLinksInWebViewDescription') ||
-                        '点击思源笔记中的 https 链接时，在内置 WebView 标签页中打开，而不是外部浏览器',
+                        i18n('settingsOpenLinksInWebViewDescription'),
                 },
                 {
                     key: 'webAppCollectionDock',
                     value: settings.webAppCollectionDock,
                     type: 'checkbox',
-                    title: i18n('settingsWebAppCollectionDockTitle') || '小程序集合侧栏',
+                    title: i18n('settingsWebAppCollectionDockTitle'),
                     description:
-                        i18n('settingsWebAppCollectionDockDescription') ||
-                        '在侧边栏中添加一个网页小程序集合面板，以标签页形式打开所有小程序',
+                        i18n('settingsWebAppCollectionDockDescription'),
                 },
                 {
                     key: 'searchEngine',
                     value: settings.searchEngine,
                     type: 'select',
-                    title: '搜索引擎',
-                    description: '选择地址栏使用的默认搜索引擎',
+                    title: i18n('settingsSearchEngineTitle'),
+                    description: i18n('settingsSearchEngineDescription'),
                     options: {
                         google: 'Google',
                         bing: 'Bing',
@@ -1288,27 +1271,25 @@ description: 描述这个 Skill 的功能
             ],
         },
         {
-            name: '自定义 Skill',
+            name: i18n('settingsCustomSkillsGroup'),
             items: [],
         },
         {
-            name: i18n('settingsSettingsGroupReset') || 'Reset Settings',
+            name: i18n('settingsSettingsGroupReset'),
             items: [
                 {
                     key: 'reset',
                     value: '',
                     type: 'button',
-                    title: i18n('settingsResetTitle') || 'Reset Settings',
+                    title: i18n('settingsResetTitle'),
                     description:
-                        i18n('settingsResetDescription') ||
-                        'Reset all settings to default values',
+                        i18n('settingsResetDescription'),
                     button: {
-                        label: i18n('settingsResetLabel') || 'Reset',
+                        label: i18n('settingsResetLabel'),
                         callback: async () => {
                             confirm(
-                                i18n('settingsResetTitle') || 'Reset Settings',
-                                i18n('settingsResetConfirmMessage') ||
-                                    'Are you sure you want to reset all settings to default values? This action cannot be undone.',
+                                i18n('settingsResetTitle'),
+                                i18n('settingsResetConfirmMessage'),
                                 async () => {
                                     // 确认回调
                                     settings = { ...getDefaultSettings() };
@@ -1327,17 +1308,17 @@ description: 描述这个 Skill 的功能
             ],
         },
         {
-            name: '❤️用爱发电',
+            name: i18n('settingsDonateGroup'),
             items: [
                 {
                     key: 'donateInfo',
                     value: '',
                     type: 'hint',
-                    title: '用爱发电',
+                    title: i18n('settingsDonateTitle'),
                     description: `
-                        <p style="margin-top:12px;">如果喜欢我的插件，欢迎给GitHub仓库点star和微信赞赏，这会激励我继续完善此插件和开发新插件。</p>
+                        <p style="margin-top:12px;">${i18n('settingsDonateSupport')}</p>
 
-                        <p style="margin-top:12px;">维护插件费时费力，个人时间和精力有限，开源只是分享，不等于我要浪费我的时间免费帮用户实现ta需要的功能，</p>
+                        <p style="margin-top:12px;">${i18n('settingsDonateMaintenance')}</p>
 
 
                         
@@ -1532,7 +1513,7 @@ description: 描述这个 Skill 的功能
                 // 构建笔记本选项对象 { id: name }，只显示 closed=false 的笔记本
                 notebookOptions = {};
                 notebookOptions[''] =
-                    i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --';
+                    i18n('settingsExportNotebookPlaceholder');
                 notebooks.notebooks
                     .filter(notebook => notebook.closed === false)
                     .forEach(notebook => {
@@ -1540,13 +1521,13 @@ description: 描述这个 Skill 的功能
                     });
             } else {
                 notebookOptions = {
-                    '': i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --',
+                    '': i18n('settingsExportNotebookPlaceholder'),
                 };
             }
         } catch (error) {
             console.error('Load notebooks error:', error);
             notebookOptions = {
-                '': i18n('settingsExportNotebookPlaceholder') || '-- 请选择笔记本 --',
+                '': i18n('settingsExportNotebookPlaceholder'),
             };
         }
     }
@@ -1563,7 +1544,7 @@ description: 描述这个 Skill 的功能
 
         soulDocValidation = {
             status: 'checking',
-            message: i18n('settingsSoulDocIdValidating') || '验证中...',
+            message: i18n('settingsSoulDocIdValidating'),
         };
 
         try {
@@ -1571,7 +1552,7 @@ description: 描述这个 Skill 的功能
             if (!block) {
                 soulDocValidation = {
                     status: 'invalid',
-                    message: i18n('settingsSoulDocIdNotFound') || '块不存在，请检查 ID 是否正确',
+                    message: i18n('settingsSoulDocIdNotFound'),
                 };
                 return;
             }
@@ -1579,23 +1560,20 @@ description: 描述这个 Skill 的功能
             if (block.type !== 'd') {
                 soulDocValidation = {
                     status: 'invalid',
-                    message:
-                        i18n('settingsSoulDocIdNotDoc') ||
-                        `该 ID 不是文档类型，当前类型: ${block.type}`,
+                    message: tf('settingsSoulDocTypeError', block.type),
                 };
                 return;
             }
 
             soulDocValidation = {
                 status: 'valid',
-                message:
-                    i18n('settingsSoulDocIdValid') || `✓ 有效文档: ${block.content || '未命名'}`,
+                message: tf('settingsSoulDocValid', block.content || i18n('commonUntitledName')),
             };
         } catch (error) {
             soulDocValidation = {
                 status: 'invalid',
                 message:
-                    i18n('settingsSoulDocIdError') || '验证失败: ' + (error as Error).message,
+                    i18n('settingsSoulDocIdError') + (error as Error).message,
             };
         }
     }
@@ -1701,7 +1679,7 @@ description: 描述这个 Skill 的功能
                                 class="b3-text-field fn__flex-1"
                                 type="text"
                                 bind:value={platformSearchQuery}
-                                placeholder={i18n('commonSearch') + '平台名称'}
+                                placeholder={i18n('platformSearchPlaceholder')}
                             />
                         </div>
 
@@ -1749,7 +1727,7 @@ description: 描述这个 Skill 的功能
                                         openPlatformContextMenu(e, item.platform.id)}
                                     role="button"
                                     tabindex="0"
-                                    title={`${platformSearchQuery.trim() ? '搜索中暂不支持拖拽排序' : '拖动以排序'} · ${i18n('commonDelete') || '删除'}：右键`}
+                                    title={tf('platformItemActionsHint', platformSearchQuery.trim() ? i18n('platformSearchNoSort') : i18n('platformDragSort'))}
                                 >
                                     <div
                                         class="platform-item__drag-handle"
@@ -1757,8 +1735,8 @@ description: 描述这个 Skill 的功能
                                         role="button"
                                         tabindex="0"
                                         title={platformSearchQuery.trim()
-                                            ? '搜索中暂不支持拖拽排序'
-                                            : '拖动以排序'}
+                                            ? i18n('platformSearchNoSort')
+                                            : i18n('platformDragSort')}
                                         on:click|stopPropagation
                                         on:dragstart|stopPropagation={e =>
                                             handleDragStart(e, item.index, item.platform.id)}
@@ -1791,8 +1769,8 @@ description: 描述这个 Skill 的功能
                                     <label
                                         class="platform-item__switch"
                                         title={item.platform.enabled
-                                            ? '平台已启用，关闭后不会在模型选择里显示'
-                                            : '平台已停用，开启后会在模型选择里显示'}
+                                            ? i18n('platformEnabledHint')
+                                            : i18n('platformDisabledHint')}
                                     >
                                         <input
                                             class="b3-switch"
@@ -1806,10 +1784,10 @@ description: 描述这个 Skill 的功能
                                 </div>
                             {/each}
                             {#if displayedProviderOptions.length === 0 && allProviderOptions.length > 0}
-                                <div class="empty-hint">无匹配平台</div>
+                                <div class="empty-hint">{i18n('platformNoResults')}</div>
                             {/if}
                             {#if allProviderOptions.length === 0}
-                                <div class="empty-hint">暂无可用平台</div>
+                                <div class="empty-hint">{i18n('platformNoAvailable')}</div>
                             {/if}
                         </div>
                     </div>
@@ -1827,7 +1805,7 @@ description: 描述这个 Skill 的功能
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconTrashcan"></use>
                             </svg>
-                            <span>{i18n('commonDelete') || '删除'}</span>
+                            <span>{i18n('commonDelete')}</span>
                         </button>
                     </div>
                 {/if}
@@ -1844,10 +1822,10 @@ description: 描述这个 Skill 的功能
                             <svg class="b3-button__icon">
                                 <use xlink:href="#iconLeft"></use>
                             </svg>
-                            {i18n('commonBack') || '返回'}
+                            {i18n('commonBack')}
                         </button>
                         <span class="platform-main__mobile-title">
-                            {selectedProviderId ? selectedProviderName : (i18n('platformSelect') || '选择平台')}
+                            {selectedProviderId ? selectedProviderName : (i18n('platformSelect'))}
                         </span>
                     </div>
                     {#if selectedProviderId}
@@ -1890,12 +1868,12 @@ description: 描述这个 Skill 的功能
                         {/if}
                     {:else}
                         <div class="no-selection">
-                            {i18n('platformSelectHint') || '请选择一个平台以查看或编辑其配置'}
+                            {i18n('platformSelectHint')}
                         </div>
                     {/if}
                 </main>
             </div>
-        {:else if focusGroup === (i18n('settingsSettingsGroupSessionManagement') || '会话管理')}
+        {:else if focusGroup === (i18n('settingsSettingsGroupSessionManagement'))}
             <div class="session-management-panel">
                 <SettingPanel
                     group={currentGroup?.name || ''}
@@ -1909,11 +1887,10 @@ description: 描述这个 Skill 的功能
                         <div class="config__item">
                             <div class="config__item-label">
                                 <div class="config__item-title">
-                                    {i18n('settingsAutoRenameSessionModelTitle') || '重命名模型'}
+                                    {i18n('settingsAutoRenameSessionModelTitle')}
                                 </div>
                                 <div class="config__item-description">
-                                    {i18n('settingsAutoRenameSessionModelDescription') ||
-                                        '选择用于生成会话标题的AI模型'}
+                                    {i18n('settingsAutoRenameSessionModelDescription')}
                                 </div>
                             </div>
                             <div
@@ -1929,8 +1906,7 @@ description: 描述这个 Skill 的功能
                                     }}
                                 >
                                     <option value="">
-                                        {i18n('settingsAutoRenameSessionSelectProvider') ||
-                                            '-- 选择平台 --'}
+                                        {i18n('settingsAutoRenameSessionSelectProvider')}
                                     </option>
                                     {#each allProviderOptions as provider}
                                         {#if settings.aiProviders[provider.id]?.models?.length > 0 || (provider.type === 'custom' && settings.aiProviders.customProviders.find(p => p.id === provider.id)?.models?.length > 0)}
@@ -1946,8 +1922,7 @@ description: 描述这个 Skill 的功能
                                         on:change={saveSettings}
                                     >
                                         <option value="">
-                                            {i18n('settingsAutoRenameSessionSelectModel') ||
-                                                '-- 选择模型 --'}
+                                            {i18n('settingsAutoRenameSessionSelectModel')}
                                         </option>
                                         {#if builtInProviderNames[settings.autoRenameProvider]}
                                             {#each settings.aiProviders[settings.autoRenameProvider]?.models || [] as model}
@@ -1971,12 +1946,10 @@ description: 描述这个 Skill 的功能
                         <div class="config__item" style="margin-top: 16px;">
                             <div class="config__item-label">
                                 <div class="config__item-title">
-                                    {i18n('settingsAutoRenameSessionPromptTitle') ||
-                                        '自定义提示词'}
+                                    {i18n('settingsAutoRenameSessionPromptTitle')}
                                 </div>
                                 <div class="config__item-description">
-                                    {i18n('settingsAutoRenameSessionPromptDescription') ||
-                                        '自定义生成会话标题的提示词，使用 {message} 作为用户消息的占位符'}
+                                    {i18n('settingsAutoRenameSessionPromptDescription')}
                                 </div>
                             </div>
                             <div class="config__item-control">
@@ -1986,25 +1959,23 @@ description: 描述这个 Skill 的功能
                                     bind:value={settings.autoRenamePrompt}
                                     on:change={saveSettings}
                                     placeholder={i18n('settingsAutoRenameSessionPromptPlaceholder'
-                                    ) ||
-                                        '请根据以下用户消息生成一个简洁的会话标题（不超过20个字，不要使用引号）：\n\n{message}'}
+                                    )}
                                 ></textarea>
                             </div>
                         </div>
                     </div>
                 {/if}
             </div>
-        {:else if focusGroup === (i18n('settingsSettingsGroupSoul') || 'SOUL 文档')}
+        {:else if focusGroup === (i18n('settingsSettingsGroupSoul'))}
             <!-- SOUL 文档设置特殊处理 -->
             <div class="soul-settings-panel">
                 <div class="config__item">
                     <div class="config__item-label">
                         <div class="config__item-title">
-                            {i18n('settingsSoulDocIdTitle') || 'SOUL 文档 ID'}
+                            {i18n('settingsSoulDocIdTitle')}
                         </div>
                         <div class="config__item-description">
-                            {i18n('settingsSoulDocIdDescription') ||
-                                '设置 SOUL 数据存储的文档 ID'}
+                            {i18n('settingsSoulDocIdDescription')}
                         </div>
                     </div>
                     <div class="config__item-control">
@@ -2016,8 +1987,7 @@ description: 描述这个 Skill 的功能
                                 await saveSettings();
                                 await validateSoulDocId();
                             }}
-                            placeholder={i18n('settingsSoulDocIdPlaceholder') ||
-                                '输入文档块 ID，如 20260312120000-xxxxxxxx'}
+                            placeholder={i18n('settingsSoulDocIdPlaceholder')}
                         />
                         <button
                             class="b3-button b3-button--outline"
@@ -2025,8 +1995,8 @@ description: 描述这个 Skill 的功能
                             disabled={soulDocValidation.status === 'checking'}
                         >
                             {soulDocValidation.status === 'checking'
-                                ? i18n('settingsSoulDocIdValidating') || '验证中...'
-                                : i18n('settingsSoulDocIdValidate') || '验证'}
+                                ? i18n('settingsSoulDocIdValidating')
+                                : i18n('settingsSoulDocIdValidate')}
                         </button>
                     </div>
                     {#if soulDocValidation.message}
@@ -2040,13 +2010,13 @@ description: 描述这个 Skill 的功能
                     {/if}
                 </div>
             </div>
-        {:else if focusGroup === '自定义 Skill'}
+        {:else if focusGroup === i18n('settingsCustomSkillsGroup')}
             <!-- 自定义 Skill 页面 -->
             <div
                 style="padding: 24px; max-width: 800px; display: flex; flex-direction: column; gap: 16px; height: 100%; overflow-y: auto;"
             >
                 <h3 style="margin: 0; font-size: 16px; font-weight: 500;">
-                    自定义 Skill (Custom Skills)
+                    {i18n('settingsCustomSkillsTitle')}
                 </h3>
                 <div
                     style="padding: 12px; background: var(--b3-theme-primary-lightest); border-radius: 4px; font-size: 13px; color: var(--b3-theme-on-surface); display: flex; align-items: flex-start; gap: 8px;"
@@ -2059,18 +2029,10 @@ description: 描述这个 Skill 的功能
                     </svg>
                     <div>
                         <p style="margin: 0 0 8px 0;">
-                            数据存储在 <code>
-                                data/storage/ai/agent/skills/
-                            </code>
-                             目录下。
+                            {@html i18n('settingsSkillsStorageHint')}
                         </p>
                         <p style="margin: 0;">
-                            为每个 Skill 创建一个子文件夹并包含一个 <code>skill.md</code>
-                            (有 YAML 头)。切换到引用思源块模式时，会在
-                            <code>skill.md</code>
-                            中保存块 ID，并在
-                            <code>read_skill</code>
-                             读取时自动展开为 Markdown。
+                            {@html i18n('settingsSkillsFormatHint')}
                         </p>
                     </div>
                 </div>
@@ -2090,12 +2052,12 @@ description: 描述这个 Skill 的功能
                             <div
                                 style="font-size: 12px; color: var(--b3-theme-on-surface-light); font-weight: 500;"
                             >
-                                Skill 标识符 (也是子文件夹名称，支持中文/英文/数字/下划线/短横线)
+                                {i18n('settingsSkillIdLabel')}
                             </div>
                             <input
                                 class="b3-text-field"
                                 type="text"
-                                placeholder="例如: my-skill 或 介绍思源笔记"
+                                placeholder={i18n('settingsSkillIdPlaceholder')}
                                 bind:value={skillIdInput}
                                 disabled={editorSkillId !== ''}
                             />
@@ -2105,7 +2067,7 @@ description: 描述这个 Skill 的功能
                             <div
                                 style="font-size: 12px; color: var(--b3-theme-on-surface-light); font-weight: 500;"
                             >
-                                内容模式
+                                {i18n('settingsSkillContentMode')}
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button
@@ -2122,7 +2084,7 @@ description: 描述这个 Skill 的功能
                                         : 'b3-button b3-button--outline'}
                                     on:click={() => setEditorMode('siyuan-blocks')}
                                 >
-                                    引用思源块
+                                    {i18n('settingsSkillSiyuanBlocks')}
                                 </button>
                             </div>
                         </div>
@@ -2144,7 +2106,7 @@ description: 描述这个 Skill 的功能
                                     <span
                                         style="font-size: 12px; color: var(--b3-theme-on-surface-light); font-weight: 500;"
                                     >
-                                        Skill 内容块 ({skillBlocks.length})
+                                        {tf('settingsSkillContentBlocksCount', skillBlocks.length)}
                                     </span>
                                     <div style="display: flex; gap: 8px;">
                                         <button
@@ -2153,7 +2115,7 @@ description: 描述这个 Skill 的功能
                                             disabled={isAddingSkillBlock}
                                             on:click={refreshSkillBlocksFromEditorContent}
                                         >
-                                            从源码同步
+                                            {i18n('settingsSkillSourceSync')}
                                         </button>
                                         <button
                                             class="b3-button b3-button--outline"
@@ -2161,7 +2123,7 @@ description: 描述这个 Skill 的功能
                                             disabled={isAddingSkillBlock}
                                             on:click={addCurrentBlockAsSkillBlock}
                                         >
-                                            添加当前块
+                                            {i18n('modelPresetAddCurrentBlock')}
                                         </button>
                                     </div>
                                 </div>
@@ -2170,7 +2132,7 @@ description: 描述这个 Skill 的功能
                                     <input
                                         class="b3-text-field"
                                         type="text"
-                                        placeholder="粘贴一个或多个块 ID，用逗号或空格分隔"
+                                        placeholder={i18n('settingsSkillBlocksPlaceholder')}
                                         style="width: 100%;"
                                         bind:value={skillBlockIdInput}
                                     />
@@ -2180,7 +2142,7 @@ description: 描述这个 Skill 的功能
                                         disabled={isAddingSkillBlock}
                                         on:click={addSkillBlockIdsFromInput}
                                     >
-                                        添加 ID
+                                        {i18n('settingsSkillAddIds')}
                                     </button>
                                 </div>
 
@@ -2188,7 +2150,7 @@ description: 描述这个 Skill 的功能
                                     <div
                                         style="padding: 18px; text-align: center; color: var(--b3-theme-on-surface-light); border: 1px dashed var(--b3-border-color); border-radius: 4px;"
                                     >
-                                        拖入思源块，或使用当前块/块 ID 添加
+                                        {i18n('settingsSkillBlocksDrop')}
                                     </div>
                                 {:else}
                                     <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -2220,7 +2182,7 @@ description: 描述这个 Skill 的功能
                                                         on:click={() =>
                                                             moveSkillBlock(block.id, -1)}
                                                     >
-                                                        上移
+                                                        {i18n('multiModelMoveUp')}
                                                     </button>
                                                     <button
                                                         class="b3-button b3-button--text"
@@ -2228,7 +2190,7 @@ description: 描述这个 Skill 的功能
                                                         disabled={index === skillBlocks.length - 1}
                                                         on:click={() => moveSkillBlock(block.id, 1)}
                                                     >
-                                                        下移
+                                                        {i18n('multiModelMoveDown')}
                                                     </button>
                                                     <button
                                                         class="b3-button b3-button--text"
@@ -2244,14 +2206,14 @@ description: 描述这个 Skill 的功能
                                                         on:click={() =>
                                                             handleOpenSkillBlock(block.id)}
                                                     >
-                                                        打开
+                                                        {i18n('aiSidebarContextOpen')}
                                                     </button>
                                                     <button
                                                         class="b3-button b3-button--text"
                                                         style="padding: 4px 6px; font-size: 12px; color: var(--b3-theme-error);"
                                                         on:click={() => removeSkillBlock(block.id)}
                                                     >
-                                                        移除
+                                                        {i18n('multiModelRemove')}
                                                     </button>
                                                 </div>
                                             </div>
@@ -2265,12 +2227,12 @@ description: 描述这个 Skill 的功能
                             <div
                                 style="font-size: 12px; color: var(--b3-theme-on-surface-light); font-weight: 500;"
                             >
-                                Markdown 源码 (skill.md，包含 YAML 头信息)
+                                {i18n('settingsSkillMarkdownLabel')}
                             </div>
                             <textarea
                                 class="b3-text-field"
                                 style="font-family: monospace; min-height: 300px; resize: vertical; line-height: 1.5; font-size: 13px; padding: 8px;"
-                                placeholder="输入 Markdown 内容..."
+                                placeholder={i18n('settingsSkillMarkdownPlaceholder')}
                                 bind:value={editorContent}
                                 bind:this={skillMarkdownTextarea}
                                 on:focus={rememberEditorSelection}
@@ -2284,12 +2246,9 @@ description: 描述这个 Skill 的功能
                             style="padding: 10px 12px; border-left: 3px solid var(--b3-theme-primary); background: var(--b3-theme-background); font-size: 12px; color: var(--b3-theme-on-surface-light);"
                         >
                             {#if editorMode === 'siyuan-blocks'}
-                                添加、排序或移除块时会更新源码中的 <code>
-                                    &lt;!-- siyuan-plugin-copilot:skill-blocks ... --&gt;
-                                </code>
-                                 标记；你也可以直接编辑这段源码。
+                                {@html i18n('settingsSkillBlocksSourceHint')}
                             {:else}
-                                Markdown 模式会直接保存并读取完整 skill.md 内容。
+                                {i18n('settingsSkillMarkdownHint')}
                             {/if}
                         </div>
 
@@ -2300,9 +2259,9 @@ description: 描述这个 Skill 的功能
                                 class="b3-button b3-button--text"
                                 on:click={() => (showEditor = false)}
                             >
-                                取消
+                                {i18n('platformCancel')}
                             </button>
-                            <button class="b3-button" on:click={saveSkill}>保存</button>
+                            <button class="b3-button" on:click={saveSkill}>{i18n('commonSave')}</button>
                         </div>
                     </div>
                 {:else}
@@ -2313,23 +2272,23 @@ description: 描述这个 Skill 的功能
                         <h4
                             style="margin: 0; font-size: 14px; font-weight: 500; color: var(--b3-theme-primary);"
                         >
-                            已加载的 Skills ({loadedSkills.length})
+                            {tf('settingsSkillsLoadedCount', loadedSkills.length)}
                         </h4>
                         <div style="display: flex; gap: 8px;">
                             <button
                                 class="b3-button b3-button--outline"
                                 on:click={openSkillsFolder}
                             >
-                                打开 Skills 文件夹
+                                {i18n('settingsSkillFolderOpen')}
                             </button>
                             <button
                                 class="b3-button b3-button--outline"
                                 on:click={startCreateSkill}
                             >
-                                新建 Skill
+                                {i18n('settingsSkillNew')}
                             </button>
                             <button class="b3-button b3-button--outline" on:click={refreshSkills}>
-                                刷新列表
+                                {i18n('settingsSkillRefresh')}
                             </button>
                         </div>
                     </div>
@@ -2339,10 +2298,7 @@ description: 描述这个 Skill 的功能
                             <div
                                 style="padding: 24px; text-align: center; border: 1px dashed var(--b3-border-color); border-radius: 4px; color: var(--b3-theme-on-surface-light);"
                             >
-                                暂无自定义 Skill，请点击“新建 Skill”或在 <code>
-                                    data/storage/ai/agent/skills/
-                                </code>
-                                 文件夹下创建
+                                {@html i18n('settingsSkillsEmptyHint')}
                             </div>
                         {:else}
                             {#each loadedSkills as skill}
@@ -2360,7 +2316,7 @@ description: 描述这个 Skill 的功能
                                                 style="font-weight: normal; font-size: 12px; color: var(--b3-theme-on-surface-light); margin-left: 6px;"
                                             >
                                                 {skill.source === 'siyuan-blocks'
-                                                    ? `思源块 · ${skill.blockIds.length} 个`
+                                                    ? tf('settingsSkillBlocksCount', skill.blockIds.length)
                                                     : 'Markdown'}
                                             </span>
                                         </span>
@@ -2370,21 +2326,21 @@ description: 描述这个 Skill 的功能
                                                 style="padding: 4px 8px; font-size: 12px;"
                                                 on:click={() => openSkillFolder(skill.id)}
                                             >
-                                                打开文件夹
+                                                {i18n('settingsFolderOpen')}
                                             </button>
                                             <button
                                                 class="b3-button b3-button--text"
                                                 style="padding: 4px 8px; font-size: 12px;"
                                                 on:click={() => startEditSkill(skill)}
                                             >
-                                                编辑
+                                                {i18n('commonEdit')}
                                             </button>
                                             <button
                                                 class="b3-button b3-button--text"
                                                 style="padding: 4px 8px; font-size: 12px; color: var(--b3-theme-error);"
                                                 on:click={() => deleteSkill(skill)}
                                             >
-                                                删除
+                                                {i18n('commonDelete')}
                                             </button>
                                         </div>
                                     </div>
@@ -2408,7 +2364,7 @@ description: 描述这个 Skill 的功能
                                                         showSkillBlockFloatLayer(blockId, event)}
                                                     on:click={() => handleOpenSkillBlock(blockId)}
                                                 >
-                                                    打开 {blockId}
+                                                    {i18n('aiSidebarContextOpen')} {blockId}
                                                 </button>
                                             {/each}
                                         </div>
@@ -2416,7 +2372,7 @@ description: 描述这个 Skill 的功能
                                     <div
                                         style="font-size: 12px; color: var(--b3-theme-on-surface-light); margin-top: 4px; font-family: monospace; word-break: break-all;"
                                     >
-                                        路径: {skill.filePath}
+                                        {i18n('commonPathLabel')} {skill.filePath}
                                     </div>
                                 </div>
                             {/each}

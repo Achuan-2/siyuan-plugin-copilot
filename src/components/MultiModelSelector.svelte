@@ -761,7 +761,7 @@
                                                     {#if getModelCapabilities(model.provider, model.modelId)?.thinking}
                                                         <label
                                                             class="multi-model-selector__thinking-toggle"
-                                                            title="思考模式"
+                                                            title={i18n('multiModelThinkingMode')}
                                                         >
                                                             <input
                                                                 type="checkbox"
@@ -839,7 +839,7 @@
                             </div>
                         {:else}
                             <div class="multi-model-selector__selected-empty">
-                                {i18n('multiModelNoSelectedModels') || '点击右侧模型添加到已选'}
+                                {i18n('multiModelNoSelectedModels')}
                             </div>
                         {/if}
                     </div>
@@ -855,7 +855,7 @@
                             <input
                                 type="text"
                                 class="b3-text-field"
-                                placeholder={i18n('multiModelSearchModels') || '搜索模型'}
+                                placeholder={i18n('multiModelSearchModels')}
                                 bind:value={modelSearchQuery}
                                 spellcheck="false"
                             />
@@ -863,7 +863,7 @@
 
                         {#if modelSearchQuery.trim() && filteredProviders.length === 0}
                             <div class="multi-model-selector__no-results">
-                                {i18n('multiModelNoResults') || '无匹配结果'}
+                                {i18n('multiModelNoResults')}
                             </div>
                         {/if}
 
@@ -921,7 +921,7 @@
                                                                 class="multi-model-selector__model-count-badge"
                                                                 role="button"
                                                                 tabindex="0"
-                                                                title="点击减少选择次数"
+                                                                title={i18n('multiModelReduceCount')}
                                                                 on:click={e =>
                                                                     decreaseModelSelection(
                                                                         provider.id,

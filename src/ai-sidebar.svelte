@@ -66,7 +66,7 @@
         setSessionTaskStatus,
     } from './sessionTaskStatus';
     import { confirm, Constants, platformUtils, getFrontend } from 'siyuan';
-    import { i18n, i18nKey } from './utils/i18n';
+    import { i18n, i18nKey, tf } from './utils/i18n';
     import {
         AVAILABLE_TOOLS,
         createGetSiyuanSkillsTool,
@@ -351,7 +351,7 @@
     function submitQuestionCard() {
         if (!pendingQuestionCard || !pendingQuestionResolve) return;
         if (!isQuestionCardValid(pendingQuestionCard.questions, questionCardAnswers, questionCardCustomAnswers)) {
-            pushErrMsg('请填写所有必填项');
+            pushErrMsg(i18n('aiSidebarQuestionRequired'));
             return;
         }
         // 合并选项答案与自定义输入答案
@@ -904,49 +904,49 @@
     const DRAW_IMAGE_BASE_UNIT = 640;
     const DRAW_IMAGE_SIZE_STEP = 16;
     const DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: 'auto 默认' },
-        { value: '1024x1024', label: '1024x1024 1:1 正方形' },
-        { value: '1536x1024', label: '1536x1024 3:2 横版' },
-        { value: '1024x1536', label: '1024x1536 2:3 竖版' },
-        { value: '1536x1152', label: '1536x1152 4:3 横版' },
-        { value: '1152x1536', label: '1152x1536 3:4 竖版' },
-        { value: '1504x640', label: '1504x640 2.35:1 横版' },
-        { value: '2048x2048', label: '2048x2048 1:1 2K正方形' },
-        { value: '2048x1152', label: '2048x1152 16:9 2K横版' },
-        { value: '3840x2160', label: '3840x2160 16:9 4K横版' },
-        { value: '2160x3840', label: '2160x3840 9:16 4K竖版' },
+        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
+        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x102411Square') },
+        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x102432Landscape') },
+        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x153623Portrait') },
+        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
+        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
+        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
+        { value: '2048x2048', label: i18n('aiSidebarDrawSize2048x2048112KSquare') },
+        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x11521692KLandscape') },
+        { value: '3840x2160', label: i18n('aiSidebarDrawSize3840x21601694KLandscape') },
+        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x38409164KPortrait') },
     ];
     const GEMINI_DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: 'auto 默认' },
-        { value: '1024x1024', label: '1024x1024 1:1 1K正方形' },
-        { value: '1536x1024', label: '1536x1024 3:2 1K横版' },
-        { value: '1024x1536', label: '1024x1536 2:3 1K竖版' },
-        { value: '1536x1152', label: '1536x1152 4:3 横版' },
-        { value: '1152x1536', label: '1152x1536 3:4 竖版' },
-        { value: '1504x640', label: '1504x640 2.35:1 横版' },
-        { value: '2048x2048', label: '2048x2048 1:1 2K正方形' },
-        { value: '2048x1152', label: '2048x1152 16:9 2K横版' },
-        { value: '3840x2160', label: '3840x2160 16:9 4K横版' },
-        { value: '2160x3840', label: '2160x3840 9:16 4K竖版' },
+        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
+        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x1024111KSquare') },
+        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x1024321KLandscape') },
+        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x1536231KPortrait') },
+        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
+        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
+        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
+        { value: '2048x2048', label: i18n('aiSidebarDrawSize2048x2048112KSquare') },
+        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x11521692KLandscape') },
+        { value: '3840x2160', label: i18n('aiSidebarDrawSize3840x21601694KLandscape') },
+        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x38409164KPortrait') },
     ];
     const GEMINI_ASPECT_ONLY_DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: 'auto 默认' },
-        { value: '1024x1024', label: '1024x1024 1:1 正方形' },
-        { value: '1536x1024', label: '1536x1024 3:2 横版' },
-        { value: '1024x1536', label: '1024x1536 2:3 竖版' },
-        { value: '1536x1152', label: '1536x1152 4:3 横版' },
-        { value: '1152x1536', label: '1152x1536 3:4 竖版' },
-        { value: '1504x640', label: '1504x640 2.35:1 横版' },
-        { value: '2048x1152', label: '2048x1152 16:9 横版' },
-        { value: '2160x3840', label: '2160x3840 9:16 竖版' },
+        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
+        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x102411Square') },
+        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x102432Landscape') },
+        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x153623Portrait') },
+        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
+        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
+        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
+        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x1152169Landscape') },
+        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x3840916Portrait') },
     ];
     const DRAW_IMAGE_QUALITY_OPTIONS: Array<{ value: DrawImageQuality; label: string }> = [
-        { value: 'auto', label: 'auto 默认' },
-        { value: 'low', label: 'low 低' },
-        { value: 'medium', label: 'medium 中' },
-        { value: 'high', label: 'high 高' },
-        { value: 'standard', label: 'standard 标准' },
-        { value: 'hd', label: 'hd 高清' },
+        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
+        { value: 'low', label: i18n('aiSidebarDrawQualityLow') },
+        { value: 'medium', label: i18n('aiSidebarDrawQualityMedium') },
+        { value: 'high', label: i18n('aiSidebarDrawQualityHigh') },
+        { value: 'standard', label: i18n('aiSidebarDrawQualityStandard') },
+        { value: 'hd', label: i18n('aiSidebarDrawQualityHd') },
     ];
 
     let drawImageSize: DrawImageSize = 'auto';
@@ -1082,10 +1082,10 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            pushMsg('图片下载成功');
+            pushMsg(i18n('aiSidebarImageDownloaded'));
         } catch (error) {
             console.error('下载图片失败:', error);
-            pushErrMsg('下载图片失败');
+            pushErrMsg(i18n('aiSidebarImageDownloadFailed'));
         }
     }
 
@@ -1116,13 +1116,13 @@
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
-                if (!ctx) throw new Error('无法创建 Canvas 上下文');
+                if (!ctx) throw new Error(i18n('aiSidebarCanvasUnavailable'));
                 ctx.drawImage(img, 0, 0);
 
                 const pngBlob = await new Promise<Blob | null>(resolve =>
                     canvas.toBlob(resolve, 'image/png')
                 );
-                if (!pngBlob) throw new Error('转换图片失败');
+                if (!pngBlob) throw new Error(i18n('aiSidebarImageConversionFailed'));
 
                 await navigator.clipboard.write([
                     new ClipboardItem({
@@ -1132,10 +1132,10 @@
                 URL.revokeObjectURL(img.src);
             }
 
-            pushMsg('图片已复制到剪贴板');
+            pushMsg(i18n('aiSidebarImageCopied'));
         } catch (error) {
             console.error('复制图片失败:', error);
-            pushErrMsg('复制图片失败，请尝试下载后复制');
+            pushErrMsg(i18n('aiSidebarImageCopyFailed'));
         }
     }
 
@@ -1432,7 +1432,7 @@
 
         const config = getProviderAndModelConfig(response.provider, response.modelId);
         if (!config) {
-            pushErrMsg(i18n('aiSidebarInfoNoValidModel') || '无效的模型');
+            pushErrMsg(i18n('aiSidebarInfoNoValidModel'));
             return;
         }
 
@@ -1516,7 +1516,7 @@
                 customBody = JSON.parse(modelConfig.customBody);
             } catch (e) {
                 console.error('Failed to parse custom body:', e);
-                multiModelResponses[index].error = '自定义参数 JSON 格式错误';
+                multiModelResponses[index].error = i18n('aiSidebarCustomBodyInvalid');
                 multiModelResponses[index].isLoading = false;
                 multiModelResponses = [...multiModelResponses];
                 return;
@@ -1667,7 +1667,7 @@
                                     console.log(
                                         `[RegenerateMultiModel] Skipping non-auto-approved tool: ${tc.function.name}`
                                     );
-                                    toolResult = `工具 ${tc.function.name} 需要手动批准。在多模型对比模式下，为了避免 UI 冲突，该工具未被自动执行。请在设置中将该工具设为“自动批准”。`;
+                                    toolResult = tf('aiSidebarMultiModelApprovalRequired', tc.function.name);
                                 }
 
                                 modelMessagesToSend.push({
@@ -1762,7 +1762,7 @@
 
         const config = getProviderAndModelConfig(response.provider, response.modelId);
         if (!config) {
-            pushErrMsg(i18n('aiSidebarInfoNoValidModel') || '无效的模型');
+            pushErrMsg(i18n('aiSidebarInfoNoValidModel'));
             return;
         }
 
@@ -1847,7 +1847,7 @@
                 customBody = JSON.parse(modelConfig.customBody);
             } catch (e) {
                 console.error('Failed to parse custom body:', e);
-                msg.multiModelResponses[responseIndex].error = '自定义参数 JSON 格式错误';
+                msg.multiModelResponses[responseIndex].error = i18n('aiSidebarCustomBodyInvalid');
                 msg.multiModelResponses[responseIndex].isLoading = false;
                 messages = [...messages];
                 return;
@@ -2878,7 +2878,7 @@
     // 添加文件附件
     async function addFileAttachment(file: File) {
         if (chatMode === 'draw' && !file.type.startsWith('image/')) {
-            pushErrMsg('画图模式只能上传图片');
+            pushErrMsg(i18n('aiSidebarDrawImagesOnly'));
             return;
         }
 
@@ -3001,7 +3001,7 @@
     // 爬取网页内容并转换为Markdown
     async function fetchWebPages() {
         if (!webLinkInput.trim()) {
-            pushErrMsg('请输入至少一个链接');
+            pushErrMsg(i18n('aiSidebarWebLinkRequired'));
             return;
         }
 
@@ -3012,7 +3012,7 @@
             .filter(link => link.length > 0);
 
         if (links.length === 0) {
-            pushErrMsg('请输入有效的链接');
+            pushErrMsg(i18n('aiSidebarWebLinkInvalid'));
             return;
         }
 
@@ -3023,7 +3023,7 @@
             // 使用工具函数批量解析网页
             const results = await parseMultipleWebPages(links, (current, total, url, success) => {
                 if (success) {
-                    pushMsg(`正在获取 (${current}/${total}): ${url}`);
+                    pushMsg(tf('aiSidebarWebFetching', current, total, url));
                 }
             });
 
@@ -3055,10 +3055,10 @@
                     ];
 
                     successCount++;
-                    pushMsg(`✓ 成功获取: ${result.title || result.url}`);
+                    pushMsg(tf('aiSidebarWebFetched', result.title || result.url));
                 } else {
                     // 解析失败，尝试使用 WebView 模式
-                    pushMsg(`普通模式失败，尝试 WebView 模式: ${result.url}`);
+                    pushMsg(tf('aiSidebarWebRetryWebView', result.url));
 
                     try {
                         const webviewResult = await fetchWithWebView(result.url);
@@ -3089,21 +3089,21 @@
                             ];
 
                             successCount++;
-                            pushMsg(`✓ WebView 模式成功: ${webviewResult.title || result.url}`);
+                            pushMsg(tf('aiSidebarWebViewFetched', webviewResult.title || result.url));
                         } else {
                             // WebView 也失败了
                             if (
                                 result.error?.includes('CORS') ||
                                 result.error?.includes('Failed to fetch')
                             ) {
-                                pushErrMsg(`✗ CORS 限制: ${result.url} - 该网站不允许跨域访问`);
+                                pushErrMsg(tf('aiSidebarWebCorsError', result.url));
                             } else {
-                                pushErrMsg(`✗ 获取失败: ${result.url} - ${result.error}`);
+                                pushErrMsg(tf('aiSidebarWebFetchError', result.url, result.error));
                             }
                         }
                     } catch (webviewError) {
                         console.error('WebView fetch error:', webviewError);
-                        pushErrMsg(`✗ WebView 模式也失败了: ${result.url}`);
+                        pushErrMsg(tf('aiSidebarWebViewFailed', result.url));
                     }
                 }
             }
@@ -3114,7 +3114,7 @@
             }
         } catch (error) {
             console.error('Fetch web pages error:', error);
-            pushErrMsg('获取网页内容失败');
+            pushErrMsg(i18n('aiSidebarWebFetchFailed'));
         } finally {
             isFetchingWebContent = false;
         }
@@ -4025,15 +4025,15 @@
         const size = `${normalizedSize.width}x${normalizedSize.height}`;
         const orientation =
             normalizedSize.width === normalizedSize.height
-                ? '正方形'
+                ? i18n('aiSidebarDrawSquare')
                 : normalizedSize.width > normalizedSize.height
-                  ? '横版'
-                  : '竖版';
+                  ? i18n('aiSidebarDrawLandscape')
+                  : i18n('aiSidebarDrawPortrait');
         const existingOption = DRAW_IMAGE_SIZE_OPTIONS.find(option => option.value === size);
         return (
             existingOption || {
                 value: size,
-                label: `${size} ${formatDrawRatio(normalizedSize.width, normalizedSize.height)} ${orientation} 自动识别`,
+                label: tf('aiSidebarDrawAutoDetectedSize', size, formatDrawRatio(normalizedSize.width, normalizedSize.height), orientation),
             }
         );
     }
@@ -4262,7 +4262,7 @@
         saveCurrentSession(true).catch(error => {
             console.error('Failed to save draw image selection:', error);
         });
-        pushMsg(`已选择第 ${imageIndex + 1} 张图片用于继续编辑`);
+        pushMsg(tf('aiSidebarDrawImageSelected', imageIndex + 1));
     }
 
     function syncDrawingModeState() {
@@ -4315,7 +4315,7 @@
             drawModeNoModelWarned = false;
         } else if (!drawModeNoModelWarned) {
             drawModeNoModelWarned = true;
-            pushErrMsg('画图模式需要先为至少一个模型勾选“生图”能力');
+            pushErrMsg(i18n('aiSidebarDrawCapabilityRequired'));
         }
     }
 
@@ -4454,13 +4454,13 @@
         if (validModels.length < selectedMultiModels.length) {
             const invalidCount = selectedMultiModels.length - validModels.length;
             pushMsg(
-                `有 ${invalidCount} 个模型已从配置中删除，将使用剩余的 ${validModels.length} 个模型`
+                tf('aiSidebarMultiModelRemoved', invalidCount, validModels.length)
             );
         }
 
         // 如果没有有效模型，退回到单模型
         if (validModels.length === 0) {
-            pushErrMsg('所选的多模型已全部失效，请重新选择模型');
+            pushErrMsg(i18n('aiSidebarMultiModelInvalid'));
             enableMultiModel = false;
             return;
         }
@@ -4507,7 +4507,7 @@
                     customBody = JSON.parse(modelConfig.customBody);
                 } catch (e) {
                     console.error('Failed to parse custom body:', e);
-                    multiModelResponses[index].error = '自定义参数 JSON 格式错误';
+                    multiModelResponses[index].error = i18n('aiSidebarCustomBodyInvalid');
                     multiModelResponses[index].isLoading = false;
                     multiModelResponses = [...multiModelResponses];
                     return;
@@ -4671,7 +4671,7 @@
                                         console.log(
                                             `[MultiModel] Skipping non-auto-approved tool: ${tc.function.name}`
                                         );
-                                        toolResult = `工具 ${tc.function.name} 需要手动批准。在多模型对比模式下，为了避免 UI 冲突，该工具未被自动执行。请在选择该模型后的单模型模式下重新尝试，或在设置中将该工具设为“自动批准”。`;
+                                        toolResult = tf('aiSidebarMultiModelApprovalRetry', tc.function.name);
                                     }
 
                                     modelMessagesToSend.push({
@@ -5616,7 +5616,7 @@
         const rawBaseUrl =
             providerConfig?.customApiUrl?.trim() || getBuiltInImageApiBaseUrl(currentProvider);
         if (!rawBaseUrl) {
-            throw new Error('当前平台未配置 API URL，无法调用图片接口');
+            throw new Error(i18n('aiSidebarDrawApiUrlRequired'));
         }
 
         return `${normalizeOpenAIImageApiBaseUrl(rawBaseUrl)}${endpoint}`;
@@ -5640,7 +5640,7 @@
             providerConfig?.customApiUrl?.trim() ||
             getBuiltInImageApiBaseUrl(currentProvider);
         if (!rawBaseUrl) {
-            throw new Error('当前平台未配置 API URL，无法调用 Gemini 图片接口');
+            throw new Error(i18n('aiSidebarDrawGeminiApiUrlRequired'));
         }
 
         const modelId = String(modelConfig?.id || '')
@@ -5690,14 +5690,14 @@
             return await response.blob();
         }
 
-        throw new Error(`无法读取图片：${attachment.name}`);
+        throw new Error(tf('aiSidebarDrawImageReadFailed', attachment.name));
     }
 
     async function blobToBase64String(blob: Blob): Promise<string> {
         const dataUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+            reader.onerror = () => reject(reader.error || new Error(i18n('aiSidebarDrawImageReadError')));
             reader.readAsDataURL(blob);
         });
         return dataUrl.split(',')[1] || '';
@@ -5835,7 +5835,7 @@
                 throw new Error(
                     await getImageApiError(
                         response,
-                        isEdit ? 'Gemini 图片编辑失败' : 'Gemini 图片生成失败'
+                        isEdit ? i18n('aiSidebarDrawGeminiEditFailed') : i18n('aiSidebarDrawGeminiGenerateFailed')
                     )
                 );
             }
@@ -5852,8 +5852,8 @@
 
         if (rawImages.length === 0) {
             const reason = responseText
-                ? `模型未返回图片，仅返回文本：\n${responseText}`
-                : '模型未返回任何图片或说明文本';
+                ? tf('aiSidebarDrawTextOnly', responseText)
+                : i18n('aiSidebarDrawEmptyResponse');
             throw new Error(reason);
         }
 
@@ -6072,7 +6072,7 @@
 
         if (!response.ok) {
             throw new Error(
-                await getImageApiError(response, isEdit ? '图片编辑失败' : '图片生成失败')
+                await getImageApiError(response, isEdit ? i18n('aiSidebarDrawEditFailed') : i18n('aiSidebarDrawGenerateFailed'))
             );
         }
 
@@ -6096,12 +6096,12 @@
             .map(prompt => `- ${prompt}`)
             .join('\n');
 
-        const title = isEdit ? '图片编辑完成' : '图片生成完成';
+        const title = isEdit ? i18n('aiSidebarDrawEditComplete') : i18n('aiSidebarDrawGenerateComplete');
         if (!revisedPrompts) {
-            return `${title}，共 ${images.length} 张。`;
+            return tf('aiSidebarDrawCompleteCount', title, images.length);
         }
 
-        return `${title}，共 ${images.length} 张。`;
+        return tf('aiSidebarDrawCompleteCount', title, images.length);
     }
 
     // 画图模式：拉取 contextDocuments 的最新 Markdown 内容
@@ -6153,13 +6153,13 @@
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
         const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
         if (!userContent) {
-            pushErrMsg('请输入画图提示词');
+            pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
             isLoading = false;
             return;
         }
 
         if (!modelSupportsImageGeneration(modelConfig)) {
-            pushErrMsg('画图模式只能使用已勾选“生图”能力的模型');
+            pushErrMsg(i18n('aiSidebarDrawModelRequired'));
             isLoading = false;
             return;
         }
@@ -6178,7 +6178,7 @@
         const userAttachments = [...currentAttachments];
         const userImageAttachments = userAttachments.filter(att => att.type === 'image');
         if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
-            pushErrMsg('请先选择一张满意的图片，再继续编辑');
+            pushErrMsg(i18n('aiSidebarDrawSelectFirst'));
             isLoading = false;
             return;
         }
@@ -6203,7 +6203,7 @@
         currentAttachments = [];
         contextDocuments = [];
         isAborted = false;
-        streamingMessage = isEdit ? '正在编辑图片' : '正在生成图片';
+        streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
         streamingThinking = '';
         isThinkingPhase = false;
         hasUnsavedChanges = true;
@@ -6243,7 +6243,7 @@
             }
 
             if (generatedImages.length === 0) {
-                throw new Error('图片接口没有返回可用图片');
+                throw new Error(i18n('aiSidebarDrawNoImages'));
             }
 
             const assistantMessage: Message = {
@@ -6306,13 +6306,13 @@
                 : getMessageText(lastUserMessage.content).trim();
 
         if (!userContent) {
-            pushErrMsg('请输入画图提示词');
+            pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
             isLoading = false;
             return;
         }
 
         if (!modelSupportsImageGeneration(modelConfig)) {
-            pushErrMsg('画图模式只能使用已勾选“生图”能力的模型');
+            pushErrMsg(i18n('aiSidebarDrawModelRequired'));
             isLoading = false;
             return;
         }
@@ -6332,7 +6332,7 @@
         const userImageAttachments =
             lastUserMessage.attachments?.filter(att => att.type === 'image') || [];
         if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
-            pushErrMsg('请先选择一张满意的图片，再继续编辑');
+            pushErrMsg(i18n('aiSidebarDrawSelectFirst'));
             isLoading = false;
             return;
         }
@@ -6340,7 +6340,7 @@
         const isEdit = editImageSources.length > 0;
 
         abortController = new AbortController();
-        streamingMessage = isEdit ? '正在编辑图片' : '正在生成图片';
+        streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
 
         try {
             const generatedImages = await requestDrawImages(
@@ -6356,7 +6356,7 @@
             }
 
             if (generatedImages.length === 0) {
-                throw new Error('图片接口没有返回可用图片');
+                throw new Error(i18n('aiSidebarDrawNoImages'));
             }
 
             const assistantMessage: Message = {
@@ -6429,7 +6429,7 @@
 
         // 如果处于等待问题卡片回答状态，阻止发送
         if (isWaitingForQuestionAnswer) {
-            pushErrMsg('请先回答当前问题卡片');
+            pushErrMsg(i18n('aiSidebarQuestionAnswerFirst'));
             isLoading = false;
             return;
         }
@@ -6467,7 +6467,7 @@
                 customBody = JSON.parse(modelConfig.customBody);
             } catch (e) {
                 console.error('Failed to parse custom body:', e);
-                pushErrMsg('自定义参数 JSON 格式错误');
+                pushErrMsg(i18n('aiSidebarCustomBodyInvalid'));
                 isLoading = false;
                 return;
             }
@@ -7351,7 +7351,7 @@
                                                     role: 'tool',
                                                     tool_call_id: toolCall.id,
                                                     name: toolCall.function.name,
-                                                    content: `用户拒绝执行工具 ${toolCall.function.name}`,
+                                                    content: tf('aiSidebarToolRejected', toolCall.function.name),
                                                 };
                                                 messages = [...messages, toolResultMessage];
                                             }
@@ -7365,7 +7365,7 @@
                                             role: 'tool',
                                             tool_call_id: toolCall.id,
                                             name: toolCall.function.name,
-                                            content: `工具执行失败: ${(error as Error).message}`,
+                                            content: tf('aiSidebarToolExecutionFailed', (error as Error).message),
                                         };
                                         messages = [...messages, errorMessage];
                                     }
@@ -7508,7 +7508,7 @@
                                                     const round =
                                                         existingMessage.toolCallThinkings[i];
                                                     if (i > 0) fullReasoning += '\n\n';
-                                                    fullReasoning += `[第${i + 1}轮思考]\n${round.thinkingBefore}`;
+                                                    fullReasoning += tf('aiSidebarThinkingRound', i + 1, round.thinkingBefore);
                                                 }
                                             }
                                             existingMessage.reasoning_content = fullReasoning;
@@ -8321,7 +8321,7 @@
             element.setAttribute('data-math-rendered', 'true');
         } catch (error) {
             console.error('Error rendering math formula:', error);
-            element.innerHTML = `<span style="color: red;">公式渲染错误</span>`;
+            element.innerHTML = i18n('aiSidebarFormulaRenderError');
             element.setAttribute('data-math-rendered', 'true');
         }
     }
@@ -8540,7 +8540,7 @@
                     const copyButton = document.createElement('button');
                     copyButton.className = 'code-block-copy-btn';
                     copyButton.innerHTML = '<svg><use xlink:href="#iconCopy"></use></svg>';
-                    copyButton.title = '复制代码';
+                    copyButton.title = i18n('aiSidebarCopyCode');
 
                     // 添加复制功能
                     copyButton.addEventListener('click', async () => {
@@ -8548,7 +8548,7 @@
                         try {
                             await platformUtils.writeText(code);
                             // 显示复制成功提示
-                            pushMsg('已复制');
+                            pushMsg(i18n('aiSidebarCopied'));
                             // 更新按钮图标
                             copyButton.innerHTML =
                                 '<svg><use xlink:href="#iconCheck"></use></svg>';
@@ -8560,7 +8560,7 @@
                             }, 2000);
                         } catch (err) {
                             console.error('Copy failed:', err);
-                            pushErrMsg('复制失败');
+                            pushErrMsg(i18n('aiSidebarErrorsCopyFailed'));
                         }
                     });
 
@@ -8614,7 +8614,7 @@
                                 await openBlock(blockId);
                             } catch (error) {
                                 console.error('Open block error:', error);
-                                pushErrMsg(`打开块失败: ${(error as Error).message}`);
+                                pushErrMsg(tf('commonOpenBlockFailed', (error as Error).message));
                             }
                         }
                     });
@@ -9700,7 +9700,7 @@
             let displayTitle =
                 contentPreview.length > 20 ? contentPreview.substring(0, 20) + '...' : contentPreview;
             if (!displayTitle) {
-                displayTitle = isDoc ? blockTitle || '文档内容' : '块内容';
+                displayTitle = isDoc ? blockTitle || i18n('aiSidebarDocumentContent') : i18n('aiSidebarBlockContent');
             }
 
             contextDocuments = [
@@ -9879,7 +9879,7 @@
             console.log(payload);
             if (isWebViewTab && webviewUrl) {
                 // 是 webview 网页，直接使用 WebView 模式获取内容（因为已经是 webview 打开的）
-                pushMsg(`正在获取网页内容: ${tabTitle || webviewUrl}`);
+                pushMsg(tf('aiSidebarWebFetchingPage', tabTitle || webviewUrl));
 
                 try {
                     const webviewResult = await fetchWithWebView(webviewUrl);
@@ -9909,14 +9909,14 @@
                             },
                         ];
 
-                        pushMsg(`✓ 成功添加网页: ${webviewResult.title || tabTitle || webviewUrl}`);
+                        pushMsg(tf('aiSidebarWebAdded', webviewResult.title || tabTitle || webviewUrl));
                     } else {
-                        pushErrMsg(`✗ 获取失败: ${webviewUrl} - ${webviewResult.error}`);
+                        pushErrMsg(tf('aiSidebarWebFetchError', webviewUrl, webviewResult.error));
                     }
                 } catch (error) {
                     console.error('获取网页内容失败:', error);
                     pushErrMsg(
-                        `✗ 获取网页失败: ${error instanceof Error ? error.message : String(error)}`
+                        tf('aiSidebarWebFetchException', error instanceof Error ? error.message : String(error))
                     );
                 }
             } else {
@@ -10442,7 +10442,7 @@
                 await scrollToTop();
             } catch (e) {
                 console.error('Failed to load session content:', e);
-                pushErrMsg('加载会话失败');
+                pushErrMsg(i18n('aiSidebarSessionLoadFailed'));
             }
     }
 
@@ -10549,8 +10549,8 @@
 
         const count = sessionIds.length;
         confirm(
-            '批量删除会话',
-            `确定要删除选中的 ${count} 个会话吗？此操作不可恢复。`,
+            i18n('aiSidebarSessionBatchDelete'),
+            tf('aiSidebarSessionBatchDeleteConfirm', count),
             async () => {
                 // 【修复】删除前重新加载最新的会话列表，避免多页签覆盖问题
                 await loadSessions();
@@ -10573,7 +10573,7 @@
                     doNewSession();
                 }
 
-                pushMsg(`成功删除 ${count} 个会话`);
+                pushMsg(tf('aiSidebarSessionBatchDeleted', count));
             }
         );
     }
@@ -10613,7 +10613,7 @@
             // 加载会话消息
             const sessionData = await plugin.loadData(`sessions/${sessionId}.json`);
             if (!sessionData) {
-                pushErrMsg('会话文件不存在');
+                pushErrMsg(i18n('aiSidebarSessionFileMissing'));
                 return;
             }
             const sessionMessages = sessionData?.messages || [];
@@ -10639,7 +10639,7 @@
             currentSessionId = originalSessionId;
         } catch (error) {
             console.error('Save session to note error:', error);
-            pushErrMsg('加载会话失败: ' + error.message);
+            pushErrMsg(i18n('aiSidebarSessionLoadError') + error.message);
         }
     }
 
@@ -10915,12 +10915,12 @@
     // 确认保存到笔记
     async function confirmSaveToNote() {
         if (!saveNotebookId) {
-            pushErrMsg('请选择笔记本');
+            pushErrMsg(i18n('aiSidebarSaveNotebookRequired'));
             return;
         }
 
         if (!savePath) {
-            pushErrMsg('请输入保存路径');
+            pushErrMsg(i18n('aiSidebarSavePathRequired'));
             return;
         }
 
@@ -10972,25 +10972,25 @@
 
                 // 如果有多模型响应，添加所有模型的回答
                 if (message.multiModelResponses && message.multiModelResponses.length > 0) {
-                    markdown += `### 多模型对比\n\n`;
+                    markdown += i18n('aiSidebarExportMultiModel');
                     for (const response of message.multiModelResponses) {
                         const selectedMark = response.isSelected ? ' ✅' : '';
                         markdown += `#### ${response.modelName}${selectedMark}\n\n`;
                         if (response.thinking) {
-                            markdown += `**思考过程：**\n\n${response.thinking}\n\n`;
+                            markdown += tf('aiSidebarExportThinking', response.thinking);
                         }
                         if (response.content) {
                             markdown += `${getMessageText(response.content)}\n\n`;
                         }
                         if (response.error) {
-                            markdown += `**错误：** ${response.error}\n\n`;
+                            markdown += tf('aiSidebarExportError', response.error);
                         }
                     }
                 }
 
                 // 如果有附件，添加附件信息
                 if (message.attachments && message.attachments.length > 0) {
-                    markdown += `### 附件\n\n`;
+                    markdown += i18n('aiSidebarExportAttachments');
                     for (const attachment of message.attachments) {
                         if (attachment.type === 'image') {
                             markdown += `![${attachment.name}](${attachment.url || attachment.data})\n\n`;
@@ -11003,7 +11003,7 @@
 
                 // 如果有上下文文档
                 if (message.contextDocuments && message.contextDocuments.length > 0) {
-                    markdown += `### 相关上下文\n\n`;
+                    markdown += i18n('aiSidebarExportContext');
                     for (const doc of message.contextDocuments) {
                         markdown += `- [${doc.title}](siyuan://blocks/${doc.id})\n`;
                     }
@@ -11015,8 +11015,8 @@
             if (!markdown.trim()) {
                 const errorMsg =
                     messagesToSave.length === 0
-                        ? '当前会话没有可保存的消息（user/assistant）'
-                        : '消息内容为空，无法保存';
+                        ? i18n('aiSidebarSaveNoMessages')
+                        : i18n('aiSidebarSaveEmptyMessage');
                 pushErrMsg(errorMsg);
                 return;
             }
@@ -11045,7 +11045,7 @@
             }
         } catch (error) {
             console.error('Save to note error:', error);
-            pushErrMsg('保存失败: ' + error.message);
+            pushErrMsg(i18n('aiSidebarSaveFailed') + error.message);
         }
     }
 
@@ -11550,7 +11550,7 @@
             console.warn('通过 SQL 获取文档标题失败:', error);
         }
 
-        return `文档 ${docId}`;
+        return tf('aiSidebarDocumentFallback', docId);
     }
 
     async function getDocNameById(docId: string): Promise<string> {
@@ -11789,8 +11789,8 @@
                 operation.newDocTitle &&
                 operation.oldDocTitle !== operation.newDocTitle
             ) {
-                const oldTitleLine = `# 文档标题: ${operation.oldDocTitle}\n\n`;
-                const newTitleLine = `# 文档标题: ${operation.newDocTitle}\n\n`;
+                const oldTitleLine = tf('aiSidebarDocumentTitleHeading', operation.oldDocTitle);
+                const newTitleLine = tf('aiSidebarDocumentTitleHeading', operation.newDocTitle);
                 oldMdContent = oldTitleLine + oldMdContent;
                 newMdContent = newTitleLine + newMdContent;
             }
@@ -12092,7 +12092,7 @@
                         });
 
                         if (validPreviousModels.length > 0) {
-                            pushMsg('当前选择的多模型无效，将使用之前的模型重新生成');
+                            pushMsg(i18n('aiSidebarMultiModelRegenerateFallback'));
                             shouldUseMultiModel = true;
                             modelsToUse = validPreviousModels;
                         }
@@ -12584,7 +12584,7 @@
                 customBody = JSON.parse(modelConfig.customBody);
             } catch (e) {
                 console.error('Failed to parse custom body:', e);
-                pushErrMsg('自定义参数 JSON 格式错误');
+                pushErrMsg(i18n('aiSidebarCustomBodyInvalid'));
                 isLoading = false;
                 return;
             }
@@ -12875,7 +12875,7 @@
                                                     role: 'tool',
                                                     tool_call_id: toolCall.id,
                                                     name: toolCall.function.name,
-                                                    content: `用户拒绝执行工具 ${toolCall.function.name}`,
+                                                    content: tf('aiSidebarToolRejected', toolCall.function.name),
                                                 };
                                                 messages = [...messages, toolResultMessage];
                                             }
@@ -12889,7 +12889,7 @@
                                             role: 'tool',
                                             tool_call_id: toolCall.id,
                                             name: toolCall.function.name,
-                                            content: `工具执行失败: ${(error as Error).message}`,
+                                            content: tf('aiSidebarToolExecutionFailed', (error as Error).message),
                                         };
                                         messages = [...messages, errorMessage];
                                     }
@@ -13033,7 +13033,7 @@
                                                     const round =
                                                         existingMessage.toolCallThinkings[i];
                                                     if (i > 0) fullReasoning += '\n\n';
-                                                    fullReasoning += `[第${i + 1}轮思考]\n${round.thinkingBefore}`;
+                                                    fullReasoning += tf('aiSidebarThinkingRound', i + 1, round.thinkingBefore);
                                                 }
                                             }
                                             existingMessage.reasoning_content = fullReasoning;
@@ -13339,7 +13339,7 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={openTranslateDialog}
-                title={i18n('aiSidebarTranslateOpenDialog') || '翻译'}
+                title={i18n('aiSidebarTranslateOpenDialog')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconTranslate"></use></svg>
             </button>
@@ -13348,7 +13348,7 @@
                     class="b3-button b3-button--text"
                     bind:this={webAppMenuButton}
                     on:click={toggleWebAppMenu}
-                    title={i18n('aiSidebarWebappTitle') || '小程序'}
+                    title={i18n('aiSidebarWebappTitle')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconCopilotWebApp"></use></svg>
                 </button>
@@ -13368,7 +13368,7 @@
                     <svg class="b3-menu__icon">
                         <use xlink:href="#iconSettings"></use>
                     </svg>
-                    <span class="b3-menu__label">管理小程序</span>
+                    <span class="b3-menu__label">{i18n('webappManage')}</span>
                 </button>
                 {#if webApps.length > 0}
                     <div class="b3-menu__separator"></div>
@@ -13427,7 +13427,7 @@
                     class="b3-button b3-button--text"
                     bind:this={openWindowMenuButton}
                     on:click={toggleOpenWindowMenu}
-                    title={i18n('aiSidebarActionsOpenWindow') || '在新窗口打开'}
+                    title={i18n('aiSidebarActionsOpenWindow')}
                 >
                     <svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>
                 </button>
@@ -13437,13 +13437,13 @@
                             <svg class="b3-menu__icon">
                                 <use xlink:href="#iconOpenWindow"></use>
                             </svg>
-                            <span class="b3-menu__label">在页签打开</span>
+                            <span class="b3-menu__label">{i18n('aiSidebarOpenInTab')}</span>
                         </button>
                         <button class="b3-menu__item" on:click={openInNewWindow}>
                             <svg class="b3-menu__icon">
                                 <use xlink:href="#iconOpenWindow"></use>
                             </svg>
-                            <span class="b3-menu__label">在新窗口打开</span>
+                            <span class="b3-menu__label">{i18n('aiSidebarOpenInWindow')}</span>
                         </button>
                     </div>
                 {/if}
@@ -13451,7 +13451,7 @@
             <button
                 class="b3-button b3-button--text"
                 on:click={toggleFullscreen}
-                title={isFullscreen ? '退出全屏' : '全屏查看'}
+                title={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')}
             >
                 <svg class="b3-button__icon">
                     <use
@@ -13540,7 +13540,7 @@
                                                 <use xlink:href="#iconRight"></use>
                                             </svg>
                                             <span class="ai-message__thinking-title">
-                                                💭 思考过程
+                                                {i18n('aiSidebarThinkingLabel')}
                                             </span>
                                         </div>
                                         {#if !thinkingCollapsed[baseIndex]}
@@ -13734,7 +13734,7 @@
                                         >
                                             <use xlink:href="#iconRight"></use>
                                         </svg>
-                                        <span class="ai-message__thinking-title">💭 思考过程</span>
+                                        <span class="ai-message__thinking-title">{i18n('aiSidebarThinkingLabel')}</span>
                                     </div>
                                     {#if !thinkingCollapsed[thinkingIndex]}
                                         {@const thinkDisplay = getDisplayContent(thinkingContent)}
@@ -13909,7 +13909,7 @@
                                             <use xlink:href="#iconRight"></use>
                                         </svg>
                                         <span class="ai-message__thinking-title">
-                                            💭 思考过程（续）
+                                            {i18n('aiSidebarThinkingContinued')}
                                         </span>
                                     </div>
                                     {#if !thinkingCollapsed[thinkingAfterIndex]}
@@ -13961,7 +13961,7 @@
                             <div class="ai-message__multi-model-responses">
                                 <div class="ai-message__multi-model-header">
                                     <div class="ai-message__multi-model-header-top">
-                                        <h4>🤖 多模型响应</h4>
+                                        <h4>{i18n('aiSidebarMultiModelResponses')}</h4>
                                         <div class="ai-message__multi-model-layout-selector">
                                             <button
                                                 class="b3-button b3-button--text b3-button--small"
@@ -14560,7 +14560,7 @@
                                                                     <span
                                                                         class="ai-message__thinking-title"
                                                                     >
-                                                                        💭 思考过程
+                                                                        {i18n('aiSidebarThinkingLabel')}
                                                                     </span>
                                                                 </div>
                                                                 {#if !isCollapsed}
@@ -14914,7 +14914,7 @@
                             <div class="ai-message__context-docs">
                                 <div class="ai-message__context-docs-title">
                                     {#if message.role === 'assistant'}
-                                        🖼️ 图片与附件 ({contextCount})
+                                        {tf('aiSidebarImagesAttachmentsCount', contextCount)}
                                     {:else}
                                         📎 {i18n('aiSidebarContextContent')} ({contextCount})
                                     {/if}
@@ -14927,10 +14927,9 @@
                                         )}
                                     >
                                         {#if isDrawImageSelectionRequired(message)}
-                                            请选择一张满意图片用于继续编辑
+                                            {i18n('aiSidebarDrawSelectHint')}
                                         {:else}
-                                            已选择第 {(getDrawSelectedImageIndex(message) ?? 0) + 1}
-                                            张图片用于继续编辑
+                                            {tf('aiSidebarDrawImageSelected', (getDrawSelectedImageIndex(message) ?? 0) + 1)}
                                         {/if}
                                     </div>
                                 {/if}
@@ -14960,7 +14959,7 @@
                                                                 attachment.data,
                                                                 attachment.name
                                                             )}
-                                                        title="点击查看大图"
+                                                        title={i18n('aiSidebarImageViewLarge')}
                                                     />
                                                     {#if shouldShowDrawImageChoice(message)}
                                                         <button
@@ -14979,12 +14978,12 @@
                                                                     imageIndex
                                                                 )}
                                                             disabled={isLoading}
-                                                            title="选择这张图片用于继续编辑"
+                                                            title={i18n('aiSidebarDrawSelectImage')}
                                                         >
                                                             {#if isDrawAttachmentSelected(message, attachmentIndex)}
-                                                                已选择
+                                                                {i18n('toolsSelectorSelected')}
                                                             {:else}
-                                                                选择这张
+                                                                {i18n('aiSidebarDrawSelect')}
                                                             {/if}
                                                         </button>
                                                     {/if}
@@ -14994,9 +14993,9 @@
                                                             platformUtils.writeText(
                                                                 attachment.data
                                                             );
-                                                            pushMsg('已复制图片URL');
+                                                            pushMsg(i18n('aiSidebarImageUrlCopied'));
                                                         }}
-                                                        title="复制图片URL"
+                                                        title={i18n('aiSidebarImageUrlCopy')}
                                                     >
                                                         <svg class="b3-button__icon">
                                                             <use xlink:href="#iconCopy"></use>
@@ -15031,13 +15030,13 @@
                                                                 );
                                                                 pushMsg(
                                                                     attachment.isWebPage
-                                                                        ? '已复制网页Markdown内容'
-                                                                        : '已复制文件内容'
+                                                                        ? i18n('aiSidebarWebMarkdownCopied')
+                                                                        : i18n('aiSidebarFileContentCopied')
                                                                 );
                                                             }}
                                                             title={attachment.isWebPage
-                                                                ? '复制网页Markdown'
-                                                                : '复制文件内容'}
+                                                                ? i18n('aiSidebarWebMarkdownCopy')
+                                                                : i18n('aiSidebarFileContentCopy')}
                                                         >
                                                             <svg class="b3-button__icon">
                                                                 <use xlink:href="#iconCopy"></use>
@@ -15095,7 +15094,7 @@
                         {#if message.role === 'assistant' && message.editOperations && message.editOperations.length > 0}
                             <div class="ai-message__edit-operations">
                                 <div class="ai-message__edit-operations-title">
-                                    📝 文档总差异 ({message.editOperations.length})
+                                    {tf('aiSidebarDocumentDiffCount', message.editOperations.length)}
                                 </div>
                                 {#each message.editOperations as operation}
                                     <div
@@ -15123,12 +15122,12 @@
                                         </div>
                                         {#if operation.affectedBlockIds && operation.affectedBlockIds.length > 0}
                                             <div class="ai-message__edit-operation-block-ids">
-                                                块ID: {operation.affectedBlockIds.join(', ')}
+                                                {i18n('aiSidebarBlockIdLabel')} {operation.affectedBlockIds.join(', ')}
                                             </div>
                                         {/if}
                                         {#if operation.oldDocTitle && operation.newDocTitle && operation.oldDocTitle !== operation.newDocTitle}
                                             <div class="ai-message__edit-operation-block-ids">
-                                                标题: {operation.oldDocTitle} → {operation.newDocTitle}
+                                                {i18n('aiSidebarTitleLabel')} {operation.oldDocTitle} → {operation.newDocTitle}
                                             </div>
                                         {/if}
                                         <div class="ai-message__edit-operation-actions">
@@ -15224,7 +15223,7 @@
                                 <use xlink:href="#iconRight"></use>
                             </svg>
                             <span class="ai-message__thinking-title">
-                                💭 思考中{isThinkingPhase ? '...' : ' (已完成)'}
+                                {i18n('aiSidebarThinkingInProgress')}{isThinkingPhase ? '...' : i18n('aiSidebarThinkingCompleted')}
                             </span>
                         </div>
                         {#if !isThinkingPhase}
@@ -15311,7 +15310,7 @@
                                                     class="b3-text-field agent-chat__question-custom"
                                                     type="text"
                                                     value={questionCardCustomAnswers[question.id] || ''}
-                                                    placeholder={question.placeholder || '自定义输入...'}
+                                                    placeholder={question.placeholder || i18n('aiSidebarQuestionCustomInput')}
                                                     on:input={(e) =>
                                                         updateCustomAnswer(question.id, e.currentTarget.value)}
                                                 />
@@ -15352,7 +15351,7 @@
                                                     class="b3-text-field agent-chat__question-custom"
                                                     type="text"
                                                     value={questionCardCustomAnswers[question.id] || ''}
-                                                    placeholder={question.placeholder || '自定义输入...'}
+                                                    placeholder={question.placeholder || i18n('aiSidebarQuestionCustomInput')}
                                                     on:input={(e) =>
                                                         updateCustomAnswer(question.id, e.currentTarget.value)}
                                                 />
@@ -15379,7 +15378,7 @@
                                         questionCardCustomAnswers
                                     )}
                                 >
-                                    {pendingQuestionCard.submitButtonText || '提交'}
+                                    {pendingQuestionCard.submitButtonText || i18n('aiSidebarQuestionSubmit')}
                                 </button>
                             </div>
                         </div>
@@ -15955,7 +15954,7 @@
                                                             <use xlink:href="#iconRight"></use>
                                                         </svg>
                                                         <span class="ai-message__thinking-title">
-                                                            💭 思考过程
+                                                            {i18n('aiSidebarThinkingLabel')}
                                                         </span>
                                                     </div>
                                                     {#if !thinkingCollapsed[`mm-tab-${selectedTabIndex}-group-${groupIndex}`]}
@@ -16099,7 +16098,7 @@
                                                         <use xlink:href="#iconRight"></use>
                                                     </svg>
                                                     <span class="ai-message__thinking-title">
-                                                        💭 思考过程
+                                                        {i18n('aiSidebarThinkingLabel')}
                                                     </span>
                                                 </div>
                                                 {#if !response.thinkingCollapsed}
@@ -16135,7 +16134,7 @@
                                                     <use xlink:href="#iconRight"></use>
                                                 </svg>
                                                 <span class="ai-message__thinking-title">
-                                                    💭 思考过程
+                                                    {i18n('aiSidebarThinkingLabel')}
                                                 </span>
                                             </div>
                                             {#if !response.thinkingCollapsed}
@@ -16215,7 +16214,7 @@
                         <button
                             class="ai-sidebar__context-doc-remove"
                             on:click={() => (contextDocuments = contextDocuments.filter(item => item.id !== doc.id))}
-                            title="移除上下文"
+                            title={i18n('aiSidebarContextRemoveAction')}
                         >×</button>
                         <button
                             class="ai-sidebar__context-doc-link"
@@ -16229,7 +16228,7 @@
                         <button
                             class="ai-sidebar__context-doc-remove"
                             on:click={() => removeAttachment(index)}
-                            title="移除附件"
+                            title={i18n('aiSidebarAttachmentRemove')}
                         >×</button>
                         {#if attachment.type === 'image'}
                             <button
@@ -16249,9 +16248,9 @@
                                 class="b3-button b3-button--text ai-sidebar__context-doc-copy"
                                 on:click|stopPropagation={() => {
                                     platformUtils.writeText(attachment.data);
-                                    pushMsg(attachment.isWebPage ? '已复制网页Markdown内容' : '已复制文件内容');
+                                    pushMsg(attachment.isWebPage ? i18n('aiSidebarWebMarkdownCopied') : i18n('aiSidebarFileContentCopied'));
                                 }}
-                                title={attachment.isWebPage ? '复制网页Markdown' : '复制文件内容'}
+                                title={attachment.isWebPage ? i18n('aiSidebarWebMarkdownCopy') : i18n('aiSidebarFileContentCopy')}
                             ><svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg></button>
                         {/if}
                     </div>
@@ -16276,7 +16275,7 @@
             >
                 <option value="ask">{i18n('aiSidebarModeAsk')}</option>
                 <option value="agent">{i18n('aiSidebarModeAgent')}</option>
-                <option value="draw">{i18n('aiSidebarModeDraw') || '画图模式'}</option>
+                <option value="draw">{i18n('aiSidebarModeDraw')}</option>
             </select>
 
             <!-- Agent/Ask 模式工具选择按钮 -->
@@ -16385,7 +16384,7 @@
         {#if chatMode === 'draw'}
             <div class="ai-sidebar__draw-options">
                 <label class="ai-sidebar__draw-option">
-                    <span>尺寸</span>
+                    <span>{i18n('aiSidebarDrawSize')}</span>
                     <select class="b3-select" bind:value={drawImageSize}>
                         {#each drawImageSizeOptions as option}
                             <option value={option.value}>{option.label}</option>
@@ -16393,7 +16392,7 @@
                     </select>
                 </label>
                 <label class="ai-sidebar__draw-option ai-sidebar__draw-option--number">
-                    <span>数量</span>
+                    <span>{i18n('aiSidebarDrawCount')}</span>
                     <input
                         class="b3-text-field"
                         type="number"
@@ -16404,7 +16403,7 @@
                     />
                 </label>
                 <label class="ai-sidebar__draw-option">
-                    <span>质量</span>
+                    <span>{i18n('aiSidebarDrawQuality')}</span>
                     <select class="b3-select" bind:value={drawImageQuality}>
                         {#each DRAW_IMAGE_QUALITY_OPTIONS as option}
                             <option value={option.value}>{option.label}</option>
@@ -16475,7 +16474,7 @@
                     class:ai-sidebar__send-btn--abort={isLoading}
                     on:click={isLoading ? abortMessage : sendMessage}
                     disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
-                    title={isLoading ? '中断生成' : '发送消息'}
+                    title={isLoading ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
                 >
                     {#if isLoading}
                         <svg class="b3-button__icon">
@@ -16635,7 +16634,7 @@
                 <div class="ai-sidebar__prompt-dialog-body">
                     <div class="ai-sidebar__prompt-form">
                         <div class="ai-sidebar__prompt-form-field">
-                            <label class="ai-sidebar__prompt-form-label">标题</label>
+                            <label class="ai-sidebar__prompt-form-label">{i18n('commonTitle')}</label>
                             <input
                                 type="text"
                                 bind:value={newPromptTitle}
@@ -16644,10 +16643,10 @@
                             />
                         </div>
                         <div class="ai-sidebar__prompt-form-field">
-                            <label class="ai-sidebar__prompt-form-label">内容</label>
+                            <label class="ai-sidebar__prompt-form-label">{i18n('commonContent')}</label>
                             <textarea
                                 bind:value={newPromptContent}
-                                placeholder="输入提示词内容"
+                                placeholder={i18n('aiSidebarPromptContentPlaceholder')}
                                 class="b3-text-field ai-sidebar__prompt-textarea"
                                 rows="20"
                             ></textarea>
@@ -16657,10 +16656,10 @@
                                 class="b3-button b3-button--cancel"
                                 on:click={closePromptManager}
                             >
-                                取消
+                                {i18n('platformCancel')}
                             </button>
                             <button class="b3-button b3-button--primary" on:click={saveNewPrompt}>
-                                {editingPrompt ? '更新' : '保存'}
+                                {editingPrompt ? i18n('commonUpdate') : i18n('commonSave')}
                             </button>
                         </div>
                     </div>
@@ -16675,7 +16674,7 @@
             <div class="ai-sidebar__prompt-dialog-overlay" on:click={closeWebLinkDialog}></div>
             <div class="ai-sidebar__prompt-dialog-content">
                 <div class="ai-sidebar__prompt-dialog-header">
-                    <h4>添加网页链接</h4>
+                    <h4>{i18n('aiSidebarActionsAddWebLink')}</h4>
                     <button class="b3-button b3-button--text" on:click={closeWebLinkDialog}>
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>
@@ -16684,11 +16683,11 @@
                     <div class="ai-sidebar__prompt-form">
                         <div class="ai-sidebar__prompt-form-field">
                             <label class="ai-sidebar__prompt-form-label">
-                                网页链接（每行一个）
+                                {i18n('aiSidebarWebLinkLabel')}
                             </label>
                             <textarea
                                 bind:value={webLinkInput}
-                                placeholder="输入一个或多个网页链接，每行一个&#10;示例：&#10;https://example.com&#10;https://example.org/page"
+                                placeholder={i18n('aiSidebarWebLinkPlaceholder')}
                                 class="b3-text-field ai-sidebar__prompt-textarea"
                                 rows="10"
                                 disabled={isFetchingWebContent}
@@ -16696,9 +16695,9 @@
                             <div
                                 style="margin-top: 8px; font-size: 12px; color: var(--b3-theme-on-surface-light);"
                             >
-                                💡 提示：
+                                {i18n('aiSidebarWebLinkHintLabel')}
                                 <ul style="margin: 4px 0; padding-left: 20px;">
-                                    <li>由于浏览器安全限制，某些网站可能无法直接访问</li>
+                                    <li>{i18n('aiSidebarWebLinkHint')}</li>
                                 </ul>
                             </div>
                         </div>
@@ -16708,14 +16707,14 @@
                                 on:click={closeWebLinkDialog}
                                 disabled={isFetchingWebContent}
                             >
-                                取消
+                                {i18n('platformCancel')}
                             </button>
                             <button
                                 class="b3-button b3-button--primary"
                                 on:click={fetchWebPages}
                                 disabled={isFetchingWebContent || !webLinkInput.trim()}
                             >
-                                {isFetchingWebContent ? '获取中...' : '获取网页内容'}
+                                {isFetchingWebContent ? i18n('settingsAiFetchModelsLoading') : i18n('toolsFetchWebContentName')}
                             </button>
                         </div>
                     </div>
@@ -16868,22 +16867,22 @@
                 <div class="ai-sidebar__diff-dialog-body">
                     <div class="ai-sidebar__diff-info">
                         {#if currentDiffOperation.docTitle}
-                            <strong>文档:</strong>
+                            <strong>{i18n('aiSidebarDocumentLabel')}</strong>
                             {currentDiffOperation.docTitle}
                             <br />
                         {/if}
                         {#if currentDiffOperation.affectedBlockIds && currentDiffOperation.affectedBlockIds.length > 0}
-                            <strong>块ID:</strong>
+                            <strong>{i18n('aiSidebarBlockIdLabel')}</strong>
                             {currentDiffOperation.affectedBlockIds.join(', ')}
                             <br />
                         {/if}
                         {#if currentDiffOperation.oldDocTitle && currentDiffOperation.newDocTitle && currentDiffOperation.oldDocTitle !== currentDiffOperation.newDocTitle}
-                            <strong>标题:</strong>
+                            <strong>{i18n('aiSidebarTitleLabel')}</strong>
                             {currentDiffOperation.oldDocTitle} → {currentDiffOperation.newDocTitle}
                             <br />
                         {/if}
                         {#if currentDiffOperation.docId}
-                            <strong>文档ID:</strong>
+                            <strong>{i18n('aiSidebarDocumentIdLabel')}</strong>
                             {currentDiffOperation.docId}
                         {:else if currentDiffOperation.operationType === 'insert'}
                             <strong>{i18n('aiSidebarEditInsertBlock')}:</strong>
@@ -17050,21 +17049,21 @@
                         on:click={() => handleContextMenuAction('copy_md')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（Markdown，默认）</span>
+                        <span>{i18n('aiSidebarCopyMarkdownDefault')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_plain')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（纯文本）</span>
+                        <span>{i18n('aiSidebarCopyPlainText')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_html')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（富文本）</span>
+                        <span>{i18n('aiSidebarCopyRichText')}</span>
                     </button>
                 {:else}
                     <button
@@ -17072,21 +17071,21 @@
                         on:click={() => handleContextMenuAction('copy_md')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（Markdown，默认）</span>
+                        <span>{i18n('aiSidebarCopyMarkdownDefault')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_plain')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（纯文本）</span>
+                        <span>{i18n('aiSidebarCopyPlainText')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_html')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（富文本）</span>
+                        <span>{i18n('aiSidebarCopyRichText')}</span>
                     </button>
                 {/if}
             {:else}
@@ -17096,21 +17095,21 @@
                         on:click={() => handleContextMenuAction('copy_md')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（Markdown，默认）</span>
+                        <span>{i18n('aiSidebarCopyMarkdownDefault')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_plain')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（纯文本）</span>
+                        <span>{i18n('aiSidebarCopyPlainText')}</span>
                     </button>
                     <button
                         class="ai-sidebar__context-menu-item"
                         on:click={() => handleContextMenuAction('copy_html')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制（富文本）</span>
+                        <span>{i18n('aiSidebarCopyRichText')}</span>
                     </button>
                 {:else}
                     <button
@@ -17335,7 +17334,7 @@
 
                 <div class="tool-approval-dialog__warning">
                     <svg class="b3-button__icon"><use xlink:href="#iconInfo"></use></svg>
-                    <span>请仔细检查参数，确认无误后再批准执行</span>
+                    <span>{i18n('aiSidebarToolApprovalHint')}</span>
                 </div>
             </div>
 
@@ -17356,29 +17355,29 @@
     {#if isImageViewerOpen}
         <div class="image-viewer" class:image-viewer--fullscreen={isImageViewerFullscreen}>
             <div class="image-viewer__header">
-                <h3 class="image-viewer__title">{currentImageName || '图片预览'}</h3>
+                <h3 class="image-viewer__title">{currentImageName || i18n('aiSidebarImagePreview')}</h3>
                 <div class="image-viewer__actions">
                     <button
                         class="b3-button b3-button--text"
                         on:click={() => copyImageAsPng(currentImageSrc)}
-                        title="复制图片"
+                        title={i18n('aiSidebarImageCopy')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconCopy"></use></svg>
-                        <span>复制</span>
+                        <span>{i18n('commonCopy')}</span>
                     </button>
                     <button
                         class="b3-button b3-button--text"
                         on:click={() =>
                             downloadImage(currentImageSrc, currentImageName || 'image.png')}
-                        title="下载图片"
+                        title={i18n('aiSidebarImageDownload')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconDownload"></use></svg>
-                        <span>下载</span>
+                        <span>{i18n('commonDownload')}</span>
                     </button>
                     <button
                         class="b3-button b3-button--text"
                         on:click={toggleImageViewerFullscreen}
-                        title={isImageViewerFullscreen ? '退出全屏' : '全屏查看'}
+                        title={isImageViewerFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')}
                     >
                         <svg class="b3-button__icon">
                             <use
@@ -17387,12 +17386,12 @@
                                     : '#iconFullscreen'}
                             ></use>
                         </svg>
-                        <span>{isImageViewerFullscreen ? '退出全屏' : '全屏'}</span>
+                        <span>{isImageViewerFullscreen ? i18n('fullscreenExit') : i18n('commonFullscreen')}</span>
                     </button>
                     <button
                         class="b3-button b3-button--text"
                         on:click={closeImageViewer}
-                        title="关闭"
+                        title={i18n('commonClose')}
                     >
                         <svg class="b3-button__icon"><use xlink:href="#iconClose"></use></svg>
                     </button>

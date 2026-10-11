@@ -8,6 +8,8 @@
   "author": "frostime",
   "license": "MIT",
   "scripts": {
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "audit:i18n": "node scripts/check-i18n.mjs --audit",
     "dev": "cross-env NODE_ENV=development VITE_SOURCEMAP=inline vite build --watch",
     "build": "cross-env NODE_ENV=production vite build",
     "make-link": "node --no-warnings ./scripts/make_dev_link.js",

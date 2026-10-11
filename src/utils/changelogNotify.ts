@@ -60,7 +60,7 @@ export class ChangelogUtils {
             console.error("Failed to fetch CHANGELOG.md", e);
         }
 
-        let versionNotes = i18n("noUpdateNotes") || "无更新内容";
+        let versionNotes = i18n("noUpdateNotes");
         if (changelogContent && typeof changelogContent === 'string') {
             // 如果是跨版本更新，显示多个版本的更新内容
             if (startVersion !== currentVersion) {
@@ -101,7 +101,7 @@ export class ChangelogUtils {
 
     private static parseChangelog(content: string, version: string): string {
         if (typeof content !== 'string') {
-            return i18n("noUpdateNotes") || "无更新内容";
+            return i18n("noUpdateNotes");
         }
         // 匹配 ## vX.X.X 直到下一个 ## 或文件末尾, 包括标题行
         const escapedVersion = version.replace(/\./g, "\\.");
@@ -111,7 +111,7 @@ export class ChangelogUtils {
         if (match && match[0]) {
             return match[0].trim();
         }
-        return i18n("noUpdateNotes") || "无更新内容";
+        return i18n("noUpdateNotes");
     }
 
     /**
@@ -124,7 +124,7 @@ export class ChangelogUtils {
      */
     private static parseChangelogRange(content: string, fromVersion: string, toVersion: string, includeFromVersion = true): string {
         if (typeof content !== 'string') {
-            return i18n("noUpdateNotes") || "无更新内容";
+            return i18n("noUpdateNotes");
         }
 
         // 匹配所有版本段落
@@ -156,7 +156,7 @@ export class ChangelogUtils {
             return results.join('\n\n---\n\n');
         }
 
-        return i18n("noUpdateNotes") || "无更新内容";
+        return i18n("noUpdateNotes");
     }
 
     private static showDialog(version: string, notes: string) {
@@ -180,18 +180,18 @@ export class ChangelogUtils {
                 <div class="changelog-notes b3-typography">
                     ${htmlNotes}
                     <div style="margin-top: 16px; border-top: 1px solid var(--b3-border-color); padding-top: 8px; font-size: 13px; color: var(--b3-theme-on-surface-light);">
-                        ${i18n("moreChangelog") || "更多版本更新日志请查看："}
+                        ${i18n("moreChangelog")}
                         <a href="https://cdn.jsdelivr.net/gh/Achuan-2/siyuan-plugin-copilot@main/CHANGELOG.md" target="_blank">CHANGELOG.md</a>
                     </div>
                 </div>
             </div>
             <div class="b3-dialog__action">
-                <button class="b3-button b3-button--text" id="changelogConfirmBtn">${i18n("iKnow") || "知道啦"}</button>
+                <button class="b3-button b3-button--text" id="changelogConfirmBtn">${i18n("iKnow")}</button>
             </div>
         `;
 
         const dialog = new Dialog({
-            title: `${i18n("changelogNotification") || "版本更新提醒"}`,
+            title: `${i18n("changelogNotification")}`,
             content: contentHtml,
             width: "min(600px,95%)",
         });

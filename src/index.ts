@@ -27,7 +27,7 @@ import { getDefaultSettings } from "./defaultSettings";
 import { disposeChatGPTClient, getChatGPTClient } from "./chatgpt/client";
 import { isChatGPTDesktop } from "./chatgpt/http";
 import { configureChatGPTStorage } from "./chatgpt/storage";
-import { setPluginInstance, i18n, getCurrentLanguage } from "./utils/i18n";
+import { setPluginInstance, i18n, tf } from './utils/i18n';
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
@@ -582,11 +582,11 @@ export default class PluginSample extends Plugin {
                 position: "RightBottom",
                 size: { width: 400, height: 0 },
                 icon: "iconCopilotWebApp",
-                title: i18n("settingsWebAppCollectionDockTitle") || "网页小程序",
+                title: i18n("settingsWebAppCollectionDockTitle"),
                 show: false,
             },
             data: {
-                text: i18n("settingsWebAppCollectionDockTitle") || "网页小程序"
+                text: i18n("settingsWebAppCollectionDockTitle")
             },
             type: COLLECTION_DOCK_TYPE,
             init: (dock) => {
@@ -851,7 +851,7 @@ export default class PluginSample extends Plugin {
                     // 后退按钮
                     const backBtn = document.createElement('button');
                     backBtn.className = 'b3-button b3-button--text';
-                    backBtn.title = '后退';
+                    backBtn.title = i18n('webviewBack');
                     backBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconLeft"></use></svg>';
                     backBtn.disabled = true;
                     navbar.appendChild(backBtn);
@@ -859,7 +859,7 @@ export default class PluginSample extends Plugin {
                     // 前进按钮
                     const forwardBtn = document.createElement('button');
                     forwardBtn.className = 'b3-button b3-button--text';
-                    forwardBtn.title = '前进';
+                    forwardBtn.title = i18n('webviewForward');
                     forwardBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconRight"></use></svg>';
                     forwardBtn.disabled = true;
                     navbar.appendChild(forwardBtn);
@@ -867,7 +867,7 @@ export default class PluginSample extends Plugin {
                     // 刷新按钮
                     const refreshBtn = document.createElement('button');
                     refreshBtn.className = 'b3-button b3-button--text';
-                    refreshBtn.title = '刷新';
+                    refreshBtn.title = i18n('webviewReload');
                     refreshBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconRefresh"></use></svg>';
                     navbar.appendChild(refreshBtn);
 
@@ -885,7 +885,7 @@ export default class PluginSample extends Plugin {
                     urlInput.style.fontSize = '13px';
                     urlInput.spellcheck = false;
                     urlInput.autocomplete = 'off';
-                    urlInput.placeholder = '输入 URL 或搜索历史记录...';
+                    urlInput.placeholder = i18n('webviewAddressPlaceholder');
 
                     // 建议列表容器
                     const suggestionList = document.createElement('div');
@@ -1181,7 +1181,7 @@ export default class PluginSample extends Plugin {
 
                     const openMenuBtn = document.createElement('button');
                     openMenuBtn.className = 'b3-button b3-button--text';
-                    openMenuBtn.title = '打开方式';
+                    openMenuBtn.title = i18n('webviewOpenMethod');
                     openMenuBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>';
                     openMenuContainer.appendChild(openMenuBtn);
 
@@ -1202,10 +1202,10 @@ export default class PluginSample extends Plugin {
                         return item;
                     };
 
-                    openMenu.appendChild(createOpenMenuItem('iconOpenWindow', '在默认浏览器打开', () => {
+                    openMenu.appendChild(createOpenMenuItem('iconOpenWindow', i18n('webviewOpenBrowser'), () => {
                         openInDefaultBrowser();
                     }));
-                    openMenu.appendChild(createOpenMenuItem('iconAdd', '在新标签页打开', () => {
+                    openMenu.appendChild(createOpenMenuItem('iconAdd', i18n('webviewOpenNewTab'), () => {
                         openUrlInNewTab(urlInput.value || app.url);
                     }));
                     openMenuContainer.appendChild(openMenu);
@@ -1239,7 +1239,7 @@ export default class PluginSample extends Plugin {
                         // 全屏按钮
                         fullscreenBtn = document.createElement('button');
                         fullscreenBtn.className = 'b3-button b3-button--text';
-                        fullscreenBtn.title = '全屏 (Alt+Y)';
+                        fullscreenBtn.title = i18n('webviewFullscreenShortcut');
                         fullscreenBtn.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
                         navbar.appendChild(fullscreenBtn);
                     }
@@ -1270,7 +1270,7 @@ export default class PluginSample extends Plugin {
 
                     const searchInput = document.createElement('input');
                     searchInput.className = 'b3-text-field';
-                    searchInput.placeholder = '查找...';
+                    searchInput.placeholder = i18n('webviewFind');
                     searchInput.style.fontSize = '12px';
                     searchInput.style.padding = '2px 4px';
                     searchInput.style.width = '160px';
@@ -1294,9 +1294,9 @@ export default class PluginSample extends Plugin {
                         return btn;
                     };
 
-                    const prevBtn = createSearchBtn('iconUp', '上一个');
-                    const nextBtn = createSearchBtn('iconDown', '下一个');
-                    const closeSearchBtn = createSearchBtn('iconClose', '关闭');
+                    const prevBtn = createSearchBtn('iconUp', i18n('webviewFindPrevious'));
+                    const nextBtn = createSearchBtn('iconDown', i18n('webviewFindNext'));
+                    const closeSearchBtn = createSearchBtn('iconClose', i18n('commonClose'));
 
                     searchBar.appendChild(searchInput);
                     searchBar.appendChild(searchCount);
@@ -1620,7 +1620,7 @@ export default class PluginSample extends Plugin {
                             if (redirectCount > MAX_REDIRECTS) {
                                 console.error('检测到重定向循环，停止加载:', newUrl);
                                 webview.stop();
-                                pushErrMsg(`页面重定向次数过多，可能存在循环重定向问题`);
+                                pushErrMsg(i18n('webviewRedirectLoop'));
                                 return;
                             }
                         } else {
@@ -1695,7 +1695,7 @@ export default class PluginSample extends Plugin {
                         // errorCode -3 是 ERR_ABORTED，通常是正常的页面跳转，不需要报错
                         if (event.errorCode !== -3 && event.errorCode !== 0) {
                             console.error('Webview 加载失败:', event);
-                            pushErrMsg(`页面加载失败 (错误代码: ${event.errorCode}): ${event.errorDescription || '未知错误'}`);
+                            pushErrMsg(tf('webviewLoadFailed', event.errorCode, event.errorDescription || i18n('commonUnknownError')));
                         }
                     });
 
@@ -1738,7 +1738,7 @@ export default class PluginSample extends Plugin {
                                 container.style.zIndex = '9999';
                                 container.style.background = 'var(--b3-theme-background)';
                                 fullscreenBtn!.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconContract"></use></svg>';
-                                fullscreenBtn!.title = '退出全屏 (Esc 或 Alt+Y)';
+                                fullscreenBtn!.title = i18n('webviewExitFullscreenShortcut');
                             } else {
                                 // 退出全屏
                                 container.style.position = '';
@@ -1751,7 +1751,7 @@ export default class PluginSample extends Plugin {
                                 container.style.zIndex = '';
                                 container.style.background = '';
                                 fullscreenBtn!.innerHTML = '<svg class="b3-button__icon"><use xlink:href="#iconFullscreen"></use></svg>';
-                                fullscreenBtn!.title = '全屏 (Alt+Y)';
+                                fullscreenBtn!.title = i18n('webviewFullscreenShortcut');
                             }
                         };
 
@@ -2278,7 +2278,7 @@ export default class PluginSample extends Plugin {
             icon: "iconCopilot",
             hotkey: "⌥⌘C",
             tipPosition: "n",
-            tip: "AI 问答",
+            tip: i18n('toolbarAiChat'),
             click: (protyle: any) => {
                 this.openChatDialog(protyle);
             }
@@ -2574,7 +2574,7 @@ export default class PluginSample extends Plugin {
                 // 如果存在老的单个平台字段，也一并清理（兼容旧版本）
                 if (settings.aiProvider === 'v3') delete settings.aiProvider;
 
-                migrationMessages.push('检测到旧的 V3 配置，已迁移为自定义平台');
+                migrationMessages.push(i18n('settingsLegacyMigrated'));
             }
         } catch (e) {
             console.error('Settings migration failed:', e);
@@ -2646,7 +2646,7 @@ export default class PluginSample extends Plugin {
                     }
 
                     settings.dataTransfer.autoSetModelCapabilities = true;
-                    migrationMessages.push('已自动为现有模型设置能力');
+                    migrationMessages.push(i18n('settingsModelCapabilitiesMigrated'));
                 } else {
                     // 首次安装或没有实际模型的用户，直接标记为已完成，不显示消息
                     settings.dataTransfer.autoSetModelCapabilities = true;
@@ -2731,7 +2731,7 @@ export default class PluginSample extends Plugin {
                 return view;
             });
         } catch (error) {
-            pushErrMsg(error instanceof Error ? error.message : '设置保存失败');
+            pushErrMsg(error instanceof Error ? error.message : i18n('settingsSaveFailed'));
             throw error;
         }
     }
