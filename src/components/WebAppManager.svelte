@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { floatingLayer } from '../utils/floatingLayer';
     import { i18n, tf } from '../utils/i18n';
     import { createEventDispatcher } from 'svelte';
     import { pushMsg, pushErrMsg } from '../api';
@@ -589,7 +590,7 @@
 <svelte:window on:keydown={handleKeydown} />
 
 {#if isOpen}
-    <div class="webapp-manager-overlay" on:click={close}>
+    <div use:floatingLayer class="webapp-manager-overlay" on:click={close}>
         <div class="webapp-manager" on:click|stopPropagation>
             <div class="webapp-manager__header">
                 <h3 class="webapp-manager__title">{i18n('webappManagement')}</h3>
@@ -811,7 +812,7 @@
 
 <!-- 图标选择模态 -->
 {#if showIconSelector}
-    <div class="icon-selector-overlay" on:click={cancelIconSelection}>
+    <div use:floatingLayer class="icon-selector-overlay" on:click={cancelIconSelection}>
         <div class="icon-selector" on:click|stopPropagation>
             <div class="icon-selector__header">
                 <h3 class="icon-selector__title">{i18n('webappIconSelect')}</h3>

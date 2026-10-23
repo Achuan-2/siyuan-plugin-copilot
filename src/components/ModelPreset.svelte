@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { floatingLayer, containsFloatingTarget } from '../utils/floatingLayer';
     import { createEventDispatcher, tick, onMount } from 'svelte';
     import { i18n, i18nKey, tf } from '../utils/i18n';
     import { exportMdContent, pushErrMsg, pushMsg, openBlock } from '@/api';
@@ -54,6 +55,7 @@
     let presetListTop = 0;
     let presetListLeft = 0;
     let buttonElement: HTMLButtonElement;
+    let managerElement: HTMLElement;
     let presetListElement: HTMLDivElement;
 
     // 设置面板弹窗
@@ -1180,7 +1182,7 @@
     // 关闭下拉菜单
     async function closeOnOutsideClick(event: MouseEvent) {
         const target = event.target as HTMLElement;
-        if (!target.closest('.model-settings-button')) {
+        if (!containsFloatingTarget(managerElement, target)) {
             // 如果设置面板打开，检查未保存的更改
             if (isSettingsOpen && hasUnsavedChanges()) {
                 event.preventDefault();
@@ -1265,7 +1267,7 @@
     })();
 </script>
 
-<div class="model-settings-button">
+<div class="model-settings-button" bind:this={managerElement}>
     <button
         bind:this={buttonElement}
         class="b3-button b3-button--text model-settings-button__trigger"
@@ -1285,6 +1287,7 @@
         <div
             bind:this={presetListElement}
             class="model-settings-preset-list-popup"
+            use:floatingLayer
             style="top: {presetListTop}px; left: {presetListLeft}px;"
             on:click|stopPropagation
         >
@@ -1452,6 +1455,7 @@
         <div
             bind:this={settingsElement}
             class="model-settings-dropdown"
+            use:floatingLayer
             style="top: {settingsTop}px; left: {settingsLeft}px;"
             on:click|stopPropagation={handleSettingsPanelClick}
         >
@@ -1795,7 +1799,7 @@
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-shadow: var(--b3-dialog-shadow);
-        width: 360px;
+        width: min(360px, calc(100vw - 16px));
         max-height: 70vh;
         display: flex;
         flex-direction: column;
@@ -1963,7 +1967,7 @@
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-shadow: var(--b3-dialog-shadow);
-        width: 360px;
+        width: min(360px, calc(100vw - 16px));
         max-height: 70vh;
         display: flex;
         flex-direction: column;

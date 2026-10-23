@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+    import { floatingLayer } from '../utils/floatingLayer';
     import { createEventDispatcher } from 'svelte';
     import { AVAILABLE_TOOLS, TOOL_CATEGORIES, TOOL_DISPLAY_NAMES, type Tool } from '../tools';
     import SubToolControls from './SubToolControls.svelte';
@@ -537,8 +538,8 @@
     $: hasAnyVisibleTools = Object.keys(filteredCategories).length > 0;
 </script>
 
-<div class="tool-selector__overlay" on:click={close}></div>
-<div class="tool-selector">
+<div use:floatingLayer class="tool-selector__overlay" on:click={close}></div>
+<div use:floatingLayer class="tool-selector">
     <div class="tool-selector__header">
         <h3>{i18n('toolsSelectorTitle')}</h3>
         <div class="tool-selector__actions">

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { floatingLayer } from './utils/floatingLayer';
     import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
     import {
         chat,
@@ -16618,7 +16619,7 @@
 
     <!-- 提示词管理对话框 -->
     {#if isPromptManagerOpen}
-        <div class="ai-sidebar__prompt-dialog">
+        <div use:floatingLayer class="ai-sidebar__prompt-dialog">
             <div class="ai-sidebar__prompt-dialog-overlay" on:click={closePromptManager}></div>
             <div class="ai-sidebar__prompt-dialog-content">
                 <div class="ai-sidebar__prompt-dialog-header">
@@ -16670,7 +16671,7 @@
 
     <!-- 网页链接对话框 -->
     {#if isWebLinkDialogOpen}
-        <div class="ai-sidebar__prompt-dialog">
+        <div use:floatingLayer class="ai-sidebar__prompt-dialog">
             <div class="ai-sidebar__prompt-dialog-overlay" on:click={closeWebLinkDialog}></div>
             <div class="ai-sidebar__prompt-dialog-content">
                 <div class="ai-sidebar__prompt-dialog-header">
@@ -16725,7 +16726,7 @@
 
     <!-- 搜索对话框 -->
     {#if isSearchDialogOpen}
-        <div class="ai-sidebar__search-dialog">
+        <div use:floatingLayer class="ai-sidebar__search-dialog">
             <div
                 class="ai-sidebar__search-dialog-overlay"
                 on:click={() => (isSearchDialogOpen = false)}
@@ -16799,7 +16800,7 @@
 
     <!-- 编辑消息弹窗 -->
     {#if isEditDialogOpen}
-        <div class="ai-sidebar__edit-dialog">
+        <div use:floatingLayer class="ai-sidebar__edit-dialog">
             <div class="ai-sidebar__edit-dialog-overlay" on:click={cancelEditMessage}></div>
             <div class="ai-sidebar__edit-dialog-content">
                 <div class="ai-sidebar__edit-dialog-header">
@@ -16830,7 +16831,7 @@
 
     <!-- 差异对比对话框 -->
     {#if isDiffDialogOpen && currentDiffOperation}
-        <div class="ai-sidebar__diff-dialog">
+        <div use:floatingLayer class="ai-sidebar__diff-dialog">
             <div class="ai-sidebar__diff-dialog-overlay" on:click={closeDiffDialog}></div>
             <div class="ai-sidebar__diff-dialog-content">
                 <div class="ai-sidebar__diff-dialog-header">
@@ -17040,6 +17041,7 @@
     {#if contextMenuVisible}
         <div
             class="ai-sidebar__context-menu"
+            use:floatingLayer
             style="left: {contextMenuX}px; top: {contextMenuY}px;"
         >
             {#if contextMenuIsMultiModel}
@@ -17179,8 +17181,8 @@
 
     <!-- 保存到笔记对话框 -->
     {#if isSaveToNoteDialogOpen}
-        <div class="save-to-note-dialog__overlay" on:click={closeSaveToNoteDialog}></div>
-        <div class="save-to-note-dialog">
+        <div use:floatingLayer class="save-to-note-dialog__overlay" on:click={closeSaveToNoteDialog}></div>
+        <div use:floatingLayer class="save-to-note-dialog">
             <div class="save-to-note-dialog__header">
                 <h3>{i18n('aiSidebarSessionSaveToNoteTitle')}</h3>
                 <button
@@ -17298,8 +17300,8 @@
 
     <!-- 工具批准对话框 -->
     {#if isToolApprovalDialogOpen && pendingToolCall}
-        <div class="tool-approval-dialog__overlay" on:click={rejectToolCall}></div>
-        <div class="tool-approval-dialog">
+        <div use:floatingLayer class="tool-approval-dialog__overlay" on:click={rejectToolCall}></div>
+        <div use:floatingLayer class="tool-approval-dialog">
             <div class="tool-approval-dialog__header">
                 <h3>{i18n('toolsWaitingApproval')}</h3>
                 <button
@@ -17353,7 +17355,7 @@
 
     <!-- 图片查看器 -->
     {#if isImageViewerOpen}
-        <div class="image-viewer" class:image-viewer--fullscreen={isImageViewerFullscreen}>
+        <div use:floatingLayer class="image-viewer" class:image-viewer--fullscreen={isImageViewerFullscreen}>
             <div class="image-viewer__header">
                 <h3 class="image-viewer__title">{currentImageName || i18n('aiSidebarImagePreview')}</h3>
                 <div class="image-viewer__actions">

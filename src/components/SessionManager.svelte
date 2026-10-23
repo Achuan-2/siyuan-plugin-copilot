@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { floatingLayer, containsFloatingTarget } from '../utils/floatingLayer';
     import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
     import { pushMsg } from '../api';
     import { i18n, tf, getCurrentLanguage } from '../utils/i18n';
@@ -15,6 +16,7 @@
     let dropdownTop = 0;
     let dropdownLeft = 0;
     let buttonElement: HTMLButtonElement;
+    let managerElement: HTMLElement;
     let dropdownElement: HTMLDivElement;
 
     interface ChatSession {
@@ -245,7 +247,7 @@
 
     function closeOnOutsideClick(event: MouseEvent) {
         const target = event.target as HTMLElement;
-        if (!target.closest('.session-manager')) {
+        if (!containsFloatingTarget(managerElement, target)) {
             isOpen = false;
         }
     }
@@ -489,7 +491,7 @@
     }
 </script>
 
-<div class="session-manager">
+<div class="session-manager" bind:this={managerElement}>
     <button
         bind:this={buttonElement}
         class="session-manager__button b3-button b3-button--text"
@@ -503,6 +505,7 @@
         <div
             bind:this={dropdownElement}
             class="session-manager__dropdown"
+            use:floatingLayer
             style="top: {dropdownTop}px; left: {dropdownLeft}px;"
         >
             <div class="session-manager__header">
@@ -673,7 +676,7 @@
 
     <!-- 右键菜单 -->
     {#if contextMenuVisible && contextMenuSession}
-        <div class="session-context-menu" style="left: {contextMenuX}px; top: {contextMenuY}px;">
+        <div use:floatingLayer class="session-context-menu" style="left: {contextMenuX}px; top: {contextMenuY}px;">
             <div
                 class="session-context-menu__item"
                 role="button"
@@ -731,7 +734,7 @@
 
     <!-- 重命名对话框 -->
     {#if isRenameDialogOpen && renameSession}
-        <div class="session-rename-dialog-overlay" on:click={cancelRename}>
+        <div use:floatingLayer class="session-rename-dialog-overlay" on:click={cancelRename}>
             <div class="session-rename-dialog" on:click|stopPropagation>
                 <div class="session-rename-dialog__header">
                     <h3>{i18n('aiSidebarSessionRename')}</h3>
@@ -781,7 +784,7 @@
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-shadow: var(--b3-dialog-shadow);
-        width: 320px;
+        width: min(320px, calc(100vw - 16px));
         max-height: 60vh;
         display: flex;
         flex-direction: column;

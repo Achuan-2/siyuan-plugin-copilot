@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { floatingLayer } from '../utils/floatingLayer';
     import { createEventDispatcher } from 'svelte';
     import { platformUtils } from 'siyuan';
     import { chat, type Message } from '../ai-chat';
@@ -415,8 +416,8 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
 </script>
 
 {#if isOpen}
-    <div class="translate-dialog__overlay" on:click={close}></div>
-    <div class="translate-dialog">
+    <div use:floatingLayer class="translate-dialog__overlay" on:click={close}></div>
+    <div use:floatingLayer class="translate-dialog">
         <div class="translate-dialog__header">
             <h3>{i18n('aiSidebarTranslateTitle')}</h3>
             <div class="translate-dialog__header-actions">
