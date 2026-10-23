@@ -1,4 +1,5 @@
-import { nativeModule } from './http';
+import { isChatGPTDesktop, nativeModule } from './http';
+import { i18n } from '../utils/i18n';
 
 export interface ChatGPTProfile {
     id: string;
@@ -24,6 +25,8 @@ interface AccountStoragePlugin {
 
 export const CHATGPT_ACCOUNTS_FILE = 'chatgpt/accounts.json';
 let storagePlugin: AccountStoragePlugin | null = null;
+// Mobile runs without Node filesystem locks; share one queue across client instances.
+let mobileUpdates: Promise<unknown> = Promise.resolve();
 
 export function configureChatGPTStorage(plugin: AccountStoragePlugin | null): void {
     storagePlugin = plugin;
@@ -32,15 +35,20 @@ export function configureChatGPTStorage(plugin: AccountStoragePlugin | null): vo
 /** Accounts sync with the workspace; device identity and process locks stay local. */
 export class ChatGPTStorage {
     readonly directory: string;
-    private localDirectory: string;
+    private localDirectory = '';
     private fs: any;
     private path: any;
     private plugin: AccountStoragePlugin;
     private initialization?: Promise<void>;
     constructor() {
         const workspace = (window as any).siyuan?.config?.system?.workspaceDir;
-        if (!storagePlugin || !workspace) throw new Error('ChatGPT workspace storage is unavailable');
+        if (!storagePlugin) throw new Error('ChatGPT workspace storage is unavailable');
         this.plugin = storagePlugin;
+        if (!isChatGPTDesktop()) {
+            this.directory = `/data/storage/petal/${this.plugin.name}/chatgpt`;
+            return;
+        }
+        if (!workspace) throw new Error('ChatGPT workspace storage is unavailable');
         this.fs = nativeModule('fs');
         this.path = nativeModule('path');
         const process = nativeModule('process');
@@ -58,6 +66,7 @@ export class ChatGPTStorage {
     }
 
     private initialize(): Promise<void> {
+        if (!this.fs) return Promise.resolve();
         return this.initialization ||= this.withLocalLock(async () => {
             const filename = this.path.join(this.directory, 'accounts.json');
             const legacy = this.path.join(this.localDirectory, 'accounts.json');
@@ -74,6 +83,25 @@ export class ChatGPTStorage {
 
     async read(): Promise<StoredAccounts> {
         await this.initialize();
+        if (!this.fs) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15000);
+            try {
+                // loadData falls back to its cache on errors; read the actual synced file instead.
+                const response = await fetch('/api/file/getFile', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+                    body: JSON.stringify({ path: `${this.directory}/accounts.json` }), signal: controller.signal,
+                });
+                if (response.status === 404) return { profiles: [] };
+                if (!response.ok) throw new Error(i18n('chatgptStorageUnreadable'));
+                const data = await response.json();
+                if (data?.code === 404) return { profiles: [] };
+                if (!Array.isArray(data?.profiles)) throw new Error(i18n('chatgptStorageUnreadable'));
+                return data;
+            } catch {
+                throw new Error(i18n('chatgptStorageUnreadable'));
+            } finally { clearTimeout(timer); }
+        }
         // Read disk every time: another window or cloud sync may have replaced the file.
         return this.readFile(this.path.join(this.directory, 'accounts.json'));
     }
@@ -102,6 +130,14 @@ export class ChatGPTStorage {
     /** Serialize rotating-token refresh and account updates across SiYuan windows. */
     async locked<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         await this.initialize();
+        if (!this.fs) {
+            const pending = mobileUpdates.then(() => {
+                if (signal?.aborted) throw new Error('Request aborted');
+                return action();
+            });
+            mobileUpdates = pending.catch(() => {});
+            return pending;
+        }
         return this.withLocalLock(action, signal);
     }
 

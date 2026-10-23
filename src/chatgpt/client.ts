@@ -1,6 +1,7 @@
 import { authorize, exchangeTokens, verifyIdentity, ISSUER, RESOURCE } from './oauth';
 import { ChatGPTStorage, type ChatGPTProfile } from './storage';
-import { nativeModule, request, requestJson, readJson, ChatGPTHttpError } from './http';
+import { isChatGPTDesktop, nativeModule, request, requestJson, readJson, ChatGPTHttpError } from './http';
+import { platformUtils } from 'siyuan';
 import { i18n } from '../utils/i18n';
 
 const UNUSABLE_REFRESH_CODES = new Set(['invalid_grant', 'invalid_refresh_token', 'token_expired',
@@ -58,6 +59,7 @@ export class ChatGPTClient {
     }
 
     async login(signal: AbortSignal, profileId?: string): Promise<void> {
+        if (!isChatGPTDesktop()) throw new Error(i18n('chatgptDesktopOnly'));
         if (this.loginInProgress) throw new Error(i18n('chatgptWaitingLogin'));
         this.loginInProgress = true;
         const operation = this.operation(signal);
@@ -225,7 +227,11 @@ export class ChatGPTClient {
         }
     }
 
-    openUsage(): Promise<void> { return nativeModule('electron').shell.openExternal('https://chatgpt.com/settings/usage'); }
+    async openUsage(): Promise<void> {
+        const url = 'https://chatgpt.com/settings/usage';
+        if (isChatGPTDesktop()) await nativeModule('electron').shell.openExternal(url);
+        else platformUtils.openByMobile(url);
+    }
 
     dispose(): void {
         for (const controller of this.controllers) controller.abort();

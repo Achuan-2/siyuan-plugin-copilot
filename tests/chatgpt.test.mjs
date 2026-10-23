@@ -38,7 +38,7 @@ class TestFileReader {
     abort() { this.aborted = true; this.onabort?.(); }
 }
 
-function fixture(t) {
+function fixture(t, { mobile = false } = {}) {
     const directory = mkdtempSync(path.join(tmpdir(), 'siyuan-chatgpt-test-'));
     let workspace = path.join(directory, 'workspace');
     let saveCode = 0;
@@ -84,10 +84,34 @@ function fixture(t) {
         } };
         return require(name);
     };
+    const mobileFetch = async (url, init) => {
+        if (url === '/api/file/getFile') {
+            const target = path.join(workspace, JSON.parse(init.body).path);
+            return new Response(existsSync(target) ? readFileSync(target, 'utf8') : JSON.stringify({ code: 404 }));
+        }
+        if (url === '/api/network/forwardProxy') {
+            const data = JSON.parse(init.body);
+            assert.equal(data.redirect, false);
+            assert.equal(data.payloadEncoding, 'json');
+            assert.equal(data.responseEncoding, 'text');
+            const target = new URL(data.url);
+            const options = { method: data.method, headers: Object.assign({}, ...data.headers) };
+            requests.push({ url: target, ...options, body: data.payload });
+            const incoming = await route(target, options, data.payload);
+            let body = '';
+            incoming.setEncoding('utf8');
+            for await (const chunk of incoming) body += chunk;
+            return new Response(JSON.stringify({ code: 0, data: {
+                status: incoming.statusCode, headers: incoming.headers, body,
+            } }));
+        }
+        return fetch(url, init);
+    };
     const cache = new Map();
-    const context = vm.createContext({ console, URL, URLSearchParams, AbortController, fetch, FileReader: TestFileReader, setTimeout, clearTimeout,
-        setInterval, clearInterval, Date, Error, window: { require: native,
-            siyuan: { config: { system: { workspaceDir: workspace } } } } });
+    const context = vm.createContext({ console, URL, URLSearchParams, AbortController,
+        TextEncoder, TextDecoder, fetch: mobile ? mobileFetch : fetch, FileReader: TestFileReader, setTimeout, clearTimeout,
+        setInterval, clearInterval, Date, Error, window: { ...(mobile ? {} : { require: native }),
+            siyuan: { config: { system: { workspaceDir: mobile ? undefined : workspace } } } } });
     function load(relative) {
         const filename = path.resolve(root, relative);
         if (cache.has(filename)) return cache.get(filename);
@@ -99,6 +123,7 @@ function fixture(t) {
         const localRequire = name => {
             if (name.endsWith('/utils/i18n')) return { i18n: key => key };
             if (name === 'jose') return jose;
+            if (name === 'siyuan') return { platformUtils: { openByMobile: value => { opened = new URL(value); } } };
             if (name.startsWith('.')) return load(path.relative(root, path.resolve(path.dirname(filename), `${name}.ts`)));
             throw new Error(`Unexpected import ${name}`);
         };
@@ -122,6 +147,7 @@ function fixture(t) {
         setSaveCode(code) { saveCode = code; },
         switchWorkspace(target) { workspace = target; context.window.siyuan.config.system.workspaceDir = target; },
         get opened() { return opened; },
+        fetch(handler) { context.fetch = handler; },
         route(handler) { route = async (url, options, body) => await handler(url, options, body) ?? defaultRoute(url, options, body); },
         browser(handler) { browser = handler; } };
 }
@@ -140,6 +166,156 @@ async function saved(f, expiresAt = Date.now() + 3600000) {
 function events(...values) {
     return values.map(value => Buffer.from(`data: ${JSON.stringify(value)}\r\n\r\n`));
 }
+
+test('mobile uses desktop-synced credentials without Node, discovers models, switches accounts, and observes logout', async t => {
+    const desktop = fixture(t);
+    await saved(desktop);
+    const mobile = fixture(t, { mobile: true });
+    cpSync(desktop.workspace, mobile.workspace, { recursive: true });
+    const client = mobile.client();
+    assert.equal((await client.account()).email, 'test@example.com');
+    assert.equal((await client.account()).sharing, true);
+    mobile.route(async url => {
+        if (url.pathname === '/v1/models') return response({ models: [
+            { slug: 'account-model', display_name: 'Account model', visibility: 'list' },
+            { slug: 'hidden-model', visibility: 'hidden' },
+        ] });
+        if (url.pathname.endsWith('/oauth/revoke')) return response({});
+    });
+    const models = await client.models();
+    assert.equal(models.length, 1);
+    assert.equal(models[0].id, 'account-model');
+    assert.equal(mobile.requests[0].headers.Authorization, 'Bearer fake-access');
+    assert.equal(mobile.requests.some(item => item.url.pathname.endsWith('/oauth/token')), false);
+    assert.equal(require('fs').existsSync(path.join(mobile.directory, 'siyuan-plugin-copilot')), false);
+    const data = await mobile.storage.read();
+    data.profiles.push({ ...data.profiles[0], id: 'second', clientId: 'second' });
+    await mobile.storage.write(data);
+    await client.selectAccount('second');
+    assert.equal((await client.account()).id, 'second');
+    await client.openUsage();
+    assert.equal(mobile.opened.href, 'https://chatgpt.com/settings/usage');
+    await assert.rejects(client.login(new AbortController().signal), /chatgptDesktopOnly/);
+    assert.equal(await client.logout(), true);
+    cpSync(mobile.workspace, desktop.workspace, { recursive: true });
+    assert.equal((await desktop.client().account()).connected, false);
+});
+
+test('mobile serializes token refresh, verifies identity, and saves rotating credentials for synchronization', async t => {
+    const f = fixture(t, { mobile: true });
+    await saved(f, 0);
+    f.route(async (url, options, body) => {
+        if (url.pathname.endsWith('/oauth/token')) {
+            assert.equal(options.headers['Content-Type'], 'application/x-www-form-urlencoded');
+            assert.equal(new URLSearchParams(body).get('refresh_token'), 'fake-refresh');
+            return response({ access_token: 'new-access', refresh_token: 'rotated-refresh', token_type: 'Bearer',
+                expires_in: 3600, scope, id_token: await identity('issued-client') });
+        }
+        if (url.pathname === '/v1/models') return response({ models: [] });
+    });
+    await Promise.all([f.client().models(), f.client().models()]);
+    assert.equal(f.requests.filter(item => item.url.pathname.endsWith('/oauth/token')).length, 1);
+    assert.equal((await f.storage.read()).profiles[0].refreshToken, 'rotated-refresh');
+    for (const item of f.requests.filter(item => item.url.pathname === '/v1/models')) {
+        assert.equal(item.headers.Authorization, 'Bearer new-access');
+    }
+});
+
+test('mobile consumes buffered Responses with Unicode, approved tools, and the final answer', async t => {
+    const f = fixture(t, { mobile: true });
+    await saved(f);
+    const clientModule = f.load('src/chatgpt/client.ts');
+    t.after(() => clientModule.disposeChatGPTClient());
+    const { chatChatGPT } = f.load('src/chatgpt/chat.ts');
+    const call = { type: 'function_call', namespace: 'siyuan_copilot', name: 'read_note',
+        call_id: 'call-mobile', arguments: '{}' };
+    let rounds = 0;
+    f.route(async (url, options, body) => {
+        if (url.pathname !== '/v1/responses') return;
+        const input = JSON.parse(body);
+        assert.equal(input.stream, true);
+        assert.equal(options.headers.Authorization, 'Bearer fake-access');
+        if (++rounds === 1) return response(events({ type: 'response.completed',
+            response: { status: 'completed', output: [call] } }));
+        assert.equal(input.input.find(item => item.type === 'function_call_output').output, '手机笔记📱');
+        return response(events({ type: 'response.output_text.delta', delta: '手机回复📱' },
+            { type: 'response.completed', response: { status: 'completed', output: [
+                { type: 'message', content: [{ type: 'output_text', text: '手机回复📱' }] },
+            ] } }));
+    });
+    let answer;
+    const options = { model: 'account-model', messages: [{ role: 'user', content: '读取笔记' }],
+        tools: [{ type: 'function', function: { name: 'read_note', parameters: { type: 'object', properties: {} } } }],
+        onComplete: text => { answer = text; },
+        onToolCallComplete: async (calls, output) => {
+            assert.equal(calls[0].function.name, 'read_note');
+            options.messages.push({ role: 'assistant', content: '', tool_calls: calls, openaiResponseTurns: [output] },
+                { role: 'tool', tool_call_id: 'call-mobile', content: '手机笔记📱' });
+            await chatChatGPT(options);
+        } };
+    await chatChatGPT(options);
+    assert.equal(rounds, 2);
+    assert.equal(answer, '手机回复📱');
+    assert.equal(clientModule.getChatGPTClient().controllers.size, 0);
+});
+
+test('mobile retries unauthorized requests, preserves usage errors, and cleans up request controllers', async t => {
+    const f = fixture(t, { mobile: true });
+    await saved(f);
+    let calls = 0;
+    f.route(async url => {
+        if (url.pathname === '/v1/models') return ++calls === 1
+            ? response({ error: { code: 'invalid_token' } }, 401)
+            : response({ error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'limit' } }, 429,
+                { 'X-Request-Id': ['mobile-request-id'] });
+        if (url.pathname.endsWith('/oauth/token')) return response({ access_token: 'new-access',
+            token_type: 'Bearer', expires_in: 3600, scope });
+    });
+    const client = f.client();
+    await assert.rejects(client.models(), /subscription_sharing_usage_limit_exceeded.*mobile-request-id/);
+    assert.equal(calls, 2);
+    assert.equal(client.controllers.size, 0);
+});
+
+test('mobile missing accounts do not hide read failures or overwrite synced credentials', async t => {
+    const f = fixture(t, { mobile: true });
+    assert.equal((await f.storage.read()).profiles.length, 0);
+    await saved(f);
+    const writes = f.writes.length;
+    f.fetch(async () => new Response(JSON.stringify({ code: 403, msg: 'forbidden' })));
+    await assert.rejects(f.client().selectAccount('issued-client'), /chatgptStorageUnreadable/);
+    f.fetch(async () => new Response('not JSON', { status: 503 }));
+    await assert.rejects(f.storage.read(), /chatgptStorageUnreadable/);
+    assert.equal(f.writes.length, writes);
+});
+
+test('mobile cancellation stops a pending kernel request without putting credentials in URLs', async t => {
+    const f = fixture(t, { mobile: true });
+    const http = f.load('src/chatgpt/http.ts');
+    const controller = new AbortController();
+    f.fetch(async (url, options) => {
+        assert.equal(url, '/api/network/forwardProxy');
+        assert.equal(JSON.parse(options.body).headers[0].Authorization, 'Bearer fake-access');
+        return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+    });
+    const pending = http.request('https://api.openai.com/v1/responses', {
+        headers: { Authorization: 'Bearer fake-access' }, signal: controller.signal,
+    });
+    controller.abort();
+    await assert.rejects(pending, /Request aborted/);
+    await assert.rejects(http.request('https://example.com/v1/responses'), /chatgptInvalidEndpoint/);
+});
+
+test('disposing a mobile client also cancels buffered responses before consumption', async t => {
+    const f = fixture(t, { mobile: true });
+    await saved(f);
+    f.route(async url => url.pathname === '/v1/models' ? response({ models: [] }) : undefined);
+    const client = f.client();
+    const incoming = await client.authenticatedRequest('models');
+    client.dispose();
+    await assert.rejects(f.load('src/chatgpt/http.ts').readJson(incoming), /Request aborted/);
+    assert.equal(client.controllers.size, 0);
+});
 
 test('existing local credentials migrate once through SiYuan without syncing the host identity or lock', async t => {
     const f = fixture(t);

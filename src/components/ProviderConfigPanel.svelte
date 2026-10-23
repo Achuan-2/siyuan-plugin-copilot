@@ -6,7 +6,6 @@
     import { i18n, tf } from '../utils/i18n';
     import { getModelCapabilities } from '../utils/modelCapabilities';
     import ChatGPTAccountPanel from './ChatGPTAccountPanel.svelte';
-    import { isChatGPTDesktop } from '../chatgpt/http';
 
     export let providerId: string;
     export let providerName: string;
@@ -789,7 +788,7 @@
                 <button
                     class="b3-button b3-button--outline"
                     on:click={openModelSearchModal}
-                    disabled={isLoadingModels || (providerId === 'codex' ? !isChatGPTDesktop() : !config.apiKey)}
+                    disabled={isLoadingModels || (providerId !== 'codex' && !config.apiKey)}
                 >
                     {isLoadingModels ? i18n('commonLoading') : i18n('commonSearchAndAdd')}
                 </button>

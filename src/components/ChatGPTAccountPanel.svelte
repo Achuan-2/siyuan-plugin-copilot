@@ -17,7 +17,6 @@
     $: account = profiles.find(profile => profile.id === activeId);
 
     async function refresh() {
-        if (!desktop) return;
         const version = ++refreshVersion;
         const saved = await getChatGPTClient().accounts();
         if (destroyed || version !== refreshVersion) return;
@@ -26,7 +25,7 @@
     }
 
     async function perform(action: 'login' | 'add' | 'logout' | 'select' | 'usage', id?: string) {
-        if (busy || !desktop) return;
+        if (busy || (!desktop && (action === 'login' || action === 'add'))) return;
         busy = true;
         error = '';
         try {
@@ -66,7 +65,7 @@
 
 <div class="chatgpt-account">
     <strong>{i18n('chatgptAccountTitle')}</strong>
-    <p class="b3-label__text">{desktop ? i18n('chatgptAccountHint') : i18n('chatgptDesktopOnly')}</p>
+    <p class="b3-label__text">{desktop ? i18n('chatgptAccountHint') : i18n('chatgptMobileHint')}</p>
     {#if profiles.length}
         <select class="b3-select" value={activeId} disabled={busy}
             aria-label={i18n('chatgptAccountTitle')}
@@ -81,15 +80,15 @@
         ? account.sharing ? i18n('chatgptConnected') : i18n('chatgptPermissionRequired')
         : i18n('chatgptNotConnected')}</span>
     <div class="account-actions">
-        {#if !account?.connected}
-            <button class="b3-button" disabled={busy || !desktop} on:click={() => perform('login')}>
+        {#if desktop && !account?.connected}
+            <button class="b3-button" disabled={busy} on:click={() => perform('login')}>
                 {loginController ? i18n('chatgptWaitingLogin') : i18n('chatgptLogin')}
             </button>
         {/if}
         {#if loginController}
             <button class="b3-button b3-button--outline" on:click={() => loginController?.abort()}>{i18n('chatgptCancelLogin')}</button>
         {/if}
-        {#if profiles.length}
+        {#if desktop && profiles.length}
             <button class="b3-button b3-button--outline" disabled={busy} on:click={() => perform('add')}>{i18n('chatgptAddAccount')}</button>
         {/if}
         {#if account?.connected}
