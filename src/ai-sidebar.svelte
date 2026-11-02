@@ -20896,6 +20896,20 @@
         background: var(--b3-theme-surface) !important;
         border-bottom: 1px solid var(--b3-border-color) !important;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+        padding-left: max(clamp(4px, 2cqw, 12px), var(--b3-toolbar-left-mac, 0px));
+    }
+
+    :global(html[data-frontend^="desktop"]) :global(body.body--windows)
+        .ai-sidebar--fullscreen .ai-sidebar__header,
+    :global(html[data-frontend^="desktop"]) :global(body.body--linux)
+        .ai-sidebar--fullscreen .ai-sidebar__header {
+        // 与官方全屏工具栏一致，仅在标题栏预留窗口控件空间，兼容旧版思源。
+        padding-right: calc(
+            clamp(4px, 2cqw, 12px) +
+                var(--b3-window-controls-width, var(--b3-fullscreen-controls-width, 138px))
+        );
+        min-height: var(--b3-window-controls-height, 0px);
+        box-sizing: border-box;
     }
 
     .ai-sidebar--fullscreen .ai-sidebar__messages {
