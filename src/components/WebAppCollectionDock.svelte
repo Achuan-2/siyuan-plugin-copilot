@@ -236,30 +236,6 @@
 
     function toggleFullscreen() {
         isFullscreen = !isFullscreen;
-        const root = document.querySelector('.webapp-collection') as HTMLElement | null;
-        if (!root) return;
-
-        if (isFullscreen) {
-            root.style.position = 'fixed';
-            root.style.top = '0';
-            root.style.left = '0';
-            root.style.right = '0';
-            root.style.bottom = '0';
-            root.style.width = '100vw';
-            root.style.height = '100vh';
-            root.style.zIndex = '9999';
-            root.style.background = 'var(--b3-theme-background)';
-        } else {
-            root.style.position = '';
-            root.style.top = '';
-            root.style.left = '';
-            root.style.right = '';
-            root.style.bottom = '';
-            root.style.width = '';
-            root.style.height = '';
-            root.style.zIndex = '';
-            root.style.background = '';
-        }
     }
 
     function toggleAppMenu() {
@@ -422,7 +398,7 @@
                 on:click={toggleFullscreen}
             >
                 <svg class="b3-button__icon">
-                    <use xlink:href={isFullscreen ? '#iconContract' : '#iconFullscreen'}></use>
+                    <use xlink:href={isFullscreen ? '#iconFullscreenExit' : '#iconFullscreen'}></use>
                 </svg>
             </button>
         </div>
@@ -488,6 +464,14 @@
         background: var(--b3-theme-background);
         touch-action: pan-y;
         overscroll-behavior-y: contain;
+
+        &--fullscreen {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+        }
     }
 
     .webapp-collection__toolbar {
@@ -498,6 +482,22 @@
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
         flex-shrink: 0;
+    }
+
+    .webapp-collection--fullscreen .webapp-collection__toolbar {
+        padding-left: max(8px, var(--b3-toolbar-left-mac, 0px));
+    }
+
+    :global(html[data-frontend^="desktop"]) :global(body.body--windows)
+        .webapp-collection--fullscreen .webapp-collection__toolbar,
+    :global(html[data-frontend^="desktop"]) :global(body.body--linux)
+        .webapp-collection--fullscreen .webapp-collection__toolbar {
+        // 与聊天侧栏和官方全屏工具栏一致，为思源窗口按钮预留空间。
+        padding-right: calc(
+            8px + var(--b3-window-controls-width, var(--b3-fullscreen-controls-width, 138px))
+        );
+        min-height: var(--b3-window-controls-height, 0px);
+        box-sizing: border-box;
     }
 
     .webapp-collection__toolbar-left,
