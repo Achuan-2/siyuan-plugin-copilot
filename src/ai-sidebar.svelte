@@ -13467,7 +13467,7 @@
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconSettings"></use></svg>
             </button>
-            {#if !isMobile}
+            {#if !isMobile && !isFullscreen}
                 <button
                     class="b3-button b3-button--text ai-sidebar__minimize-btn"
                     on:click={minimize}
