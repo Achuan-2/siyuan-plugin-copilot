@@ -3210,6 +3210,19 @@
         isFullscreen = !isFullscreen;
     }
 
+    function handleFullscreenKeydown(event: KeyboardEvent) {
+        if (!isFullscreen || event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat) return;
+        // 弹窗和选择器优先处理 Esc，避免关闭弹窗时同时退出全屏。
+        if (isEditDialogOpen || isWebLinkDialogOpen || isSearchDialogOpen || isDiffDialogOpen ||
+            isPromptManagerOpen || isPromptSelectorOpen || isSessionManagerOpen || isImageViewerOpen ||
+            isTranslateDialogOpen || isWebAppManagerOpen || isToolSelectorOpen ||
+            isToolApprovalDialogOpen || isSaveToNoteDialogOpen) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        isFullscreen = false;
+    }
+
     // 滚动到底部
     async function scrollToBottom(force = false) {
         await tick();
@@ -13333,6 +13346,8 @@
     // 响应式计算消息组
     $: messageGroups = groupMessages(messages);
 </script>
+
+<svelte:document on:keydown={handleFullscreenKeydown} />
 
 <div class="ai-sidebar" class:ai-sidebar--fullscreen={isFullscreen} bind:this={sidebarContainer}>
     <div class="ai-sidebar__header">

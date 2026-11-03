@@ -238,6 +238,15 @@
         isFullscreen = !isFullscreen;
     }
 
+    function handleFullscreenKeydown(event: KeyboardEvent) {
+        if (!isFullscreen || isWebAppManagerOpen || event.key !== 'Escape' ||
+            event.defaultPrevented || event.isComposing || event.repeat) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        isFullscreen = false;
+    }
+
     function toggleAppMenu() {
         showAppMenu = !showAppMenu;
     }
@@ -336,7 +345,13 @@
     });
 </script>
 
-<div class="webapp-collection" class:webapp-collection--fullscreen={isFullscreen}>
+<svelte:document on:keydown={handleFullscreenKeydown} />
+
+<div
+    class="webapp-collection"
+    class:webapp-collection--fullscreen={isFullscreen}
+    on:copilot-webapp-escape|stopPropagation={() => (isFullscreen = false)}
+>
     <div class="webapp-collection__toolbar">
         <div class="webapp-collection__toolbar-left">
             <button
