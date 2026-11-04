@@ -80,7 +80,7 @@ function fixture() {
     const requests = [];
     const notices = [];
     const state = {
-        ...gallery, AbortController, console, currentProvider: 'current-provider', currentModelId: 'gpt-image-2',
+        ...gallery, AbortController, console, currentProvider: 'current-provider', currentModelId: 'gpt-image-2', chatMode: 'draw',
         isLoading: false, isAborted: false, currentSessionId: 'session', drawEditingContext: null,
         messages: [{ role: 'user', content: 'old prompt' }, { role: 'assistant', content: '', attachments: [image('unrelated')] }],
         currentInput: 'create a new image', currentAttachments: [], contextDocuments: [], protyle: null,
@@ -89,6 +89,9 @@ function fixture() {
         modelSupportsImageGeneration: model => !!model,
         getCurrentDrawImageSettings: () => ({ aspectRatio: '16:9', resolution: '1K', quality: 'low', count: 2 }),
         getProviderAndModelConfig: (provider, model) => ({ providerConfig: { id: provider }, modelConfig: { id: model } }),
+        getCurrentProviderConfig: () => ({ id: 'current-provider' }),
+        getCurrentModelConfig: () => ({ id: 'gpt-image-2' }),
+        getMessageText: content => typeof content === 'string' ? content : '',
         loadAsset: async path => `loaded:${path}`, scrollToBottom: async () => {},
         collectDrawModeContextDocuments: async () => [], buildDrawPromptWithContext: prompt => prompt,
         buildDrawPromptWithSystemPrompt: prompt => `system + ${prompt}`,
@@ -99,7 +102,7 @@ function fixture() {
             return [{ name: 'result.png', mimeType: 'image/png', path: '/data/result.png', previewUrl: 'blob:result' }];
         },
     };
-    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage'];
+    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'regenerateMessage'];
     const code = functions.map(name => {
         const node = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
         assert.ok(node, name);
@@ -168,4 +171,56 @@ test('取消卡片生成后不会提交旧结果或覆盖随后启动的新请�
     assert.equal(state.abortController, nextController);
     assert.equal(state.isLoading, true);
     assert.equal(state.streamingMessage, 'new request');
+});
+
+test('从消息入口重新生成旧图时，保留原图、同批图片及后续结果，只新增一张', async () => {
+    const { state, requests } = fixture();
+    const generation = context('original image prompt');
+    state.messages = [
+        { role: 'user', content: 'original image prompt', drawGeneration: generation },
+        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('original-a'), image('original-b')] },
+        { role: 'user', content: 'later prompt' },
+        { role: 'assistant', content: '', attachments: [image('later-result')] },
+    ];
+    const originalMessages = [...state.messages];
+    const before = plain(state.messages);
+    await state.regenerateMessage(1);
+    assert.equal(requests[0][2], generation.requestPrompt);
+    assert.equal(requests[0][5].count, 1);
+    originalMessages.forEach((message, index) => assert.equal(state.messages[index], message));
+    assert.deepEqual(plain(state.messages.slice(0, originalMessages.length)), before);
+    const cards = gallery.getDrawGalleryItems(state.messages);
+    assert.deepEqual(plain(cards).map(card => card.image.name), ['original-a', 'original-b', 'later-result', 'result.png']);
+    const reopened = gallery.getDrawGalleryItems(JSON.parse(JSON.stringify(state.messages)));
+    assert.equal(reopened.length, 4);
+});
+
+test('从用户提示词入口重新生成也追加新图，等待响应期间不移除原结果', async () => {
+    const { state } = fixture();
+    const generation = context();
+    state.messages = [
+        { role: 'user', content: 'original', drawGeneration: generation },
+        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('original')] },
+    ];
+    const originals = state.messages;
+    let finish;
+    state.requestDrawImages = () => new Promise(resolve => { finish = resolve; });
+    const pending = state.regenerateMessage(0);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.messages, originals);
+    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 1);
+    finish([{ name: 'new.png', mimeType: 'image/png', path: '/data/new.png', previewUrl: 'blob:new' }]);
+    await pending;
+    assert.equal(state.messages[1], originals[1]);
+    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 2);
+});
+
+test('重新生成失败保留所有原图，错误仅作为新增记录显示', async () => {
+    const { state } = fixture();
+    const originals = [...state.messages];
+    state.requestDrawImages = async () => { throw new Error('fixture failure'); };
+    await state.regenerateMessage(1);
+    originals.forEach((message, index) => assert.equal(state.messages[index], message));
+    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 1);
+    assert.equal(state.messages.at(-1).drawGenerationError, 'fixture failure');
 });

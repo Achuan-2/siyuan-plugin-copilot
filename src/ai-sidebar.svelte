@@ -6256,101 +6256,6 @@
         }
     }
 
-    async function regenerateDrawModeMessage(
-        lastUserMessage: Message,
-        providerConfig: any,
-        modelConfig: any
-    ) {
-        const userContent =
-            typeof lastUserMessage.content === 'string'
-                ? lastUserMessage.content.trim()
-                : getMessageText(lastUserMessage.content).trim();
-
-        if (!userContent) {
-            pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
-            isLoading = false;
-            return;
-        }
-
-        if (!modelSupportsImageGeneration(modelConfig)) {
-            pushErrMsg(i18n('aiSidebarDrawModelRequired'));
-            isLoading = false;
-            return;
-        }
-
-        const requestSettings = lastUserMessage.drawGeneration?.settings || getCurrentDrawImageSettings();
-        const requestProvider = lastUserMessage.drawGeneration?.provider || currentProvider;
-        const savedConfig = lastUserMessage.drawGeneration
-            ? getProviderAndModelConfig(requestProvider, lastUserMessage.drawGeneration.modelId) : null;
-        providerConfig = savedConfig?.providerConfig || providerConfig;
-        modelConfig = savedConfig?.modelConfig || modelConfig;
-        drawPendingCount = requestSettings.count;
-        normalizeDrawImageCount();
-        applyPromptDrawImageSize(userContent);
-
-        const contextDocumentsWithLatestContent = await collectDrawModeContextDocuments(
-            lastUserMessage.contextDocuments || []
-        );
-        const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(userContent);
-        const promptWithContext = buildDrawPromptWithContext(
-            promptWithSystemPrompt,
-            contextDocumentsWithLatestContent
-        );
-
-        const userImageAttachments =
-            lastUserMessage.attachments?.filter(att => att.type === 'image') || [];
-        const editImageSources = await hydrateDrawReferenceImages(lastUserMessage.drawGeneration?.referenceImages || userImageAttachments);
-        const isEdit = editImageSources.length > 0;
-        const generation = lastUserMessage.drawGeneration || createDrawGenerationContext(userContent, promptWithContext, [],
-            editImageSources, requestProvider, modelConfig.id, requestSettings);
-
-        abortController = new AbortController();
-        streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
-
-        try {
-            const generatedImages = await requestDrawImages(
-                providerConfig,
-                modelConfig,
-                generation.requestPrompt,
-                editImageSources,
-                abortController.signal,
-                requestSettings,
-                requestProvider
-            );
-
-            if (isAborted) {
-                return;
-            }
-
-            if (generatedImages.length === 0) {
-                throw new Error(i18n('aiSidebarDrawNoImages'));
-            }
-
-            const assistantMessage = createDrawAssistantMessage(generatedImages, { ...generation, createdAt: Date.now() });
-
-            messages = [...messages, assistantMessage];
-            streamingMessage = '';
-            isLoading = false;
-            abortController = null;
-            hasUnsavedChanges = true;
-
-            await saveCurrentSession(true);
-        } catch (error) {
-            if ((error as Error).name !== 'AbortError') {
-                const errorMessage: Message = {
-                    role: 'assistant',
-                    drawGenerationError: (error as Error).message,
-                    content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
-                };
-                messages = [...messages, errorMessage];
-                hasUnsavedChanges = true;
-            }
-            streamingMessage = '';
-            isLoading = false;
-            abortController = null;
-        }
-    }
-
     // 发送消息
     async function sendMessage() {
         if ((!currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0) || isLoading) return;
@@ -11902,14 +11807,45 @@
             return;
         }
 
-        // 【修复】立即设置加载状态，防止并发点击
-        isLoading = true;
-
         const targetMessage = messages[index];
         if (!targetMessage) {
             pushErrMsg(i18n('aiSidebarErrorsNoMessage'));
             return;
         }
+
+        // 生图重试始终追加结果，必须在普通对话截断历史消息之前分流。
+        if (chatMode === 'draw') {
+            const cards = getDrawGalleryItems(messages);
+            const nextUserIndex = messages.findIndex((message, messageIndex) =>
+                messageIndex > index && message.role === 'user'
+            );
+            const card = cards.find(item => {
+                const messageIndex = Number(item.key.split(':')[0]);
+                return targetMessage.role === 'user'
+                    ? messageIndex > index && (nextUserIndex < 0 || messageIndex < nextUserIndex)
+                    : messageIndex === index;
+            });
+            const userMessage = targetMessage.role === 'user' ? targetMessage :
+                messages.slice(0, index).reverse().find(message => message.role === 'user');
+            const prompt = card?.prompt || targetMessage.drawGeneration?.prompt ||
+                (userMessage ? getMessageText(userMessage.content) : '');
+            if (!prompt.trim()) {
+                pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
+                return;
+            }
+            await regenerateDrawGalleryImage(card || {
+                key: `retry:${index}`,
+                image: { type: 'image', name: '', data: '' },
+                prompt,
+                generation: targetMessage.drawGeneration || userMessage?.drawGeneration,
+                referenceImages: targetMessage.drawGeneration?.referenceImages ||
+                    userMessage?.attachments?.filter(attachment => attachment.type === 'image') || [],
+            });
+            return;
+        }
+
+        // 【修复】立即设置加载状态，防止并发点击
+        isLoading = true;
 
         // 检查目标消息或后续消息是否包含多模型响应
         let useMultiModel = false;
@@ -12044,11 +11980,6 @@
         }
 
         await scrollToBottom(true);
-
-        if (chatMode === 'draw') {
-            await regenerateDrawModeMessage(lastUserMessage, providerConfig, modelConfig);
-            return;
-        }
 
         // 获取最后一条用户消息关联的上下文文档，并获取最新内容
         const contextDocumentsWithLatestContent: ContextDocument[] = [];
