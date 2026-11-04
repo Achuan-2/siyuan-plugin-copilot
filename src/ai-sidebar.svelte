@@ -1,5 +1,6 @@
 <script lang="ts">
     import { floatingLayer } from './utils/floatingLayer';
+    import { appendToolRound, createToolRound } from './utils/agentContext';
     import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
     import {
         chat,
@@ -92,18 +93,12 @@
     import * as siyuanModule from 'siyuan';
 
 
-    // Agent 模式工具使用强制规则（统一常量）
+    // 与思源智能体一样，优先使用工具 schema，按需查阅补充文档。
     const AGENT_TOOL_USAGE_INSTRUCTION = `=== 工具使用强制规则 ===
 如果启用了SOUL工具，系统会自动将SOUL文档内容添加到系统提示词中。当用户说记住、下达风格更改要求等情况时，你需要调用soul工具来记录用户要求。
-**绝对禁止：在未调用 get_siyuan_skills 获取文档的情况下。**
-**必须遵守的使用流程：**
-1. 分析用户需求，确定需要使用的工具
-2. **必须**先调用 get_siyuan_skills(toolName="目标工具名称") 获取完整文档
-3. 仔细阅读返回的文档（包含参数说明、使用示例、注意事项）
-4. 根据文档正确构造参数，调用目标工具
-5. 根据工具返回结果继续后续操作
-**为什么要这样做？**
-- 每个工具都有复杂的参数和特定的使用场景，直接使用而不看文档极有可能导致错误操作`;
+优先根据工具自带的描述和参数 schema 直接执行任务。仅在说明不足、需要复杂操作示例或遇到参数错误时，调用 get_siyuan_skills(toolName="目标工具名称") 查阅补充文档；同一对话中已经读过的文档无需重复读取。
+同一轮可以提交多个参数已确定的工具调用；依赖前一步结果的操作必须等结果返回后再构造参数。
+遵守已启用工具、子工具与审批设置，不得通过其他工具绕过限制。`;
 
     /**
      * 根据当前对话模式选择基础系统提示词。
@@ -7083,8 +7078,6 @@
             // 准备工具列表
             let toolsForAgent: any[] | undefined = undefined;
             if (chatMode === 'agent' || chatMode === 'ask') {
-                const skills = await loadAllSkills();
-                const hasSkills = skills && skills.length > 0;
                 toolsForAgent = buildToolsForCurrentMode(hasSkills);
             }
             const allowedExecutableToolNames = getToolDefinitionNameSet(toolsForAgent);
@@ -7178,6 +7171,12 @@
                                 : undefined,
                             onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                                 receivedToolCalls = true;
+                                const currentRoundMessage = createToolRound(
+                                    toolCalls, streamingMessage || '', streamingThinking || '',
+                                    isDeepseekThinkingAgent || /deepseek-(reasoner|r1)/i.test(modelConfig.id),
+                                    responseItems
+                                );
+                                const roundResultStartIndex = messages.length;
 
                                 // 获取当前工具调用的起始索引
                                 const toolCallStartIndex =
@@ -7395,90 +7394,12 @@
 
                                 hasUnsavedChanges = true;
 
-                                // 更新 messagesToSend，准备下一次循环
-                                // 只在字段存在时才包含，避免传递 undefined 字段给 API
-                                messagesToSend = messages
-                                    .filter(msg => msg.role !== 'system') // 过滤掉旧的系统消息
-                                    .map(msg => {
-                                        const baseMsg: any = {
-                                            role: msg.role,
-                                            content: msg.content,
-                                        };
-
-                                        // 只在有工具调用相关字段时才包含
-                                        if (msg.tool_calls) {
-                                            baseMsg.tool_calls = msg.tool_calls;
-                                            if (msg.openaiResponseTurns) {
-                                                baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
-                                                baseMsg.finalReply = msg.finalReply;
-                                            }
-                                        }
-                                        if (msg.tool_call_id) {
-                                            baseMsg.tool_call_id = msg.tool_call_id;
-                                            baseMsg.name = msg.name;
-                                        }
-
-                                        // 检测是否是 DeepSeek 推理模型
-                                        const isDeepSeekReasonerModel2 =
-                                            /deepseek-(reasoner|r1)/i.test(modelConfig.id);
-
-                                        // 只有在启用 thinking 模式或者是 DeepSeek 推理模型时才保留 reasoning_content
-                                        // Kimi 等模型在未启用 thinking 时看到 reasoning_content 会报错
-                                        const shouldKeepReasoning2 =
-                                            isDeepseekThinkingAgent || isDeepSeekReasonerModel2;
-                                        if (
-                                            shouldKeepReasoning2 &&
-                                            msg.reasoning_content !== undefined
-                                        ) {
-                                            baseMsg.reasoning_content = msg.reasoning_content;
-                                        }
-
-                                        // 在启用 thinking 模式或是 DeepSeek 推理模型且有 tool_calls 时，确保 reasoning_content 字段存在
-                                        if (
-                                            shouldKeepReasoning2 &&
-                                            msg.tool_calls &&
-                                            msg.tool_calls.length > 0
-                                        ) {
-                                            if (baseMsg.reasoning_content === undefined) {
-                                                baseMsg.reasoning_content = '';
-                                            }
-                                        }
-
-                                        // 对于用户消息，如果有上下文文档，需要重新注入上下文内容
-                                        // 因为 msg.content 只存储了原始输入，不包含上下文
-                                        if (
-                                            msg.role === 'user' &&
-                                            msg.contextDocuments &&
-                                            msg.contextDocuments.length > 0
-                                        ) {
-                                            const contextText = msg.contextDocuments
-                                                .map(doc => {
-                                                    const label =
-                                                        doc.type === 'doc'
-                                                            ? '文档'
-                                                            : doc.type === 'webpage'
-                                                              ? '网页'
-                                                              : '块';
-                                                    if (doc.type === 'doc') {
-                                                        return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
-                                                    } else {
-                                                        return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\`\n\n\`\`\`markdown\n${doc.content}\n\`\`\``;
-                                                    }
-                                                })
-                                                .join('\n\n---\n\n');
-                                            baseMsg.content += `\n\n---\n\n以下是相关内容作为上下文：\n\n${contextText}`;
-                                        }
-
-                                        return baseMsg;
-                                    });
-
-                                // 添加系统提示词到消息列表开头（工具使用说明已在 prepareMessagesForAI 中添加）
-                                if (getBaseSystemPrompt()) {
-                                    messagesToSend.unshift({
-                                        role: 'system',
-                                        content: getBaseSystemPrompt(),
-                                    });
-                                }
+                                // 保留首轮的系统提示词、附件和受限历史，只追加本轮协议消息。
+                                messagesToSend = appendToolRound(
+                                    messagesToSend,
+                                    currentRoundMessage,
+                                    messages.slice(roundResultStartIndex)
+                                );
 
                                 // 通知工具执行完成
                                 toolExecutionComplete?.();
@@ -12619,8 +12540,6 @@
             // 准备工具列表
             let toolsForAgent: any[] | undefined = undefined;
             if (chatMode === 'agent' || chatMode === 'ask') {
-                const skills = await loadAllSkills();
-                const hasSkills = skills && skills.length > 0;
                 toolsForAgent = buildToolsForCurrentMode(hasSkills);
             }
             const allowedExecutableToolNames = getToolDefinitionNameSet(toolsForAgent);
@@ -12685,6 +12604,12 @@
                                 : undefined,
                             onToolCallComplete: async (toolCalls: ToolCall[], responseItems?: any[]) => {
                                 receivedToolCalls = true;
+                                const currentRoundMessage = createToolRound(
+                                    toolCalls, streamingMessage || '', streamingThinking || '',
+                                    isDeepseekThinkingAgent || /deepseek-(reasoner|r1)/i.test(modelConfig.id),
+                                    responseItems
+                                );
+                                const roundResultStartIndex = messages.length;
 
                                 // 获取当前工具调用的起始索引
                                 const toolCallStartIndex =
@@ -12919,91 +12844,12 @@
 
                                 hasUnsavedChanges = true;
 
-                                // 更新 messagesToSend，准备下一次循环
-                                // 只在字段存在时才包含，避免传递 undefined 字段给 API
-                                messagesToSend = messages
-                                    .filter(msg => msg.role !== 'system') // 过滤掉旧的系统消息
-                                    .map(msg => {
-                                        const baseMsg: any = {
-                                            role: msg.role,
-                                            content: msg.content,
-                                        };
-
-                                        // 只在有工具调用相关字段时才包含
-                                        if (msg.tool_calls) {
-                                            baseMsg.tool_calls = msg.tool_calls;
-                                            if (msg.openaiResponseTurns) {
-                                                baseMsg.openaiResponseTurns = msg.openaiResponseTurns;
-                                                baseMsg.finalReply = msg.finalReply;
-                                            }
-                                        }
-                                        if (msg.tool_call_id) {
-                                            baseMsg.tool_call_id = msg.tool_call_id;
-                                            baseMsg.name = msg.name;
-                                        }
-
-                                        // 检测是否是 DeepSeek 推理模型
-                                        const isDeepSeekReasonerModel4 = modelConfig
-                                            ? /deepseek-(reasoner|r1)/i.test(modelConfig.id)
-                                            : false;
-
-                                        // 只有在启用 thinking 模式或者是 DeepSeek 推理模型时才保留 reasoning_content
-                                        // Kimi 等模型在未启用 thinking 时看到 reasoning_content 会报错
-                                        const shouldKeepReasoning4 =
-                                            isDeepseekThinkingAgent || isDeepSeekReasonerModel4;
-                                        if (
-                                            shouldKeepReasoning4 &&
-                                            msg.reasoning_content !== undefined
-                                        ) {
-                                            baseMsg.reasoning_content = msg.reasoning_content;
-                                        }
-
-                                        // 在启用 thinking 模式或是 DeepSeek 推理模型且有 tool_calls 时，确保 reasoning_content 字段存在
-                                        if (
-                                            shouldKeepReasoning4 &&
-                                            msg.tool_calls &&
-                                            msg.tool_calls.length > 0
-                                        ) {
-                                            if (baseMsg.reasoning_content === undefined) {
-                                                baseMsg.reasoning_content = '';
-                                            }
-                                        }
-
-                                        // 对于用户消息，如果有上下文文档，需要重新注入上下文内容
-                                        // 因为 msg.content 只存储了原始输入，不包含上下文
-                                        if (
-                                            msg.role === 'user' &&
-                                            msg.contextDocuments &&
-                                            msg.contextDocuments.length > 0
-                                        ) {
-                                            const contextText = msg.contextDocuments
-                                                .map(doc => {
-                                                    const label =
-                                                        doc.type === 'doc'
-                                                            ? '文档'
-                                                            : doc.type === 'webpage'
-                                                              ? '网页'
-                                                              : '块';
-                                                    if (doc.type === 'doc') {
-                                                        return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\``;
-                                                    } else {
-                                                        return `## ${label}: ${doc.title}\n\n**BlockID**: \`${doc.id}\`\n\n\`\`\`markdown\n${doc.content}\n\`\`\``;
-                                                    }
-                                                })
-                                                .join('\n\n---\n\n');
-                                            baseMsg.content += `\n\n---\n\n以下是相关内容作为上下文：\n\n${contextText}`;
-                                        }
-
-                                        return baseMsg;
-                                    });
-
-                                // 添加系统提示词到消息列表开头（工具使用说明已在一开始的 messagesToSend 构建中决定好了，这里直接追加）
-                                if (baseSystemPrompt.trim() || hasToolInstruction) {
-                                    messagesToSend.unshift({
-                                        role: 'system',
-                                        content: baseSystemPrompt,
-                                    });
-                                }
+                                // 保留首轮的系统提示词、附件和受限历史，只追加本轮协议消息。
+                                messagesToSend = appendToolRound(
+                                    messagesToSend,
+                                    currentRoundMessage,
+                                    messages.slice(roundResultStartIndex)
+                                );
 
                                 // 通知工具执行完成
                                 toolExecutionComplete?.();

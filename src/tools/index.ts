@@ -26,6 +26,7 @@ import { get } from 'svelte/store';
 import type { QuestionItem, QuestionCardAnswers } from '../ai-chat';
 import { i18n, i18nKey, tf } from '../utils/i18n';
 import { getSubToolConfig, getSubToolNames, type ToolConfig } from './toolSelection';
+import PromiseLimitPool from '../libs/promise-pool';
 
 /**
  * 获取当前激活的编辑器 Protyle 实例
@@ -327,7 +328,7 @@ export function buildToolDescriptionsPrompt(
 
 /**
  * 获取工具的详细描述文档
- * AI 应该先调用此工具获取目标工具的详细使用说明，然后再调用实际工具
+ * 工具 schema 不足以说明复杂操作时，按需获取补充文档。
  */
 const TOOL_DESCRIPTION_SYSTEM_TOOL_NAMES = new Set(['get_siyuan_skills', 'skill']);
 
@@ -2076,7 +2077,17 @@ function buildCustomSkillMarkdown(
 /**
  * 从 data/storage/ai/agent/skills 加载所有自定义 Skill
  */
-export async function loadAllSkills(): Promise<Skill[]> {
+let skillsLoading: Promise<Skill[]> | undefined;
+
+export function loadAllSkills(): Promise<Skill[]> {
+    // Share concurrent scans without caching stale skills after an edit or sync.
+    if (!skillsLoading) {
+        skillsLoading = scanAllSkills().finally(() => { skillsLoading = undefined; });
+    }
+    return skillsLoading;
+}
+
+async function scanAllSkills(): Promise<Skill[]> {
     const skills: Skill[] = [];
     try {
         // 迁移旧的 skills (从 /data/storage/petal/siyuan-plugin-copilot/skills 迁移到 /data/storage/ai/agent/skills)
@@ -2124,44 +2135,50 @@ export async function loadAllSkills(): Promise<Skill[]> {
 
         const items = await readDir(CUSTOM_SKILLS_DIR);
         if (items && Array.isArray(items)) {
+            const pool = new PromiseLimitPool<Skill | undefined>(6);
             for (const item of items) {
                 if (item.isDir) {
-                    const skillFolderName = item.name;
-                    const subDirPath = `${CUSTOM_SKILLS_DIR}/${skillFolderName}`;
-                    const filesInFolder = await readDir(subDirPath);
-                    if (filesInFolder && Array.isArray(filesInFolder)) {
-                        // 支持 skill.md 或 SKILL.md
-                        const skillMdFile = filesInFolder.find(
-                            f => f.name.toLowerCase() === 'skill.md'
-                        );
-                        if (skillMdFile) {
-                            const skillFilePath = `${subDirPath}/${skillMdFile.name}`;
-                            const blob = await getFileBlob(skillFilePath);
-                            if (blob) {
-                                const text = await blob.text();
-                                const { yaml } = parseYamlFrontmatter(text);
-                                if (yaml) {
-                                    const blockIds = extractSiyuanSkillBlockIds(text);
-                                    skills.push({
-                                        id: skillFolderName,
-                                        name: yaml.name || skillFolderName,
-                                        description: yaml.description || '',
-                                        filePath: skillFilePath,
-                                        source: blockIds.length > 0 ? 'siyuan-blocks' : 'markdown',
-                                        blockIds: blockIds,
-                                        yamlHeaders: yaml
-                                    });
-                                }
-                            }
+                    pool.add(async () => {
+                        try {
+                            return await readSkillSummary(item.name);
+                        } catch (error) {
+                            // A disappearing/syncing skill must not discard other scan results.
+                            console.error(`[Skills] Failed to load skill ${item.name}:`, error);
                         }
-                    }
+                    });
                 }
             }
+            skills.push(...(await pool.awaitAll()).filter((skill): skill is Skill => !!skill));
         }
     } catch (e) {
         console.error('[Skills] Failed to load skills:', e);
     }
     return skills;
+}
+
+async function readSkillSummary(skillFolderName: string): Promise<Skill | undefined> {
+    const subDirPath = `${CUSTOM_SKILLS_DIR}/${skillFolderName}`;
+    const files = await readDir(subDirPath);
+    const skillMdFile = Array.isArray(files)
+        ? files.find(file => file.name.toLowerCase() === 'skill.md') : undefined;
+    if (!skillMdFile) return;
+
+    const skillFilePath = `${subDirPath}/${skillMdFile.name}`;
+    const blob = await getFileBlob(skillFilePath);
+    if (!blob) return;
+    const text = await blob.text();
+    const { yaml } = parseYamlFrontmatter(text);
+    if (!yaml) return;
+    const blockIds = extractSiyuanSkillBlockIds(text);
+    return {
+        id: skillFolderName,
+        name: yaml.name || skillFolderName,
+        description: yaml.description || '',
+        filePath: skillFilePath,
+        source: blockIds.length > 0 ? 'siyuan-blocks' : 'markdown',
+        blockIds,
+        yamlHeaders: yaml,
+    };
 }
 
 /**
@@ -2482,7 +2499,10 @@ export async function initializeMcpTools() {
             // Translate the description dynamically if there is a translation
             const descKey = i18nKey('tools', mcpTool.name, 'description');
             const translatedDesc = i18n(descKey);
-            const description = (translatedDesc !== descKey) ? translatedDesc : (mcpTool.description || '');
+            // Native descriptions include action-specific constraints required for direct calls.
+            // ToolSelector handles localized UI summaries separately.
+            const description = mcpTool.description?.trim() ||
+                ((translatedDesc !== descKey) ? translatedDesc : '');
 
             const tool: Tool = {
                 type: 'function',
