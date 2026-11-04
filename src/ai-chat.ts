@@ -36,6 +36,24 @@ export interface MessageAttachment {
     path?: string; // 插件内存储的资源路径
     isWebPage?: boolean; // 标记是否为网页附件
     url?: string; // 原始URL（网页附件时使用）
+    drawEditSource?: boolean; // 输入框中明确选中的待编辑图片
+}
+
+export interface DrawGenerationContext {
+    prompt: string;
+    requestPrompt: string; // 实际发送的提示词，包含该分支的对话和系统提示词
+    history: string[];
+    referenceImages: MessageAttachment[];
+    originalReferenceImages: MessageAttachment[];
+    provider: string;
+    modelId: string;
+    settings: {
+        aspectRatio: string;
+        resolution: '512' | '1K' | '2K' | '4K';
+        quality: 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'standard' | 'hd';
+        count: number;
+    };
+    createdAt: number;
 }
 
 export interface MessageContent {
@@ -116,6 +134,8 @@ export interface Message {
         }>; // 工具调用历史
     }>; // 多模型响应
     generatedImages?: GeneratedImageData[]; // 生成的图片数据（用于多轮生图）
+    drawGeneration?: DrawGenerationContext; // 同批图片共享不可变的生成记录，各卡片独立读取
+    drawGenerationError?: string;
     drawImageSelectionRequired?: boolean; // 画图模式多图结果是否需要用户选择
     drawSelectedImageIndex?: number; // 画图模式多图结果中用户选中的图片索引
     questionCards?: Array<{ card: QuestionCardData; answers: QuestionCardAnswers }>; // 已回答的 question card（保留在对话中）

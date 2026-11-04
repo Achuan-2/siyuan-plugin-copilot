@@ -1,6 +1,7 @@
 <script lang="ts">
     import { floatingLayer } from './utils/floatingLayer';
     import { appendToolRound, createToolRound } from './utils/agentContext';
+    import { ReplyMarkdownRenderer, ReplyRenderScheduler } from './utils/replyRendering';
     import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
     import {
         chat,
@@ -52,6 +53,15 @@
         fetchWithWebView,
         parseWebPageToMarkdown,
     } from './utils/webParser';
+    import DrawImageGallery from './components/DrawImageGallery.svelte';
+    import { getDrawGalleryItems, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem } from './utils/drawGallery';
+    import type { DrawGenerationContext } from './ai-chat';
+    import DrawImageSettings from './components/DrawImageSettings.svelte';
+    import {
+        buildGeminiDrawImageConfig, getClosestDrawAspectRatio, getDrawImageCapabilities,
+        getOpenAIDrawImageSize, inferDrawImageResolution,
+        type DrawImageQuality, type DrawImageResolution,
+    } from './utils/drawImageConfig';
     import MultiModelSelector from './components/MultiModelSelector.svelte';
     import SessionManager from './components/SessionManager.svelte';
     import ToolSelector, { type ToolConfig } from './components/ToolSelector.svelte';
@@ -893,64 +903,23 @@
     let diffViewMode: DiffViewMode = 'diff'; // diff查看模式：diff或split
 
     // 画图模式
-    type DrawImageSize = 'auto' | string;
-    type DrawImageQuality = 'auto' | 'low' | 'medium' | 'high' | 'standard' | 'hd';
-    type DrawImageSizeOption = { value: DrawImageSize; label: string };
-
+    type DrawImageSizeOption = { value: string; label: string };
     const DRAW_IMAGE_BASE_UNIT = 640;
     const DRAW_IMAGE_SIZE_STEP = 16;
-    const DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
-        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x102411Square') },
-        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x102432Landscape') },
-        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x153623Portrait') },
-        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
-        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
-        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
-        { value: '2048x2048', label: i18n('aiSidebarDrawSize2048x2048112KSquare') },
-        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x11521692KLandscape') },
-        { value: '3840x2160', label: i18n('aiSidebarDrawSize3840x21601694KLandscape') },
-        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x38409164KPortrait') },
-    ];
-    const GEMINI_DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
-        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x1024111KSquare') },
-        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x1024321KLandscape') },
-        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x1536231KPortrait') },
-        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
-        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
-        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
-        { value: '2048x2048', label: i18n('aiSidebarDrawSize2048x2048112KSquare') },
-        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x11521692KLandscape') },
-        { value: '3840x2160', label: i18n('aiSidebarDrawSize3840x21601694KLandscape') },
-        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x38409164KPortrait') },
-    ];
-    const GEMINI_ASPECT_ONLY_DRAW_IMAGE_SIZE_OPTIONS: DrawImageSizeOption[] = [
-        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
-        { value: '1024x1024', label: i18n('aiSidebarDrawSize1024x102411Square') },
-        { value: '1536x1024', label: i18n('aiSidebarDrawSize1536x102432Landscape') },
-        { value: '1024x1536', label: i18n('aiSidebarDrawSize1024x153623Portrait') },
-        { value: '1536x1152', label: i18n('aiSidebarDrawSize1536x115243Landscape') },
-        { value: '1152x1536', label: i18n('aiSidebarDrawSize1152x153634Portrait') },
-        { value: '1504x640', label: i18n('aiSidebarDrawSize1504x6402351Landscape') },
-        { value: '2048x1152', label: i18n('aiSidebarDrawSize2048x1152169Landscape') },
-        { value: '2160x3840', label: i18n('aiSidebarDrawSize2160x3840916Portrait') },
-    ];
-    const DRAW_IMAGE_QUALITY_OPTIONS: Array<{ value: DrawImageQuality; label: string }> = [
-        { value: 'auto', label: i18n('aiSidebarDrawQualityAuto') },
-        { value: 'low', label: i18n('aiSidebarDrawQualityLow') },
-        { value: 'medium', label: i18n('aiSidebarDrawQualityMedium') },
-        { value: 'high', label: i18n('aiSidebarDrawQualityHigh') },
-        { value: 'standard', label: i18n('aiSidebarDrawQualityStandard') },
-        { value: 'hd', label: i18n('aiSidebarDrawQualityHd') },
-    ];
-
-    let drawImageSize: DrawImageSize = 'auto';
-    let drawImageSizeOptions = DRAW_IMAGE_SIZE_OPTIONS;
-    let drawAutoDetectedSizeOption: DrawImageSizeOption | null = null;
+    let drawImageAspectRatio = 'auto';
+    let drawImageResolution: DrawImageResolution = '1K';
+    let drawImageResolutionExplicit = false;
     let drawImageCount = 1;
     let drawImageQuality: DrawImageQuality = 'auto';
+    let drawSettingsModelKey = '';
     let drawModeNoModelWarned = false;
+    let drawEditingContext: DrawGenerationContext | null = null;
+    let drawPendingCount = 1;
+    $: drawGalleryItems = chatMode === 'draw' ? getDrawGalleryItems(messages) : [];
+    $: drawGalleryErrors = messages.filter(message => message.role === 'assistant' &&
+        (message.drawGenerationError || (typeof message.content === 'string' && message.content.startsWith('❌'))))
+        .map(message => message.drawGenerationError || String(message.content));
+    $: if (drawEditingContext && !currentAttachments.some(image => image.drawEditSource)) drawEditingContext = null;
 
     // 图片查看器
     let isImageViewerOpen = false;
@@ -1941,14 +1910,17 @@
     $: providersForModelSelector =
         chatMode === 'draw' ? filterProvidersByImageGeneration(providers) : providers;
 
-    $: {
-        const currentConfig = getProviderAndModelConfig(currentProvider, currentModelId);
-        drawImageSizeOptions = mergeDrawAutoDetectedSizeOption(
-            getDrawImageSizeOptions(currentConfig?.providerConfig, currentConfig?.modelConfig)
-        );
-        if (!drawImageSizeOptions.some(option => option.value === drawImageSize)) {
-            drawImageSize = 'auto';
-        }
+    $: drawIsGemini = isGeminiImageApi(
+        getProviderAndModelConfig(currentProvider, currentModelId, providers)?.providerConfig,
+        { id: currentModelId }
+    );
+    $: drawCapabilities = getDrawImageCapabilities(currentModelId, drawIsGemini);
+    $: if (drawSettingsModelKey !== currentProvider + ':' + currentModelId) {
+        drawSettingsModelKey = currentProvider + ':' + currentModelId;
+        drawImageResolution = drawCapabilities.defaultResolution;
+        drawImageResolutionExplicit = false;
+        if (!drawCapabilities.aspectRatios.includes(drawImageAspectRatio)) drawImageAspectRatio = 'auto';
+        if (!drawCapabilities.qualities.includes(drawImageQuality)) drawImageQuality = drawCapabilities.qualities[0] || 'auto';
     }
 
     $: if (chatMode === 'draw' && !isInitialLoading) {
@@ -2656,6 +2628,7 @@
 
     onDestroy(async () => {
         isDestroyed = true;
+        replyRenderScheduler.dispose();
         if (sidebarContainer) {
             sidebarContainer.removeEventListener('touchstart', handleTouchStopPropagation);
             sidebarContainer.removeEventListener('touchmove', handleTouchStopPropagation);
@@ -2771,6 +2744,18 @@
         }
     }
 
+    // 思源智能体同样会合并流式渲染，避免每个 token 都扫描整份会话 DOM。
+    const replyRenderScheduler = new ReplyRenderScheduler(async () => {
+        await tick();
+        if (isDestroyed || !messagesContainer) return;
+        await highlightCodeBlocks(messagesContainer);
+        if (isDestroyed || !messagesContainer) return;
+        cleanupCodeBlocks(messagesContainer);
+        renderMathFormulas(messagesContainer);
+        setupBlockRefLinks(messagesContainer);
+        setupImageClickHandlers(messagesContainer);
+    });
+
     // 当消息、多模型响应或选择页签/答案变化时，高亮代码块
     $: {
         // 保持对变量的引用以便 Svelte 触发依赖
@@ -2782,19 +2767,8 @@
         streamingMessage;
         streamingThinking;
 
-        tick().then(async () => {
-            if (messagesContainer) {
-                // 等待DOM完全更新后再处理代码块
-                await tick();
-                await tick();
-                highlightCodeBlocks(messagesContainer);
-                await tick();
-                cleanupCodeBlocks(messagesContainer);
-                renderMathFormulas(messagesContainer);
-                setupBlockRefLinks(messagesContainer);
-                setupImageClickHandlers(messagesContainer);
-            }
-        });
+        // 首次更新立即处理；流式期间合并到 100ms，结束和静态操作立即刷新。
+        replyRenderScheduler.request(!isLoading);
     }
 
     // 处理粘贴事件
@@ -3942,7 +3916,7 @@
         return !!model?.capabilities?.imageGeneration;
     }
 
-    function isGeminiImageApi(providerConfig: any, modelConfig?: any): boolean {
+    function isGeminiImageApi(providerConfig: any, modelConfig?: any, providerId = currentProvider): boolean {
         const customUrls = [
             providerConfig?.customApiUrl,
             providerConfig?.advancedConfig?.customChatUrl,
@@ -3952,37 +3926,11 @@
             .join(' ');
 
         return (
-            currentProvider === 'gemini' ||
+            providerId === 'gemini' ||
             providerConfig?.advancedConfig?.chatInterface === 'gemini' ||
             /generativelanguage\.googleapis\.com/i.test(customUrls) ||
             /(?:^|\/)gemini-/i.test(modelConfig?.id || '')
         );
-    }
-
-    function geminiModelSupportsImageSize(modelId: string): boolean {
-        return /gemini-3(?:\.\d+)?-(?:flash(?:-lite)?|pro)-image/i.test(modelId || '');
-    }
-
-    function getDrawImageSizeOptions(providerConfig: any, modelConfig: any) {
-        if (!isGeminiImageApi(providerConfig, modelConfig)) {
-            return DRAW_IMAGE_SIZE_OPTIONS;
-        }
-
-        return geminiModelSupportsImageSize(modelConfig?.id || '')
-            ? GEMINI_DRAW_IMAGE_SIZE_OPTIONS
-            : GEMINI_ASPECT_ONLY_DRAW_IMAGE_SIZE_OPTIONS;
-    }
-
-    function mergeDrawAutoDetectedSizeOption(options: DrawImageSizeOption[]) {
-        if (
-            !drawAutoDetectedSizeOption ||
-            options.some(option => option.value === drawAutoDetectedSizeOption?.value)
-        ) {
-            return options;
-        }
-
-        const [autoOption, ...restOptions] = options;
-        return [autoOption, drawAutoDetectedSizeOption, ...restOptions];
     }
 
     function roundToDrawSizeUnit(value: number): number {
@@ -4046,13 +3994,10 @@
                 : normalizedSize.width > normalizedSize.height
                   ? i18n('aiSidebarDrawLandscape')
                   : i18n('aiSidebarDrawPortrait');
-        const existingOption = DRAW_IMAGE_SIZE_OPTIONS.find(option => option.value === size);
-        return (
-            existingOption || {
-                value: size,
-                label: tf('aiSidebarDrawAutoDetectedSize', size, formatDrawRatio(normalizedSize.width, normalizedSize.height), orientation),
-            }
-        );
+        return {
+            value: size,
+            label: tf('aiSidebarDrawAutoDetectedSize', size, formatDrawRatio(normalizedSize.width, normalizedSize.height), orientation),
+        };
     }
 
     function createDrawImageSizeOptionFromRatio(widthRatio: number, heightRatio: number) {
@@ -4095,7 +4040,7 @@
         const ratioPatterns = [
             /(?:比例|宽高比|画幅|纵横比|aspect\s*ratio|ratio)\s*(?:为|是|=|:|：)?\s*(\d+(?:\.\d+)?)\s*(?:[:：]|比)\s*(\d+(?:\.\d+)?)/i,
             /(?:^|[^\d.])(\d+\.\d+)\s*[:：]\s*(\d+(?:\.\d+)?)(?=$|[^\d.])/i,
-            /(?:^|[^\d.])(1|2|3|4|9|16|21)\s*[:：]\s*(1|2|3|4|9|16|21)(?=$|[^\d.])/i,
+            /(?:^|[^\d.])(1|2|3|4|5|8|9|16|21)\s*[:：]\s*(1|2|3|4|5|8|9|16|21)(?=$|[^\d.])/i,
         ];
 
         for (const pattern of ratioPatterns) {
@@ -4119,17 +4064,20 @@
     }
 
     function applyPromptDrawImageSize(prompt: string) {
-        if (drawImageSize !== 'auto') return;
-
-        const detectedOption = getPromptImageSizeMatch(prompt) || getPromptImageRatioMatch(prompt);
+        const detectedPixels = getPromptImageSizeMatch(prompt);
+        const detectedOption = detectedPixels || getPromptImageRatioMatch(prompt);
         if (!detectedOption) return;
+        const size = parseDrawImageSizeValue(detectedOption.value);
+        if (!size) return;
 
-        drawImageSize = detectedOption.value;
-        drawAutoDetectedSizeOption = drawImageSizeOptions.some(
-            option => option.value === detectedOption.value
-        )
-            ? null
-            : detectedOption;
+        if (drawImageAspectRatio === 'auto') {
+            drawImageAspectRatio = getClosestDrawAspectRatio(size.width, size.height, drawCapabilities.aspectRatios);
+        }
+        // 单独指定比例不改变分辨率；明确选择的分辨率优先于提示词里的像素尺寸。
+        if (drawIsGemini && detectedPixels && !drawImageResolutionExplicit) {
+            const inferred = inferDrawImageResolution(size.width, size.height);
+            if (drawCapabilities.resolutions.includes(inferred)) drawImageResolution = inferred;
+        }
     }
 
     function filterProvidersByImageGeneration(sourceProviders: Record<string, any>) {
@@ -4201,22 +4149,6 @@
         return null;
     }
 
-    function hasMessageImageForDrawEdit(message: Message): boolean {
-        return !!(
-            message.generatedImages?.length ||
-            message.attachments?.some(att => att.type === 'image') ||
-            (typeof message.content === 'string' && /!\[.*?\]\(([^)]+)\)/.test(message.content))
-        );
-    }
-
-    function getLastAssistantMessageForDrawEdit(): Message | null {
-        return (
-            [...messages]
-                .reverse()
-                .find(msg => msg.role === 'assistant' && hasMessageImageForDrawEdit(msg)) || null
-        );
-    }
-
     function getDrawSelectableImageCount(message: Message): number {
         const generatedCount = message.generatedImages?.length || 0;
         const attachmentCount =
@@ -4261,11 +4193,6 @@
         if (!shouldShowDrawImageChoice(message)) return false;
         const imageIndex = getImageAttachmentIndex(message, attachmentIndex);
         return getDrawSelectedImageIndex(message) === imageIndex;
-    }
-
-    function hasPendingDrawImageSelectionForEdit(): boolean {
-        const lastAssistantMsg = getLastAssistantMessageForDrawEdit();
-        return !!lastAssistantMsg && isDrawImageSelectionRequired(lastAssistantMsg);
     }
 
     function selectDrawGeneratedImage(messageIndex: number, imageIndex: number) {
@@ -5628,10 +5555,11 @@
 
     function getOpenAIImageEndpointUrl(
         providerConfig: any,
-        endpoint: '/images/generations' | '/images/edits'
+        endpoint: '/images/generations' | '/images/edits',
+        providerId = currentProvider
     ) {
         const rawBaseUrl =
-            providerConfig?.customApiUrl?.trim() || getBuiltInImageApiBaseUrl(currentProvider);
+            providerConfig?.customApiUrl?.trim() || getBuiltInImageApiBaseUrl(providerId);
         if (!rawBaseUrl) {
             throw new Error(i18n('aiSidebarDrawApiUrlRequired'));
         }
@@ -5651,11 +5579,11 @@
             .replace(/\/v\d+(?:beta)?\/models$/i, '');
     }
 
-    function getGeminiImageEndpointUrl(providerConfig: any, modelConfig: any): string {
+    function getGeminiImageEndpointUrl(providerConfig: any, modelConfig: any, providerId = currentProvider): string {
         const rawBaseUrl =
             providerConfig?.advancedConfig?.customChatUrl?.trim() ||
             providerConfig?.customApiUrl?.trim() ||
-            getBuiltInImageApiBaseUrl(currentProvider);
+            getBuiltInImageApiBaseUrl(providerId);
         if (!rawBaseUrl) {
             throw new Error(i18n('aiSidebarDrawGeminiApiUrlRequired'));
         }
@@ -5720,65 +5648,6 @@
         return dataUrl.split(',')[1] || '';
     }
 
-    function getClosestGeminiAspectRatio(width: number, height: number): string {
-        const ratio = width / height;
-        const supportedRatios = [
-            { value: 1, label: '1:1' },
-            { value: 4 / 3, label: '4:3' },
-            { value: 3 / 4, label: '3:4' },
-            { value: 3 / 2, label: '3:2' },
-            { value: 2 / 3, label: '2:3' },
-            { value: 16 / 9, label: '16:9' },
-            { value: 9 / 16, label: '9:16' },
-            { value: 21 / 9, label: '21:9' },
-        ];
-
-        return supportedRatios.reduce((best, item) =>
-            Math.abs(item.value - ratio) < Math.abs(best.value - ratio) ? item : best
-        ).label;
-    }
-
-    function getGeminiImageConfig(modelId: string, size: DrawImageSize) {
-        const sizeMap: Record<string, { aspectRatio: string; imageSize?: '1K' | '2K' | '4K' }> = {
-            '1024x1024': { aspectRatio: '1:1' },
-            '1536x1024': { aspectRatio: '3:2' },
-            '1024x1536': { aspectRatio: '2:3' },
-            '1536x1152': { aspectRatio: '4:3' },
-            '1152x1536': { aspectRatio: '3:4' },
-            '1504x640': { aspectRatio: '21:9' },
-            '2048x2048': { aspectRatio: '1:1', imageSize: '2K' },
-            '2048x1152': { aspectRatio: '16:9', imageSize: '2K' },
-            '3840x2160': { aspectRatio: '16:9', imageSize: '4K' },
-            '2160x3840': { aspectRatio: '9:16', imageSize: '4K' },
-        };
-        const parsedSize = parseDrawImageSizeValue(size);
-        let config = sizeMap[size];
-        if (!config && parsedSize) {
-            // Gemini 不接受任意像素尺寸，需同时转换比例与分辨率档位。
-            // 保留上方预设的档位；自动识别尺寸按长边匹配最近的 1K/2K/4K。
-            const longEdge = Math.max(parsedSize.width, parsedSize.height);
-            const resolutions = [
-                { pixels: 1024, imageSize: '1K' as const },
-                { pixels: 2048, imageSize: '2K' as const },
-                { pixels: 4096, imageSize: '4K' as const },
-            ];
-            const resolution = resolutions.reduce((best, item) =>
-                Math.abs(item.pixels - longEdge) < Math.abs(best.pixels - longEdge) ? item : best
-            );
-            config = {
-                aspectRatio: getClosestGeminiAspectRatio(parsedSize.width, parsedSize.height),
-                imageSize: resolution.imageSize,
-            };
-        }
-        if (!config) return null;
-
-        if (!geminiModelSupportsImageSize(modelId)) {
-            return { aspectRatio: config.aspectRatio };
-        }
-
-        return config;
-    }
-
     async function buildGeminiImageParts(prompt: string, editImageSources: MessageAttachment[]) {
         const parts: Array<Record<string, any>> = [{ text: prompt }];
 
@@ -5830,11 +5699,13 @@
         modelConfig: any,
         prompt: string,
         editImageSources: MessageAttachment[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        requestSettings = getCurrentDrawImageSettings(),
+        providerId = currentProvider
     ) {
         const isEdit = editImageSources.length > 0;
-        const url = getGeminiImageEndpointUrl(providerConfig, modelConfig);
-        const imageConfig = getGeminiImageConfig(modelConfig.id, drawImageSize);
+        const url = getGeminiImageEndpointUrl(providerConfig, modelConfig, providerId);
+        const imageConfig = buildGeminiDrawImageConfig(modelConfig.id, requestSettings.aspectRatio, requestSettings.resolution);
         const generationConfig: Record<string, any> = {
             responseModalities: ['TEXT', 'IMAGE'],
         };
@@ -5873,7 +5744,7 @@
             return extractGeminiImagesFromResponse(await response.json(), prompt);
         };
 
-        const count = Math.max(1, Math.min(10, Number(drawImageCount) || 1));
+        const count = Math.max(1, Math.min(10, Number(requestSettings.count) || 1));
         const results = await Promise.all(
             Array.from({ length: count }, () => requestOnce())
         );
@@ -5889,104 +5760,6 @@
 
         const savedImages = await Promise.all(rawImages.map(saveGeneratedImageFromApiResult));
         return savedImages.filter(Boolean);
-    }
-
-    async function collectPreviousGeneratedImagesForDraw(): Promise<MessageAttachment[]> {
-        const lastAssistantMsg = getLastAssistantMessageForDrawEdit();
-        if (!lastAssistantMsg) {
-            return [];
-        }
-
-        if (lastAssistantMsg.generatedImages && lastAssistantMsg.generatedImages.length > 0) {
-            const selectedIndex = getDrawSelectedImageIndex(lastAssistantMsg);
-            if (lastAssistantMsg.generatedImages.length > 1 && selectedIndex === null) {
-                return [];
-            }
-            const imagesToUse =
-                selectedIndex === null
-                    ? lastAssistantMsg.generatedImages
-                    : [lastAssistantMsg.generatedImages[selectedIndex]];
-            return await Promise.all(
-                imagesToUse.map(async (img: any, index) => {
-                    const mimeType = img.mimeType || 'image/png';
-                    let data = img.previewUrl || img.url || '';
-                    if (!data && img.path) {
-                        data = (await loadAsset(img.path)) || '';
-                    } else if (!data && img.data) {
-                        data = `data:${mimeType};base64,${img.data}`;
-                    }
-
-                    return {
-                        type: 'image' as const,
-                        name: createGeneratedImageFileName(mimeType, index),
-                        data,
-                        path: img.path,
-                        mimeType,
-                    };
-                })
-            );
-        }
-
-        const imageAttachments =
-            lastAssistantMsg.attachments?.filter(att => att.type === 'image') || [];
-        if (imageAttachments.length > 0) {
-            const selectedIndex = getDrawSelectedImageIndex(lastAssistantMsg);
-            if (imageAttachments.length > 1 && selectedIndex === null) {
-                return [];
-            }
-            const attachmentsToUse =
-                selectedIndex === null ? imageAttachments : [imageAttachments[selectedIndex]];
-            return await Promise.all(
-                attachmentsToUse.map(async att => {
-                    if (att.data || !att.path) {
-                        return att;
-                    }
-                    return {
-                        ...att,
-                        data: (await loadAsset(att.path)) || '',
-                    };
-                })
-            );
-        }
-
-        if (typeof lastAssistantMsg.content === 'string') {
-            const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-            const imageAttachmentsFromMarkdown: MessageAttachment[] = [];
-            let match;
-            while ((match = imageRegex.exec(lastAssistantMsg.content)) !== null) {
-                const url = match[2];
-                const data = url.startsWith('/data/storage/petal/siyuan-plugin-copilot/assets/')
-                    ? (await loadAsset(url)) || ''
-                    : url;
-                if (data) {
-                    imageAttachmentsFromMarkdown.push({
-                        type: 'image',
-                        name:
-                            match[1] ||
-                            createGeneratedImageFileName(
-                                'image/png',
-                                imageAttachmentsFromMarkdown.length
-                            ),
-                        data,
-                        path: url.startsWith('/data/storage/petal/siyuan-plugin-copilot/assets/')
-                            ? url
-                            : undefined,
-                        mimeType: 'image/png',
-                    });
-                }
-            }
-            return imageAttachmentsFromMarkdown;
-        }
-
-        return [];
-    }
-
-    async function collectDrawEditImageSources(userImageAttachments: MessageAttachment[]) {
-        if (userImageAttachments.length > 0) {
-            return userImageAttachments;
-        }
-
-        return await collectPreviousGeneratedImagesForDraw();
     }
 
     async function saveGeneratedImageFromApiResult(image: any, index: number) {
@@ -6035,22 +5808,30 @@
         modelConfig: any,
         prompt: string,
         editImageSources: MessageAttachment[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        requestSettings = getCurrentDrawImageSettings(),
+        providerId = currentProvider
     ) {
-        if (isGeminiImageApi(providerConfig, modelConfig)) {
+        if (isGeminiImageApi(providerConfig, modelConfig, providerId)) {
             return await requestGeminiDrawImages(
                 providerConfig,
                 modelConfig,
                 prompt,
                 editImageSources,
-                signal
+                signal,
+                requestSettings,
+                providerId
             );
         }
 
         const isEdit = editImageSources.length > 0;
+        const size = getOpenAIDrawImageSize(modelConfig.id, requestSettings.aspectRatio);
+        const qualities = getDrawImageCapabilities(modelConfig.id, false).qualities;
+        const quality = qualities.includes(requestSettings.quality) ? requestSettings.quality : qualities[0];
         const url = getOpenAIImageEndpointUrl(
             providerConfig,
-            isEdit ? '/images/edits' : '/images/generations'
+            isEdit ? '/images/edits' : '/images/generations',
+            providerId
         );
 
         let response: Response;
@@ -6058,9 +5839,9 @@
             const formData = new FormData();
             formData.append('model', modelConfig.id);
             formData.append('prompt', prompt);
-            formData.append('n', String(drawImageCount));
-            formData.append('size', drawImageSize);
-            formData.append('quality', drawImageQuality);
+            formData.append('n', String(requestSettings.count));
+            formData.append('size', size);
+            formData.append('quality', quality);
 
             for (const [index, imageSource] of editImageSources.entries()) {
                 const blob = await imageAttachmentToBlob(imageSource);
@@ -6092,9 +5873,9 @@
                 body: JSON.stringify({
                     model: modelConfig.id,
                     prompt,
-                    n: drawImageCount,
-                    size: drawImageSize,
-                    quality: drawImageQuality,
+                    n: requestSettings.count,
+                    size,
+                    quality,
                 }),
                 signal,
             });
@@ -6180,6 +5961,117 @@
         return `【生图系统提示词】\n${systemPrompt}\n\n---\n\n【用户生图需求】\n${prompt}`;
     }
 
+    function getCurrentDrawImageSettings(): DrawGenerationContext['settings'] {
+        return {
+            aspectRatio: drawImageAspectRatio, resolution: drawImageResolution,
+            quality: drawImageQuality, count: Math.max(1, Math.min(10, Number(drawImageCount) || 1)),
+        };
+    }
+
+    async function hydrateDrawReferenceImages(images: MessageAttachment[]): Promise<MessageAttachment[]> {
+        return await Promise.all(images.map(async image => {
+            if (image.path) return { ...image, data: (await loadAsset(image.path)) || image.data || '' };
+            // 旧会话正文中可能只有临时预览地址，进入编辑分支前补齐稳定资源路径。
+            if (image.data?.startsWith('blob:')) {
+                const blob = await imageAttachmentToBlob(image);
+                return { ...image, path: await saveAsset(blob, image.name) };
+            }
+            return { ...image };
+        }));
+    }
+
+    function createDrawAssistantMessage(images: any[], generation: DrawGenerationContext): Message {
+        return {
+            role: 'assistant',
+            content: buildDrawAssistantContent(images, generation.referenceImages.length > 0),
+            drawGeneration: generation,
+            generatedImages: images.map(image => ({
+                name: image.name, mimeType: image.mimeType || 'image/png', data: '', path: image.path,
+                url: image.previewUrl && !image.path ? image.previewUrl : undefined,
+            })),
+            attachments: images.map((image, index) => ({
+                type: 'image', name: image.name || createGeneratedImageFileName(image.mimeType, index),
+                data: image.previewUrl, path: image.path, mimeType: image.mimeType || 'image/png',
+            })),
+        };
+    }
+
+    async function editDrawGalleryImage(item: DrawGalleryItem) {
+        if (isLoading) return;
+        const sessionId = currentSessionId;
+        try {
+            const references = await hydrateDrawReferenceImages(getDrawEditReferences(item));
+            if (sessionId !== currentSessionId) return;
+            if (item.generation) {
+                const config = getProviderAndModelConfig(item.generation.provider, item.generation.modelId);
+                if (modelSupportsImageGeneration(config?.modelConfig)) {
+                    handleModelSelect(new CustomEvent('select', { detail: {
+                        provider: item.generation.provider, modelId: item.generation.modelId,
+                    } }));
+                    await tick();
+                }
+                drawImageAspectRatio = item.generation.settings.aspectRatio;
+                drawImageResolution = item.generation.settings.resolution;
+                drawImageQuality = item.generation.settings.quality;
+                drawImageResolutionExplicit = true;
+            }
+            currentAttachments = references;
+            drawEditingContext = item.generation || null;
+            await tick();
+            protyle?.focus();
+        } catch (error) {
+            pushErrMsg((error as Error).message);
+        }
+    }
+
+    async function regenerateDrawGalleryImage(item: DrawGalleryItem) {
+        if (isLoading) return;
+        const provider = item.generation?.provider || currentProvider;
+        const modelId = item.generation?.modelId || currentModelId;
+        const config = getProviderAndModelConfig(provider, modelId);
+        if (!modelSupportsImageGeneration(config?.modelConfig)) {
+            pushErrMsg(i18n('aiSidebarDrawModelRequired'));
+            return;
+        }
+        const original = item.generation;
+        const requestSettings = { ...(original?.settings || getCurrentDrawImageSettings()), count: 1 };
+        const generation: DrawGenerationContext = original
+            ? { ...original, settings: requestSettings, createdAt: Date.now() }
+            : createDrawGenerationContext(item.prompt, buildDrawPromptWithSystemPrompt(item.prompt), [],
+                item.referenceImages, provider, modelId, requestSettings);
+        isLoading = true;
+        isAborted = false;
+        drawPendingCount = 1;
+        streamingMessage = generation.referenceImages.length ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
+        const controller = new AbortController();
+        abortController = controller;
+        autoScroll = true;
+        try {
+            const references = await hydrateDrawReferenceImages(generation.referenceImages);
+            if (controller.signal.aborted) return;
+            const images = await requestDrawImages(config.providerConfig, config.modelConfig,
+                generation.requestPrompt, references, controller.signal, requestSettings, provider);
+            if (controller.signal.aborted) return;
+            if (!images.length) throw new Error(i18n('aiSidebarDrawNoImages'));
+            messages = [...messages, createDrawAssistantMessage(images, generation)];
+            hasUnsavedChanges = true;
+        } catch (error) {
+            if ((error as Error).name !== 'AbortError' && !controller.signal.aborted) {
+                messages = [...messages, { role: 'assistant', content: (error as Error).message,
+                    drawGenerationError: (error as Error).message }];
+                hasUnsavedChanges = true;
+            }
+        } finally {
+            if (abortController === controller) {
+                isLoading = false;
+                streamingMessage = '';
+                abortController = null;
+                if (hasUnsavedChanges) await saveCurrentSession(true);
+                await scrollToBottom(true);
+            }
+        }
+    }
+
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
         const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
         if (!userContent) {
@@ -6194,28 +6086,30 @@
             return;
         }
 
+        const editingContext = drawEditingContext;
+        const requestProvider = currentProvider;
+        const userAttachments = [...currentAttachments];
         normalizeDrawImageCount();
         applyPromptDrawImageSize(userContent);
+        const requestSettings = getCurrentDrawImageSettings();
+        drawPendingCount = requestSettings.count;
 
         const contextDocumentsWithLatestContent =
             await collectDrawModeContextDocuments(contextDocuments);
-        const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(userContent);
+        const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(buildDrawBranchPrompt(userContent, editingContext?.history || []));
         const promptWithContext = buildDrawPromptWithContext(
             promptWithSystemPrompt,
             contextDocumentsWithLatestContent
         );
 
-        const userAttachments = [...currentAttachments];
         const userImageAttachments = userAttachments.filter(att => att.type === 'image');
-        if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
-            pushErrMsg(i18n('aiSidebarDrawSelectFirst'));
-            isLoading = false;
-            return;
-        }
-        const editImageSources = await collectDrawEditImageSources(userImageAttachments);
+        const editImageSources = userImageAttachments;
         const isEdit = editImageSources.length > 0;
 
+        const generation = createDrawGenerationContext(userContent, promptWithContext, editingContext?.history || [],
+            editImageSources, requestProvider, modelConfig.id, requestSettings);
         const userMessage: Message = {
+            drawGeneration: generation,
             role: 'user',
             content: userContent,
             attachments: userImageAttachments.length > 0 ? userImageAttachments : undefined,
@@ -6265,7 +6159,9 @@
                 modelConfig,
                 promptWithContext,
                 editImageSources,
-                abortController.signal
+                abortController.signal,
+                requestSettings,
+                requestProvider
             );
 
             if (isAborted) {
@@ -6276,26 +6172,7 @@
                 throw new Error(i18n('aiSidebarDrawNoImages'));
             }
 
-            const assistantMessage: Message = {
-                role: 'assistant',
-                content: buildDrawAssistantContent(generatedImages, isEdit),
-                generatedImages: generatedImages.map(img => ({
-                    name: img.name,
-                    mimeType: img.mimeType,
-                    data: '',
-                    path: img.path,
-                    url: img.previewUrl && !img.path ? img.previewUrl : undefined,
-                })),
-                drawImageSelectionRequired: generatedImages.length > 1,
-                drawSelectedImageIndex: generatedImages.length === 1 ? 0 : undefined,
-                attachments: generatedImages.map((img, index) => ({
-                    type: 'image' as const,
-                    name: img.name || createGeneratedImageFileName(img.mimeType, index),
-                    data: img.previewUrl,
-                    path: img.path,
-                    mimeType: img.mimeType || 'image/png',
-                })),
-            };
+            const assistantMessage = createDrawAssistantMessage(generatedImages, generation);
 
             messages = [...messages, assistantMessage];
             streamingMessage = '';
@@ -6314,6 +6191,7 @@
             } else {
                 const errorMessage: Message = {
                     role: 'assistant',
+                    drawGenerationError: (error as Error).message,
                     content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
@@ -6347,6 +6225,13 @@
             return;
         }
 
+        const requestSettings = lastUserMessage.drawGeneration?.settings || getCurrentDrawImageSettings();
+        const requestProvider = lastUserMessage.drawGeneration?.provider || currentProvider;
+        const savedConfig = lastUserMessage.drawGeneration
+            ? getProviderAndModelConfig(requestProvider, lastUserMessage.drawGeneration.modelId) : null;
+        providerConfig = savedConfig?.providerConfig || providerConfig;
+        modelConfig = savedConfig?.modelConfig || modelConfig;
+        drawPendingCount = requestSettings.count;
         normalizeDrawImageCount();
         applyPromptDrawImageSize(userContent);
 
@@ -6361,13 +6246,10 @@
 
         const userImageAttachments =
             lastUserMessage.attachments?.filter(att => att.type === 'image') || [];
-        if (userImageAttachments.length === 0 && hasPendingDrawImageSelectionForEdit()) {
-            pushErrMsg(i18n('aiSidebarDrawSelectFirst'));
-            isLoading = false;
-            return;
-        }
-        const editImageSources = await collectDrawEditImageSources(userImageAttachments);
+        const editImageSources = await hydrateDrawReferenceImages(lastUserMessage.drawGeneration?.referenceImages || userImageAttachments);
         const isEdit = editImageSources.length > 0;
+        const generation = lastUserMessage.drawGeneration || createDrawGenerationContext(userContent, promptWithContext, [],
+            editImageSources, requestProvider, modelConfig.id, requestSettings);
 
         abortController = new AbortController();
         streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
@@ -6376,9 +6258,11 @@
             const generatedImages = await requestDrawImages(
                 providerConfig,
                 modelConfig,
-                promptWithContext,
+                generation.requestPrompt,
                 editImageSources,
-                abortController.signal
+                abortController.signal,
+                requestSettings,
+                requestProvider
             );
 
             if (isAborted) {
@@ -6389,26 +6273,7 @@
                 throw new Error(i18n('aiSidebarDrawNoImages'));
             }
 
-            const assistantMessage: Message = {
-                role: 'assistant',
-                content: buildDrawAssistantContent(generatedImages, isEdit),
-                generatedImages: generatedImages.map(img => ({
-                    name: img.name,
-                    mimeType: img.mimeType,
-                    data: '',
-                    path: img.path,
-                    url: img.previewUrl && !img.path ? img.previewUrl : undefined,
-                })),
-                drawImageSelectionRequired: generatedImages.length > 1,
-                drawSelectedImageIndex: generatedImages.length === 1 ? 0 : undefined,
-                attachments: generatedImages.map((img, index) => ({
-                    type: 'image' as const,
-                    name: img.name || createGeneratedImageFileName(img.mimeType, index),
-                    data: img.previewUrl,
-                    path: img.path,
-                    mimeType: img.mimeType || 'image/png',
-                })),
-            };
+            const assistantMessage = createDrawAssistantMessage(generatedImages, { ...generation, createdAt: Date.now() });
 
             messages = [...messages, assistantMessage];
             streamingMessage = '';
@@ -6421,6 +6286,7 @@
             if ((error as Error).name !== 'AbortError') {
                 const errorMessage: Message = {
                     role: 'assistant',
+                    drawGenerationError: (error as Error).message,
                     content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
                 messages = [...messages, errorMessage];
@@ -8034,22 +7900,20 @@
         return result;
     }
 
+    const replyMarkdownRenderer = new ReplyMarkdownRenderer(() => {
+        if (typeof window === 'undefined' || !(window as any).Lute) return;
+        const lute = (window as any).Lute.New();
+        lute.SetInlineMath(true);
+        lute.SetInlineMathAllowDigitAfterOpenMarker(true);
+        return lute;
+    });
+
     function formatMessage(content: string | MessageContent[]): string {
         let textContent = getMessageText(content);
 
         try {
-            // 检查window.Lute是否存在
-            if (typeof window !== 'undefined' && (window as any).Lute) {
-                const lute = (window as any).Lute.New();
-                // 启用行内数学公式支持，将 $...$ 解析为 <span class="language-math">...</span>
-                lute.SetInlineMath(true);
-                // 允许 $ 后面紧跟数字，如 $7.24 s$
-                lute.SetInlineMathAllowDigitAfterOpenMarker(true);
-                // 使用Md2HTML将markdown转换为HTML，而不是Md2BlockDOM
-                // Md2HTML不会生成带data-node-id的块级结构，可以正常跨块选择文本
-                const html = lute.Md2HTML(textContent);
-                return html;
-            }
+            const html = replyMarkdownRenderer.render(textContent);
+            if (html !== undefined) return html;
             // 如果Lute不可用，回退到简单渲染
             return textContent
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -8068,11 +7932,11 @@
     }
 
     // 高亮代码块
-    function highlightCodeBlocks(element: HTMLElement) {
-        if (!element) return;
+    function highlightCodeBlocks(element: HTMLElement): Promise<void> {
+        if (!element) return Promise.resolve();
 
         // 使用 tick 确保 DOM 已更新
-        tick().then(async () => {
+        return tick().then(async () => {
             try {
                 // 确保 highlight.js 已加载
                 if (!(window as any).hljs) {
@@ -10093,6 +9957,9 @@
             return;
         }
 
+        drawEditingContext = null;
+        if (chatMode === 'draw') currentAttachments = [];
+
         // 如果消息正在生成，先中断
         if (isLoading && abortController) {
             abortMessage();
@@ -10459,6 +10326,8 @@
     }
 
     function doNewSession() {
+        drawEditingContext = null;
+        if (chatMode === 'draw') currentAttachments = [];
         messages = getBaseSystemPrompt()
             ? [{ role: 'system', content: getBaseSystemPrompt() }]
             : [];
@@ -13364,6 +13233,14 @@
     </div>
 
     <div class="ai-sidebar__messages" bind:this={messagesContainer} on:scroll={handleScroll}>
+        {#if chatMode === 'draw'}
+            <DrawImageGallery items={drawGalleryItems} loading={isLoading} status={streamingMessage}
+                pendingCount={drawPendingCount} errors={drawGalleryErrors} sessionKey={currentSessionId}
+                resolveReferences={hydrateDrawReferenceImages}
+                on:edit={event => editDrawGalleryImage(event.detail)}
+                on:regenerate={event => regenerateDrawGalleryImage(event.detail)}
+                on:download={event => downloadImage(event.detail.data, event.detail.name)} />
+        {:else}
         {#each messageGroups as group, groupIndex (groupIndex)}
             {@const firstMessage = group.messages[0]}
             {@const messageIndex = group.startIndex}
@@ -16080,6 +15957,7 @@
                 <p>{i18n('aiSidebarEmptyGreeting')}</p>
             </div>
         {/if}
+        {/if}
     </div>
 
     {#if contextDocuments.length > 0 || currentAttachments.length > 0}
@@ -16090,7 +15968,14 @@
             on:dragleave={handleDragLeave}
             on:drop={handleDrop}
         >
-            <div class="ai-sidebar__context-docs-title">📎 {i18n('aiSidebarContextContent')}</div>
+            <div class="ai-sidebar__context-docs-title">
+                {chatMode === 'draw' ? i18n('aiSidebarDrawReferences') : '📎 ' + i18n('aiSidebarContextContent')}
+                {#if chatMode === 'draw'}
+                    <button type="button" class="b3-button b3-button--text" on:click={() => { currentAttachments = []; drawEditingContext = null; }}>
+                        {i18n('aiSidebarDrawNewImage')}
+                    </button>
+                {/if}
+            </div>
             <div class="ai-sidebar__context-docs-list">
                 {#each contextDocuments as doc}
                     <div class="ai-sidebar__context-doc-item">
@@ -16261,40 +16146,21 @@
                         enableMultiModel={false}
                         on:select={handleModelSelect}
                     />
+                    {#if chatMode === 'draw'}
+                        <DrawImageSettings
+                            modelId={currentModelId}
+                            isGemini={drawIsGemini}
+                            bind:aspectRatio={drawImageAspectRatio}
+                            bind:resolution={drawImageResolution}
+                            bind:quality={drawImageQuality}
+                            bind:count={drawImageCount}
+                            on:resolutionchange={() => drawImageResolutionExplicit = true}
+                            on:reset={() => drawImageResolutionExplicit = false}
+                        />
+                    {/if}
                 </div>
             {/if}
         </div>
-        {#if chatMode === 'draw'}
-            <div class="ai-sidebar__draw-options">
-                <label class="ai-sidebar__draw-option">
-                    <span>{i18n('aiSidebarDrawSize')}</span>
-                    <select class="b3-select" bind:value={drawImageSize}>
-                        {#each drawImageSizeOptions as option}
-                            <option value={option.value}>{option.label}</option>
-                        {/each}
-                    </select>
-                </label>
-                <label class="ai-sidebar__draw-option ai-sidebar__draw-option--number">
-                    <span>{i18n('aiSidebarDrawCount')}</span>
-                    <input
-                        class="b3-text-field"
-                        type="number"
-                        min="1"
-                        max="10"
-                        bind:value={drawImageCount}
-                        on:change={normalizeDrawImageCount}
-                    />
-                </label>
-                <label class="ai-sidebar__draw-option">
-                    <span>{i18n('aiSidebarDrawQuality')}</span>
-                    <select class="b3-select" bind:value={drawImageQuality}>
-                        {#each DRAW_IMAGE_QUALITY_OPTIONS as option}
-                            <option value={option.value}>{option.label}</option>
-                        {/each}
-                    </select>
-                </label>
-            </div>
-        {/if}
         <div class="ai-sidebar__input-row">
             <div class="ai-sidebar__input-wrapper">
                 <div bind:this={editorElement} class="ai-sidebar__editor-wrapper"></div>
@@ -18441,38 +18307,6 @@
             border-color: var(--b3-theme-primary);
             box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
         }
-    }
-
-    .ai-sidebar__draw-options {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        padding: 4px 0;
-    }
-
-    .ai-sidebar__draw-option {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
-
-        span {
-            white-space: nowrap;
-        }
-
-        select {
-            max-width: 220px;
-            font-size: 12px;
-        }
-    }
-
-    .ai-sidebar__draw-option--number input {
-        width: 54px;
-        height: 26px;
-        padding: 2px 6px;
-        font-size: 12px;
     }
 
     .ai-sidebar__model-selector-container {
