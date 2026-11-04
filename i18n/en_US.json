@@ -800,6 +800,8 @@
     "aiSidebarDrawEmpty": "Describe an image below to get started",
     "aiSidebarDrawBackToResult": "Back to generated image",
     "aiSidebarDrawSessionModeLocked": "This image session cannot switch modes. Start a new session to chat.",
+    "aiSidebarSessionMissingContent": "The session content was not saved before the last exit and cannot currently be recovered. You can send a message here or start a new session.",
+    "aiSidebarSessionInterruptedRecovery": "The previous reply was not completed. Your sent messages have been preserved. You can regenerate or continue the conversation.",
     "aiSidebarStopGeneration": "Stop generation",
     "aiSidebarSendMessage": "Send message",
     "aiSidebarWebLinkLabel": "Web links (one per line)",

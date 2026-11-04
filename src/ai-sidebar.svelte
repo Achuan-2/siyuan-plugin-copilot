@@ -3,7 +3,8 @@
     import { appendToolRound, createToolRound } from './utils/agentContext';
     import {
         createChatSessionId, diffSessionMetadata, mergeSessionMetadata, hasGeneratedSessionImages, resolveChatSessionMode,
-        type ChatSessionMode, type SessionMetadata,
+        createChatSessionSnapshot, recoverChatSession,
+        type ChatSessionSnapshot, type ChatSessionMode, type SessionMetadata,
     } from './utils/sessionState';
     import { ReplyMarkdownRenderer, ReplyRenderScheduler } from './utils/replyRendering';
     import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
@@ -821,9 +822,7 @@
             sessions = [...sessions];
         }
 
-        // 保存 metadata，不保存消息正文；正文仍由原有流式保存逻辑负责。
-        // 保存操作由队列串行化，避免完成后的 false 被较早的 true 覆盖。
-        saveSessions();
+        // 运行状态立即广播；索引由会话快照保存，避免正文落盘前发布空记录。
 
         window.dispatchEvent(
             new CustomEvent('copilot-session-status', {
@@ -2650,6 +2649,10 @@
     }
 
     onDestroy(async () => {
+        // 正在生成的会话已经在发送前保存用户消息，退出时不再保存未完成回复。
+        const finalSessionSave = !isLoading && hasUnsavedChanges && messages.some(message => message.role === 'user')
+            ? saveCurrentSession(true).catch(error => console.error('Failed to save closing session:', error))
+            : Promise.resolve();
         isDestroyed = true;
         abortController?.abort();
         isLoading = false;
@@ -2692,10 +2695,7 @@
             await saveToolsConfig();
         }
 
-        // 如果有未保存的更改，自动保存当前会话
-        if (hasUnsavedChanges && messages.filter(m => m.role !== 'system').length > 0) {
-            await saveCurrentSession(true); // 静默保存，不显示提示
-        }
+        await finalSessionSave;
     });
 
     const handleTouchStopPropagation = (e: TouchEvent) => {
@@ -4395,6 +4395,7 @@
 
         await scrollToBottom(true);
 
+        const isNewSession = !currentSessionId;
         // 如果是第一条用户消息且没有会话ID，立即创建会话
         // 只有在非重新生成的情况下才执行
         if (!isRegenerate) {
@@ -4410,12 +4411,11 @@
                 };
                 sessions = [newSession, ...sessions];
                 currentSessionId = newSession.id;
-                await saveSessions();
-
-                // 立即执行自动重命名
-                autoRenameSession(userContent);
             }
         }
+
+        await saveCurrentSession(true);
+        if (isNewSession) autoRenameSession(userContent);
 
         await scrollToBottom(true);
 
@@ -6188,6 +6188,7 @@
 
         await scrollToBottom(true);
 
+        const isNewSession = !currentSessionId;
         const userMessages = messages.filter(m => m.role === 'user');
         if (userMessages.length === 1 && !currentSessionId) {
             const now = Date.now();
@@ -6200,9 +6201,10 @@
             };
             sessions = [newSession, ...sessions];
             currentSessionId = newSession.id;
-            await saveSessions();
-            autoRenameSession(userContent);
         }
+
+        await saveCurrentSession(true);
+        if (isNewSession) autoRenameSession(userContent);
 
         abortController = new AbortController();
 
@@ -6419,6 +6421,7 @@
 
         await scrollToBottom(true);
 
+        const isNewSession = !currentSessionId;
         // 如果是第一条用户消息且没有会话ID，立即创建会话
         const userMessages = messages.filter(m => m.role === 'user');
         if (userMessages.length === 1 && !currentSessionId) {
@@ -6432,11 +6435,10 @@
             };
             sessions = [newSession, ...sessions];
             currentSessionId = newSession.id;
-            await saveSessions();
-
-            // 立即执行自动重命名
-            autoRenameSession(userContent);
         }
+
+        await saveCurrentSession(true);
+        if (isNewSession) autoRenameSession(userContent);
 
         await scrollToBottom(true);
 
@@ -7716,6 +7718,7 @@
     }
 
     function doClearChat() {
+        sessionRecoveryNotice = '';
         messages = getBaseSystemPrompt()
             ? [{ role: 'system', content: getBaseSystemPrompt() }]
             : [];
@@ -9784,140 +9787,69 @@
     let isSavingSession = false;
     let pendingSaveSilent: boolean | null = null;
 
-    async function saveCurrentSession(silent: boolean = false) {
-        if (messages.filter(m => m.role !== 'system').length === 0) {
-            if (!silent) {
-                pushErrMsg(i18n('aiSidebarErrorsEmptySession'));
-            }
+    let pendingSessionSnapshot: ChatSessionSnapshot | null = null;
+    let pendingSessionSaveWaiters: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
+    let sessionRecoveryNotice = '';
+
+    function captureSessionSnapshot() {
+        return createChatSessionSnapshot(messages, chatMode, drawModeLocked, isLoading);
+    }
+
+    async function saveCurrentSession(silent: boolean = false, checkpoint?: ChatSessionSnapshot) {
+        // 在第一个 await 和销毁中断之前复制快照，后续流式更新不能改变正在写入的正文。
+        const snapshot = checkpoint || captureSessionSnapshot();
+        if (!snapshot.messages.some(message => message.role !== 'system')) {
+            if (!silent) pushErrMsg(i18n('aiSidebarErrorsEmptySession'));
             return;
         }
-
-        // 如果正在保存，标记待处理的保存请求
         if (isSavingSession) {
             pendingSaveSilent = silent;
-            return;
+            pendingSessionSnapshot = snapshot;
+            // 发送方必须等到自己的用户消息落盘后才开始网络请求。
+            return await new Promise<void>((resolve, reject) => pendingSessionSaveWaiters.push({ resolve, reject }));
         }
-
         isSavingSession = true;
-
+        const sessionId = currentSessionId || createChatSessionId();
+        currentSessionId = sessionId;
         try {
             const now = Date.now();
-
-            // 【修复】在保存前重新加载最新的会话列表，避免多页签覆盖问题
+            // 先写正文，再发布/更新列表；中途退出也不会留下有索引却没有正文的会话。
+            await plugin.saveData(`sessions/${sessionId}.json`, snapshot);
             await loadSessions();
-
-            if (currentSessionId) {
-                // 更新现有会话
-                const session = sessions.find(s => s.id === currentSessionId);
-                if (session) {
-                    session.updatedAt = now;
-                    session.messageCount = messages.filter(m => m.role !== 'system').length;
-                    session.isLoading = getSessionTaskStatus(currentSessionId) ?? isLoading;
-                    session.chatMode = chatMode;
-                    session.drawModeLocked = drawModeLocked;
-
-                    // 1. 保存 metadata 列表
-                    await saveSessions();
-
-                    // 2. 将消息中的 Blob URL 转换为 path 以便永久存储
-                    const messagesToSave = messages.map(msg => ({
-                        ...msg,
-                        attachments: msg.attachments?.map(att => ({
-                            ...att,
-                            data: att.path ? '' : att.data, // 如果有 path，清空 data
-                        })),
-                        generatedImages: msg.generatedImages?.map(img => ({
-                            ...img,
-                            data: '', // 不再这里存 base64
-                        })),
-                    }));
-
-                    // 3. 保存完整内容到独立文件
-                    await plugin.saveData(`sessions/${currentSessionId}.json`, {
-                        messages: messagesToSave,
-                        chatMode, drawModeLocked,
-                    });
-                } else {
-                    // 如果会话不存在，创建为新会话
-                    const userContent = messages.find(m => m.role === 'user')?.content || '';
-                    const newSession: ChatSession = {
-                        id: currentSessionId,
-                        title:
-                            typeof userContent === 'string'
-                                ? userContent.substring(0, 30)
-                                : generateSessionTitle(),
-                        messageCount: messages.filter(m => m.role !== 'system').length,
-                        createdAt: now,
-                        updatedAt: now,
-                        isLoading: getSessionTaskStatus(currentSessionId) ?? isLoading,
-                    };
-                    sessions = [newSession, ...sessions];
-                    await saveSessions();
-
-                    // 保存完整内容
-                    const messagesToSave = messages.map(msg => ({
-                        ...msg,
-                        attachments: msg.attachments?.map(att => ({
-                            ...att,
-                            data: att.path ? '' : att.data,
-                        })),
-                        generatedImages: msg.generatedImages?.map(img => ({
-                            ...img,
-                            data: '',
-                        })),
-                    }));
-                    await plugin.saveData(`sessions/${currentSessionId}.json`, {
-                        messages: messagesToSave,
-                        chatMode, drawModeLocked,
-                    });
-                }
-            } else {
-                // 创建新会话
-                const userContent = messages.find(m => m.role === 'user')?.content || '';
-                const newSession: ChatSession = {
-                    id: createChatSessionId(),
-                    title:
-                        typeof userContent === 'string'
-                            ? userContent.substring(0, 30)
-                            : generateSessionTitle(),
-                    messageCount: messages.filter(m => m.role !== 'system').length,
-                    createdAt: now,
-                    updatedAt: now,
-                    isLoading,
-                };
-                sessions = [newSession, ...sessions];
-                currentSessionId = newSession.id;
-                await saveSessions();
-
-                // 保存完整内容
-                const messagesToSave = messages.map(msg => ({
-                    ...msg,
-                    attachments: msg.attachments?.map(att => ({
-                        ...att,
-                        data: att.path ? '' : att.data,
-                    })),
-                    generatedImages: msg.generatedImages?.map(img => ({
-                        ...img,
-                        data: '',
-                    })),
-                }));
-                await plugin.saveData(`sessions/${newSession.id}.json`, {
-                    messages: messagesToSave,
-                    chatMode, drawModeLocked,
-                });
-            }
+            const messageCount = snapshot.messages.filter(message => message.role !== 'system').length;
+            const existing = sessions.find(session => session.id === sessionId);
+            const userContent = snapshot.messages.find(message => message.role === 'user')?.content || '';
+            const session: ChatSession = {
+                ...existing,
+                id: sessionId,
+                title: existing?.title || (typeof userContent === 'string' ? userContent.substring(0, 30) : generateSessionTitle()),
+                createdAt: existing?.createdAt || now,
+                updatedAt: now,
+                messageCount,
+                isLoading: getSessionTaskStatus(sessionId) ?? isLoading,
+                chatMode: snapshot.chatMode,
+                drawModeLocked: snapshot.drawModeLocked,
+            };
+            sessions = existing ? sessions.map(item => item.id === sessionId ? session : item) : [session, ...sessions];
+            await saveSessions();
             hasUnsavedChanges = false;
-
-            if (!silent) {
-                pushMsg(i18n('aiSidebarSuccessSaveSessionSuccess'));
-            }
+            if (!silent) pushMsg(i18n('aiSidebarSuccessSaveSessionSuccess'));
         } finally {
             isSavingSession = false;
-            // 如果有待处理的保存请求，执行它
             if (pendingSaveSilent !== null) {
-                const silentToUse = pendingSaveSilent;
+                const pendingSilent = pendingSaveSilent;
+                const pendingSnapshot = pendingSessionSnapshot;
+                const waiters = pendingSessionSaveWaiters;
                 pendingSaveSilent = null;
-                await saveCurrentSession(silentToUse);
+                pendingSessionSnapshot = null;
+                pendingSessionSaveWaiters = [];
+                try {
+                    await saveCurrentSession(pendingSilent, pendingSnapshot || undefined);
+                    waiters.forEach(waiter => waiter.resolve());
+                } catch (error) {
+                    waiters.forEach(waiter => waiter.reject(error));
+                    throw error;
+                }
             }
         }
     }
@@ -10000,9 +9932,13 @@
             sessionMetadata = sessions.find(s => s.id === sessionId);
         }
         try {
-            const sessionData = await plugin.loadData(`sessions/${sessionId}.json`);
-            if (!sessionData) throw new Error('File not found');
-            const loadedMessages = sessionData?.messages || [];
+            const storedSession = await plugin.loadData(`sessions/${sessionId}.json`);
+            const recovered = recoverChatSession(storedSession, sessionMetadata);
+            const sessionData = recovered.snapshot;
+            sessionRecoveryNotice = recovered.missingContent
+                ? i18n('aiSidebarSessionMissingContent')
+                : sessionData.generationInterrupted ? i18n('aiSidebarSessionInterruptedRecovery') : '';
+            const loadedMessages = sessionData.messages;
             let sessionModified = false; // 标记会话是否被修改（需要重新保存）
 
                 // 还原图片数据 (从 path 还原为 blob url) 和文本附件数据
@@ -10308,6 +10244,7 @@
     }
 
     function doNewSession() {
+        sessionRecoveryNotice = '';
         drawModeLocked = false;
         chatMode = 'ask';
         drawEditingContext = null;
@@ -13243,6 +13180,9 @@
     </div>
 
     <div class="ai-sidebar__messages" bind:this={messagesContainer} on:scroll={handleScroll}>
+        {#if sessionRecoveryNotice}
+            <div class="ai-sidebar__session-recovery" role="status">{sessionRecoveryNotice}</div>
+        {/if}
         {#if chatMode === 'draw'}
             <DrawImageGallery items={drawGalleryItems} loading={isLoading} status={streamingMessage}
                 pendingCount={drawPendingCount} errors={drawGalleryErrors} sessionKey={currentSessionId}
@@ -17540,6 +17480,15 @@
         font-size: 18px;
         flex-shrink: 0;
         line-height: 1;
+    }
+
+    .ai-sidebar__session-recovery {
+        padding: 10px 12px;
+        border: 1px solid var(--b3-border-color);
+        border-radius: 8px;
+        color: var(--b3-theme-on-surface);
+        font-size: 12px;
+        line-height: 1.6;
     }
 
     .ai-sidebar__messages {

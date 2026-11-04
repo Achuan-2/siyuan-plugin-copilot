@@ -114,12 +114,14 @@ function fixture() {
             sessions: [], sessionMetadataBaseline: [], sessionListLoadVersion: 0, currentSessionId: id,
             isLoading: false, isDestroyed: false, chatMode: 'ask', drawModeLocked: false,
             isSavingSession: false, pendingSaveSilent: null, hasUnsavedChanges: false,
+            pendingSessionSnapshot: null, streamingMessage: '', streamingThinking: '', multiModelResponses: [],
+            pendingSessionSaveWaiters: [],
             getMessageText: value => value, i18n: key => key,
             pushErrMsg: text => assert.fail(text),
             window: { dispatchEvent: event => events.push(event.type) },
             CustomEvent: class { constructor(type) { this.type = type; } },
         };
-        vm.runInNewContext(compile(functions(['loadSessions', 'saveSessions', 'saveCurrentSession', 'generateSessionTitle', 'handleSessionUpdate'])), context);
+        vm.runInNewContext(compile(functions(['loadSessions', 'saveSessions', 'captureSessionSnapshot', 'saveCurrentSession', 'generateSessionTitle', 'handleSessionUpdate'])), context);
         return context;
     }
     return { tasks, files, events, plugin, view };
@@ -240,4 +242,152 @@ test('会话列表暂时读取不到时保留已加载历史，阻止覆盖，�
     f.plugin.loadData = read;
     await view.saveSessions();
     assert.equal(f.files['chat-sessions.json'].sessions[0].title, 'retry title');
+});
+
+test('发送快照仅保存已发送的消息和资源路径，重新打开不保留运行状态', () => {
+    const messages = [{ role: 'user', content: 'question', attachments: [{ type: 'image', name: 'ref.png', path: '/data/ref.png', data: 'blob:ref' }] }];
+    const snapshot = state.createChatSessionSnapshot(messages, 'ask', false, true);
+    assert.equal(snapshot.messages.length, 1);
+    assert.equal(snapshot.messages[0].content, 'question');
+    assert.equal(snapshot.messages[0].attachments[0].data, '');
+    assert.equal(messages[0].attachments[0].data, 'blob:ref');
+    messages[0].content = 'changed';
+    assert.equal(snapshot.messages[0].content, 'question');
+    assert.equal(snapshot.generationInterrupted, true);
+    const reopened = state.recoverChatSession(snapshot, { chatMode: 'ask' });
+    assert.equal(reopened.snapshot.messages.length, 1);
+    assert.equal(reopened.snapshot.messages[0].content, 'question');
+});
+
+test('只有索引的旧会话仍可打开，优先恢复内嵌消息，不伪造已丢失的提示词', () => {
+    const recovered = state.recoverChatSession(undefined, { id: 'old', title: 'truncated prompt', isLoading: true });
+    assert.equal(recovered.missingContent, true);
+    assert.equal(recovered.snapshot.messages.length, 0);
+    const inline = state.recoverChatSession(null, { messages: [{ role: 'user', content: 'full prompt' }], chatMode: 'agent' });
+    assert.equal(inline.snapshot.messages[0].content, 'full prompt');
+    assert.equal(inline.snapshot.chatMode, 'agent');
+    assert.throws(() => state.recoverChatSession(null), /unavailable/);
+});
+
+test('正文先于索引落盘，中途退出也不会发布一个没有正文的新会话', async () => {
+    const f = fixture();
+    const view = f.view('new');
+    view.messages = [{ role: 'user', content: 'saved before network request' }];
+    let finishBody;
+    const write = f.plugin.saveData;
+    f.plugin.saveData = async (path, data) => {
+        if (path === 'sessions/new.json') await new Promise(resolve => { finishBody = resolve; });
+        return write(path, data);
+    };
+    const saving = view.saveCurrentSession(true);
+    await Promise.resolve();
+    assert.equal(f.files['chat-sessions.json'].sessions.length, 0);
+    finishBody();
+    await saving;
+    assert.equal(f.files['sessions/new.json'].messages[0].content, 'saved before network request');
+    assert.equal(f.files['chat-sessions.json'].sessions[0].id, 'new');
+});
+
+test('发送后不定时保存流式分片，回复完成后才保存完整结果', async () => {
+    const f = fixture();
+    const view = f.view('stream');
+    view.messages = [{ role: 'user', content: 'question' }];
+    view.isLoading = true;
+    await view.saveCurrentSession(true);
+    view.streamingMessage = 'partial reply';
+    view.streamingThinking = 'partial thinking';
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.files['sessions/stream.json'].messages.length, 1);
+    assert.equal(f.files['sessions/stream.json'].messages[0].content, 'question');
+    view.messages.push({ role: 'assistant', content: 'complete reply' });
+    view.isLoading = false;
+    view.streamingMessage = '';
+    await view.saveCurrentSession(true);
+    assert.equal(f.files['sessions/stream.json'].generationInterrupted, false);
+    assert.equal(f.files['sessions/stream.json'].messages.length, 2);
+    assert.equal(f.files['sessions/stream.json'].messages[1].content, 'complete reply');
+});
+
+test('写入等待期间用户消息快照固定，排队的完成结果最终正常保存', async () => {
+    const f = fixture();
+    const view = f.view('pending');
+    view.messages = [{ role: 'user', content: 'question' }];
+    view.isLoading = true;
+    let release;
+    let calls = 0;
+    const write = f.plugin.saveData;
+    f.plugin.saveData = async (path, data) => {
+        if (path === 'sessions/pending.json' && calls++ === 0) await new Promise(resolve => { release = resolve; });
+        return write(path, data);
+    };
+    const first = view.saveCurrentSession(true);
+    view.messages.push({ role: 'assistant', content: 'completed' });
+    view.isLoading = false;
+    const completedSave = view.saveCurrentSession(true);
+    release();
+    await Promise.all([first, completedSave]);
+    assert.equal(f.files['sessions/pending.json'].messages[1].content, 'completed');
+    assert.equal(f.files['sessions/pending.json'].generationInterrupted, false);
+});
+
+test('加载缺失正文会话的真实函数仍设置会话 ID 并显示恢复说明', async () => {
+    const f = fixture();
+    f.files['chat-sessions.json'].sessions = [metadata('missing')];
+    const view = f.view('');
+    view.settings = {};
+    view.messages = [];
+    view.getProviderAndModelConfig = () => null;
+    view.getBaseSystemPrompt = () => '';
+    view.scrollToTop = async () => {};
+    vm.runInNewContext(compile(functions(['doLoadSession'])), view);
+    await view.loadSessions();
+    await view.doLoadSession('missing');
+    assert.equal(view.currentSessionId, 'missing');
+    assert.equal(view.sessionRecoveryNotice, 'aiSidebarSessionMissingContent');
+    assert.equal(view.messages.length, 0);
+    view.messages = [{ role: 'user', content: 'continue this session' }];
+    await view.saveCurrentSession(true);
+    assert.equal(f.files['sessions/missing.json'].messages[0].content, 'continue this session');
+});
+
+test('回复过程中退出并重新加载，仍能打开会话看到已发送消息且不显示后台转圈', async () => {
+    const beforeExit = fixture();
+    const running = beforeExit.view('interrupted');
+    running.messages = [{ role: 'user', content: '完整的用户提问' }];
+    running.isLoading = true;
+    beforeExit.tasks.setSessionTaskStatus('interrupted', true, 'old-view');
+    await running.saveCurrentSession(true);
+    running.streamingMessage = '未完成且无需保存的回复';
+
+    // 新运行时有独立任务表，只复用已经保存到磁盘的会话文件。
+    const afterRestart = fixture();
+    Object.assign(afterRestart.files, plain(beforeExit.files));
+    const reopened = afterRestart.view('');
+    reopened.settings = {};
+    reopened.messages = [];
+    reopened.getProviderAndModelConfig = () => null;
+    reopened.getBaseSystemPrompt = () => '';
+    reopened.scrollToTop = async () => {};
+    vm.runInNewContext(compile(functions(['doLoadSession'])), reopened);
+    await reopened.loadSessions();
+    assert.equal(reopened.sessions[0].isLoading, false);
+    await reopened.doLoadSession('interrupted');
+    assert.equal(reopened.currentSessionId, 'interrupted');
+    assert.equal(reopened.messages.length, 1);
+    assert.equal(reopened.messages[0].content, '完整的用户提问');
+    assert.equal(reopened.sessionRecoveryNotice, 'aiSidebarSessionInterruptedRecovery');
+});
+
+test('首次正文保存失败时不创建空的会话索引，重试后能正常保存', async () => {
+    const f = fixture();
+    const view = f.view('failed');
+    view.messages = [{ role: 'user', content: 'preserve my message' }];
+    const write = f.plugin.saveData;
+    f.plugin.saveData = async path => { if (path === 'sessions/failed.json') throw new Error('write failed'); };
+    await assert.rejects(view.saveCurrentSession(true), /write failed/);
+    assert.equal(f.files['chat-sessions.json'].sessions.length, 0);
+    f.plugin.saveData = write;
+    await view.saveCurrentSession(true);
+    assert.equal(f.files['chat-sessions.json'].sessions[0].id, 'failed');
+    assert.equal(f.files['sessions/failed.json'].messages[0].content, 'preserve my message');
 });

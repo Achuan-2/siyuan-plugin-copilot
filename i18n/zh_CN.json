@@ -800,6 +800,8 @@
     "aiSidebarDrawEmpty": "在下方描述想生成的图片",
     "aiSidebarDrawBackToResult": "返回生成图片",
     "aiSidebarDrawSessionModeLocked": "生图会话不能切换模式，请新建会话进行对话",
+    "aiSidebarSessionMissingContent": "上次退出前未保存会话正文，原记录暂时无法恢复。你可以在此继续发送消息，或新建会话。",
+    "aiSidebarSessionInterruptedRecovery": "上次回复未完成，已保留你发送的消息。你可以重新生成或继续对话。",
     "aiSidebarStopGeneration": "中断生成",
     "aiSidebarSendMessage": "发送消息",
     "aiSidebarWebLinkLabel": "网页链接（每行一个）",

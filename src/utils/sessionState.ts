@@ -2,6 +2,49 @@ import type { Message } from '../ai-chat';
 
 export type ChatSessionMode = 'ask' | 'agent' | 'draw';
 
+export interface ChatSessionSnapshot {
+    messages: Message[];
+    chatMode: ChatSessionMode;
+    drawModeLocked: boolean;
+    generationInterrupted: boolean;
+}
+
+/** 只保存已经加入会话的消息，不包含仍在流式接收的回复分片。 */
+export function createChatSessionSnapshot(
+    messages: Message[], chatMode: ChatSessionMode, drawModeLocked: boolean,
+    running = false
+): ChatSessionSnapshot {
+    const saved: Message[] = messages.map(message => ({
+        ...message,
+        attachments: message.attachments?.map(image => ({ ...image, data: image.path ? '' : image.data })),
+        generatedImages: message.generatedImages?.map(image => ({ ...image, data: image.path ? '' : image.data })),
+    }));
+    // 重启后没有可继续的网络请求，历史中的多模型卡片不能继续显示 loading。
+    const snapshot: ChatSessionSnapshot = JSON.parse(JSON.stringify({
+        messages: saved, chatMode, drawModeLocked, generationInterrupted: running,
+    }));
+    for (const message of snapshot.messages) {
+        for (const response of message.multiModelResponses || []) response.isLoading = false;
+    }
+    return snapshot;
+}
+
+/** 兼容早期只写入索引、尚未写入正文就退出的会话，不把标题伪装成原始提示词。 */
+export function recoverChatSession(
+    data: Partial<ChatSessionSnapshot> | null | undefined,
+    metadata?: { messages?: Message[]; chatMode?: ChatSessionMode; drawModeLocked?: boolean }
+): { snapshot: ChatSessionSnapshot; missingContent: boolean } {
+    if (!Array.isArray(data?.messages) && !metadata) throw new Error('Session content unavailable');
+    const missingContent = !Array.isArray(data?.messages);
+    const snapshot = createChatSessionSnapshot(
+        Array.isArray(data?.messages) ? data.messages : metadata?.messages || [],
+        data?.chatMode || metadata?.chatMode || 'ask',
+        Boolean(data?.drawModeLocked || metadata?.drawModeLocked)
+    );
+    snapshot.generationInterrupted = Boolean(data?.generationInterrupted);
+    return { snapshot, missingContent };
+}
+
 export function createChatSessionId(): string {
     const suffix = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     return `session_${Date.now()}_${suffix}`;
