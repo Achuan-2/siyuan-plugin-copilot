@@ -8,9 +8,9 @@ export interface DrawGalleryItem {
     referenceImages: MessageAttachment[];
 }
 
-/** 兼容旧会话的 generatedImages、图片附件及 Markdown 图片，避免同一结果显示两次。 */
+/** 按生成批次从新到旧展示，批次内保留图片顺序；兼容旧会话且不修改消息历史。 */
 export function getDrawGalleryItems(messages: Message[]): DrawGalleryItem[] {
-    const items: DrawGalleryItem[] = [];
+    const batches: DrawGalleryItem[][] = [];
     let userPrompt = '';
     let userReferences: MessageAttachment[] = [];
     messages.forEach((message, messageIndex) => {
@@ -36,15 +36,15 @@ export function getDrawGalleryItems(messages: Message[]): DrawGalleryItem[] {
                     path: match[2].startsWith('/data/') ? match[2] : undefined });
             }
         }
-        images.forEach((image, imageIndex) => items.push({
+        batches.push(images.map((image, imageIndex) => ({
             key: `${messageIndex}:${imageIndex}:${image.path || image.name}`,
             image,
             prompt: message.drawGeneration?.prompt || userPrompt,
             generation: message.drawGeneration,
             referenceImages: message.drawGeneration?.referenceImages || userReferences,
-        }));
+        })));
     });
-    return items;
+    return batches.reverse().flat();
 }
 
 /** 参考图持久化只保留资源路径或稳定 URL，避免把临时 blob URL 写进生成记录。 */

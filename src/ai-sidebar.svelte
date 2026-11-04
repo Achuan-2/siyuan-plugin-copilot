@@ -3151,13 +3151,13 @@
     function handleScroll() {
         if (!messagesContainer) return;
 
-        const atBottom = isAtBottom();
+        const atLatest = chatMode === 'draw' ? messagesContainer.scrollTop < 100 : isAtBottom();
 
-        // 如果用户滚动到底部附近，恢复自动滚动
-        if (atBottom) {
+        // 图片的最新结果在顶部，普通对话的最新回复在底部。
+        if (atLatest) {
             autoScroll = true;
         } else if (isLoading) {
-            // 如果正在加载且用户滚动离开底部，停止自动滚动
+            // 如果正在加载且用户滚动离开最新内容，停止自动滚动
             autoScroll = false;
         }
     }
@@ -6189,7 +6189,7 @@
         hasUnsavedChanges = true;
         autoScroll = true;
 
-        await scrollToBottom(true);
+        await scrollToTop();
 
         const isNewSession = !currentSessionId;
         const userMessages = messages.filter(m => m.role === 'user');
@@ -6238,6 +6238,7 @@
             abortController = null;
             hasUnsavedChanges = true;
 
+            if (autoScroll) await scrollToTop();
             await saveCurrentSession(true);
             autoRenameSession(userContent);
         } catch (error) {

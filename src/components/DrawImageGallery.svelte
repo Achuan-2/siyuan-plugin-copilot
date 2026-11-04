@@ -78,6 +78,11 @@
 <svelte:window on:keydown|capture={handleKeydown} />
 
 <div class="draw-gallery" aria-label={i18n('aiSidebarDrawGallery')}>
+    {#if loading}
+        {#each Array(Math.max(1, Math.min(10, pendingCount))) as _}
+            <div class="draw-gallery__pending" role="status"><span class="draw-gallery__spinner"></span>{status || i18n('aiSidebarDrawGenerating')}</div>
+        {/each}
+    {/if}
     {#each items as item (item.key)}
         <article class="draw-gallery__card">
             <button type="button" class="draw-gallery__preview" on:click={() => view(item)}
@@ -101,11 +106,6 @@
             </div>
         </article>
     {/each}
-    {#if loading}
-        {#each Array(Math.max(1, Math.min(10, pendingCount))) as _}
-            <div class="draw-gallery__pending" role="status"><span class="draw-gallery__spinner"></span>{status || i18n('aiSidebarDrawGenerating')}</div>
-        {/each}
-    {/if}
 </div>
 {#each errors as error}
     <div class="draw-gallery__error" role="alert">{error}</div>

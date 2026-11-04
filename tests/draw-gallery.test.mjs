@@ -24,13 +24,18 @@ test('画廊合并全部生成结果，附件和 generatedImages 不重复，旧
         { role: 'user', content: 'second prompt' },
         { role: 'assistant', content: '![legacy](/data/legacy.png)' },
     ];
+    const originalMessages = JSON.stringify(messages);
     const cards = gallery.getDrawGalleryItems(messages);
     assert.equal(cards.length, 3);
-    assert.equal(cards[0].prompt, 'first prompt');
+    assert.equal(cards[0].prompt, 'second prompt');
     assert.equal(cards[1].prompt, 'first prompt');
-    assert.equal(cards[2].prompt, 'second prompt');
-    assert.equal(cards[2].image.path, '/data/legacy.png');
+    assert.equal(cards[2].prompt, 'first prompt');
+    assert.equal(cards[0].image.path, '/data/legacy.png');
+    assert.deepEqual(plain(cards).map(card => card.image.name), ['legacy', 'a', 'b']);
     assert.equal(new Set(cards.map(card => card.key)).size, 3);
+    assert.equal(JSON.stringify(messages), originalMessages);
+    const reopened = gallery.getDrawGalleryItems(JSON.parse(originalMessages));
+    assert.deepEqual(plain(reopened).map(card => card.key), plain(cards).map(card => card.key));
 });
 
 test('生成记录持久化后保留各自的对话和参考图，不依赖最近一条用户消息', () => {
@@ -43,8 +48,8 @@ test('生成记录持久化后保留各自的对话和参考图，不依赖最�
         { role: 'assistant', content: '', generatedImages: [image('b')], drawGeneration: b },
     ]));
     const cards = gallery.getDrawGalleryItems(saved);
-    assert.equal(cards[0].prompt, 'branch A');
-    assert.deepEqual(cards[1].generation.history, ['earlier B', 'branch B']);
+    assert.equal(cards[1].prompt, 'branch A');
+    assert.deepEqual(cards[0].generation.history, ['earlier B', 'branch B']);
     assert.equal(cards[0].referenceImages[0].path, '/data/assets/original-reference.png');
     assert.ok(!JSON.stringify(saved).includes('blob:original-reference'));
 });
@@ -98,7 +103,7 @@ function fixture() {
         handleModelSelect: event => { state.currentProvider = event.detail.provider; state.currentModelId = event.detail.modelId; },
         setProtyleContent: content => { state.editorContent = content; },
         clearProtyle() {},
-        loadAsset: async path => `loaded:${path}`, scrollToBottom: async () => {},
+        loadAsset: async path => `loaded:${path}`, scrollToBottom: async () => {}, scrollToTop: async () => {},
         collectDrawModeContextDocuments: async () => [], buildDrawPromptWithContext: prompt => prompt,
         buildDrawPromptWithSystemPrompt: prompt => `system + ${prompt}`,
         buildDrawAssistantContent: () => 'done', createGeneratedImageFileName: () => 'result.png',
@@ -166,7 +171,7 @@ test('修改恢复的提示词和参考图后发送才生成，旧图及后续�
     assert.equal(requests[0][3][0].name, 'replacement-reference');
     originals.forEach((message, index) => assert.equal(state.messages[index], message));
     assert.deepEqual(plain(gallery.getDrawGalleryItems(state.messages)).map(card => card.image.name),
-        ['original-a', 'original-b', 'later-result', 'result.png']);
+        ['result.png', 'later-result', 'original-a', 'original-b']);
     assert.equal(gallery.getDrawGalleryItems(JSON.parse(JSON.stringify(state.messages))).length, 4);
 });
 
