@@ -3211,7 +3211,15 @@
     }
 
     function handleFullscreenKeydown(event: KeyboardEvent) {
-        if (!isFullscreen || event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat) return;
+        if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat) return;
+        // 图片全屏是独立浮层，先退出图片全屏，保留预览和底下聊天侧栏的状态。
+        if (isImageViewerOpen && isImageViewerFullscreen) {
+            event.preventDefault();
+            event.stopPropagation();
+            isImageViewerFullscreen = false;
+            return;
+        }
+        if (!isFullscreen) return;
         // 弹窗和选择器优先处理 Esc，避免关闭弹窗时同时退出全屏。
         if (isEditDialogOpen || isWebLinkDialogOpen || isSearchDialogOpen || isDiffDialogOpen ||
             isPromptManagerOpen || isPromptSelectorOpen || isSessionManagerOpen || isImageViewerOpen ||
@@ -21005,6 +21013,29 @@
         padding: 12px 16px;
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
+        flex-shrink: 0;
+    }
+
+    .image-viewer--fullscreen .image-viewer__header {
+        padding-left: max(16px, var(--b3-toolbar-left-mac, 0px));
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .image-viewer--fullscreen .image-viewer__actions {
+        flex-wrap: wrap;
+    }
+
+    :global(html[data-frontend^="desktop"]) :global(body.body--windows)
+        .image-viewer--fullscreen .image-viewer__header,
+    :global(html[data-frontend^="desktop"]) :global(body.body--linux)
+        .image-viewer--fullscreen .image-viewer__header {
+        // 图片浮层移到 body 后，仍沿用聊天侧栏的窗口控件避让规则。
+        padding-right: calc(
+            16px + var(--b3-window-controls-width, var(--b3-fullscreen-controls-width, 138px))
+        );
+        min-height: var(--b3-window-controls-height, 0px);
+        box-sizing: border-box;
     }
 
     .image-viewer__title {
