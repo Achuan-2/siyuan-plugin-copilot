@@ -928,12 +928,14 @@
     let drawSettingsModelKey = '';
     let drawModeNoModelWarned = false;
     let drawEditingContext: DrawGenerationContext | null = null;
+    let drawDraftIsRegeneration = false;
+    let drawDraftRestoreVersion = 0;
     let drawPendingCount = 1;
     $: drawGalleryItems = chatMode === 'draw' ? getDrawGalleryItems(messages) : [];
     $: drawGalleryErrors = messages.filter(message => message.role === 'assistant' &&
         (message.drawGenerationError || (typeof message.content === 'string' && message.content.startsWith('❌'))))
         .map(message => message.drawGenerationError || String(message.content));
-    $: if (drawEditingContext && !currentAttachments.some(image => image.drawEditSource)) drawEditingContext = null;
+    $: if (drawEditingContext && !drawDraftIsRegeneration && !currentAttachments.some(image => image.drawEditSource)) drawEditingContext = null;
 
     // 图片查看器
     let isImageViewerOpen = false;
@@ -6052,9 +6054,10 @@
     async function editDrawGalleryImage(item: DrawGalleryItem) {
         if (isLoading) return;
         const sessionId = currentSessionId;
+        const restoreVersion = ++drawDraftRestoreVersion;
         try {
             const references = await hydrateDrawReferenceImages(getDrawEditReferences(item));
-            if (sessionId !== currentSessionId) return;
+            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed) return;
             if (item.generation) {
                 const config = getProviderAndModelConfig(item.generation.provider, item.generation.modelId);
                 if (modelSupportsImageGeneration(config?.modelConfig)) {
@@ -6069,6 +6072,7 @@
                 drawImageResolutionExplicit = true;
             }
             currentAttachments = references;
+            drawDraftIsRegeneration = false;
             drawEditingContext = item.generation || null;
             await tick();
             protyle?.focus();
@@ -6079,49 +6083,46 @@
 
     async function regenerateDrawGalleryImage(item: DrawGalleryItem) {
         if (isLoading) return;
-        const provider = item.generation?.provider || currentProvider;
-        const modelId = item.generation?.modelId || currentModelId;
+        const sessionId = currentSessionId;
+        const restoreVersion = ++drawDraftRestoreVersion;
+        const original = item.generation;
+        const provider = original?.provider || currentProvider;
+        const modelId = original?.modelId || currentModelId;
         const config = getProviderAndModelConfig(provider, modelId);
         if (!modelSupportsImageGeneration(config?.modelConfig)) {
             pushErrMsg(i18n('aiSidebarDrawModelRequired'));
             return;
         }
-        const original = item.generation;
-        const requestSettings = { ...(original?.settings || getCurrentDrawImageSettings()), count: 1 };
-        const generation: DrawGenerationContext = original
-            ? { ...original, settings: requestSettings, createdAt: Date.now() }
-            : createDrawGenerationContext(item.prompt, buildDrawPromptWithSystemPrompt(item.prompt), [],
-                item.referenceImages, provider, modelId, requestSettings);
-        isLoading = true;
-        isAborted = false;
-        drawPendingCount = 1;
-        streamingMessage = generation.referenceImages.length ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
-        const controller = new AbortController();
-        abortController = controller;
-        autoScroll = true;
         try {
-            const references = await hydrateDrawReferenceImages(generation.referenceImages);
-            if (controller.signal.aborted) return;
-            const images = await requestDrawImages(config.providerConfig, config.modelConfig,
-                generation.requestPrompt, references, controller.signal, requestSettings, provider);
-            if (controller.signal.aborted) return;
-            if (!images.length) throw new Error(i18n('aiSidebarDrawNoImages'));
-            messages = [...messages, createDrawAssistantMessage(images, generation)];
-            hasUnsavedChanges = true;
+            const references = await hydrateDrawReferenceImages(original?.referenceImages || item.referenceImages);
+            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || isLoading) return;
+            handleModelSelect(new CustomEvent('select', { detail: { provider, modelId } }));
+            await tick();
+            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || isLoading) return;
+            if (original) {
+                drawImageAspectRatio = original.settings.aspectRatio;
+                drawImageResolution = original.settings.resolution;
+                drawImageQuality = original.settings.quality;
+                drawImageResolutionExplicit = true;
+            }
+            // 重新生成复用原来的输入，而编辑按钮使用选中的结果图作为新的参考图。
+            const originalReferences = new Set((original?.originalReferenceImages || item.referenceImages)
+                .map(image => image.path || image.data));
+            currentAttachments = references.map(image => ({
+                ...image,
+                drawEditSource: original && !originalReferences.has(image.path || image.data) ? true : undefined,
+            }));
+            currentInput = original?.prompt || item.prompt;
+            contextDocuments = [];
+            drawImageCount = 1;
+            drawDraftIsRegeneration = true;
+            // 去掉本轮提示词，发送修改后的提示词时只追加一次本轮请求。
+            drawEditingContext = original ? { ...original, history: original.history.slice(0, -1) } : null;
+            if (protyle) setProtyleContent(currentInput);
+            await tick();
+            protyle?.focus();
         } catch (error) {
-            if ((error as Error).name !== 'AbortError' && !controller.signal.aborted) {
-                messages = [...messages, { role: 'assistant', content: (error as Error).message,
-                    drawGenerationError: (error as Error).message }];
-                hasUnsavedChanges = true;
-            }
-        } finally {
-            if (abortController === controller) {
-                isLoading = false;
-                streamingMessage = '';
-                abortController = null;
-                if (hasUnsavedChanges) await saveCurrentSession(true);
-                await scrollToBottom(true);
-            }
+            pushErrMsg((error as Error).message);
         }
     }
 
@@ -6178,6 +6179,8 @@
             clearProtyle();
         }
         currentAttachments = [];
+        drawEditingContext = null;
+        drawDraftIsRegeneration = false;
         contextDocuments = [];
         isAborted = false;
         streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
@@ -9864,6 +9867,8 @@
         }
 
         drawEditingContext = null;
+        drawDraftIsRegeneration = false;
+        drawDraftRestoreVersion += 1;
         if (chatMode === 'draw') currentAttachments = [];
 
         // 如果消息正在生成，先中断
@@ -10248,6 +10253,8 @@
         drawModeLocked = false;
         chatMode = 'ask';
         drawEditingContext = null;
+        drawDraftIsRegeneration = false;
+        drawDraftRestoreVersion += 1;
         currentAttachments = [];
         messages = getBaseSystemPrompt()
             ? [{ role: 'system', content: getBaseSystemPrompt() }]
@@ -15921,7 +15928,7 @@
             <div class="ai-sidebar__context-docs-title">
                 {chatMode === 'draw' ? i18n('aiSidebarDrawReferences') : '📎 ' + i18n('aiSidebarContextContent')}
                 {#if chatMode === 'draw'}
-                    <button type="button" class="b3-button b3-button--text" on:click={() => { currentAttachments = []; drawEditingContext = null; }}>
+                    <button type="button" class="b3-button b3-button--text" on:click={() => { currentAttachments = []; drawEditingContext = null; drawDraftIsRegeneration = false; drawDraftRestoreVersion += 1; }}>
                         {i18n('aiSidebarDrawNewImage')}
                     </button>
                 {/if}

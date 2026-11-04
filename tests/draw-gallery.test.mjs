@@ -82,6 +82,7 @@ function fixture() {
     const state = {
         ...gallery, AbortController, console, currentProvider: 'current-provider', currentModelId: 'gpt-image-2', chatMode: 'draw',
         isLoading: false, isAborted: false, currentSessionId: 'session', drawEditingContext: null,
+        drawDraftIsRegeneration: false, drawDraftRestoreVersion: 0, isDestroyed: false,
         messages: [{ role: 'user', content: 'old prompt' }, { role: 'assistant', content: '', attachments: [image('unrelated')] }],
         currentInput: 'create a new image', currentAttachments: [], contextDocuments: [], protyle: null,
         i18n: key => key, pushErrMsg: text => notices.push(text), hasUnsavedChanges: false,
@@ -92,6 +93,11 @@ function fixture() {
         getCurrentProviderConfig: () => ({ id: 'current-provider' }),
         getCurrentModelConfig: () => ({ id: 'gpt-image-2' }),
         getMessageText: content => typeof content === 'string' ? content : '',
+        tick: async () => {},
+        CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init.detail; } },
+        handleModelSelect: event => { state.currentProvider = event.detail.provider; state.currentModelId = event.detail.modelId; },
+        setProtyleContent: content => { state.editorContent = content; },
+        clearProtyle() {},
         loadAsset: async path => `loaded:${path}`, scrollToBottom: async () => {},
         collectDrawModeContextDocuments: async () => [], buildDrawPromptWithContext: prompt => prompt,
         buildDrawPromptWithSystemPrompt: prompt => `system + ${prompt}`,
@@ -112,22 +118,56 @@ function fixture() {
     return { state, requests, notices };
 }
 
-test('重新生成读取卡片保存的模型、提示词、参考图和参数，每次新增一张且不改输入框', async () => {
+test('点击重新生成只恢复原提示词、参考图和参数，不请求接口或修改历史', async () => {
     const { state, requests } = fixture();
     const generation = context();
     const before = plain(generation);
-    state.currentAttachments = [image('current-input')];
+    const originalMessages = [...state.messages];
+    let focused = false;
+    state.protyle = { focus: () => { focused = true; } };
     await state.regenerateDrawGalleryImage({ image: image('selected'), prompt: 'original', generation });
-    assert.equal(requests[0][0].id, 'original-provider');
-    assert.equal(requests[0][1].id, 'gemini-3-pro-image-4k');
-    assert.equal(requests[0][2], 'system + original');
-    assert.equal(requests[0][3][0].data, 'loaded:/data/assets/original-reference.png');
-    assert.deepEqual(plain(requests[0][5]), { ...settings, count: 1 });
-    assert.equal(requests[0][6], 'original-provider');
-    assert.equal(state.messages.length, 3);
-    assert.equal(state.currentInput, 'create a new image');
-    assert.equal(state.currentAttachments[0].name, 'current-input');
+    assert.equal(requests.length, 0);
+    assert.equal(state.isLoading, false);
+    assert.equal(state.currentInput, 'original');
+    assert.equal(state.editorContent, 'original');
+    assert.equal(focused, true);
+    assert.equal(state.currentProvider, 'original-provider');
+    assert.equal(state.currentModelId, 'gemini-3-pro-image-4k');
+    assert.equal(state.drawImageAspectRatio, '3:4');
+    assert.equal(state.drawImageResolution, '4K');
+    assert.equal(state.drawImageQuality, 'high');
+    assert.equal(state.drawImageCount, 1);
+    assert.equal(state.currentAttachments[0].name, 'original-reference');
+    assert.equal(state.currentAttachments[0].data, 'loaded:/data/assets/original-reference.png');
+    originalMessages.forEach((message, index) => assert.equal(state.messages[index], message));
     assert.deepEqual(plain(generation), before);
+});
+
+test('修改恢复的提示词和参考图后发送才生成，旧图及后续结果保留', async () => {
+    const { state, requests } = fixture();
+    const generation = context('original image prompt');
+    state.messages = [
+        { role: 'user', content: 'original image prompt', drawGeneration: generation },
+        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('original-a'), image('original-b')] },
+        { role: 'user', content: 'later prompt' },
+        { role: 'assistant', content: '', attachments: [image('later-result')] },
+    ];
+    const originals = [...state.messages];
+    await state.regenerateMessage(1);
+    assert.equal(requests.length, 0);
+    assert.equal(state.currentInput, 'original image prompt');
+    assert.equal(state.messages.length, 4);
+    state.currentInput = 'modified prompt';
+    state.currentAttachments = [image('replacement-reference')];
+    state.isLoading = true;
+    await state.sendDrawModeMessage({ id: state.currentProvider }, { id: state.currentModelId });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0][2], 'system + modified prompt');
+    assert.equal(requests[0][3][0].name, 'replacement-reference');
+    originals.forEach((message, index) => assert.equal(state.messages[index], message));
+    assert.deepEqual(plain(gallery.getDrawGalleryItems(state.messages)).map(card => card.image.name),
+        ['original-a', 'original-b', 'later-result', 'result.png']);
+    assert.equal(gallery.getDrawGalleryItems(JSON.parse(JSON.stringify(state.messages))).length, 4);
 });
 
 test('无参考图的新提示词直接创建新图，不自动携带上一张结果或其他分支对话', async () => {
@@ -137,90 +177,75 @@ test('无参考图的新提示词直接创建新图，不自动携带上一张�
     assert.equal(requests[0][3].length, 0);
     assert.equal(requests[0][2], 'system + create a new image');
     assert.deepEqual(plain(state.messages.at(-1).drawGeneration.history), ['create a new image']);
-    assert.equal(state.messages.at(-1).drawGeneration.referenceImages.length, 0);
 });
 
-test('编辑分支保留自身历史，结果和原始参考图一起发送并随新结果保存', async () => {
+test('重新生成编辑分支只恢复原参考图，修改本轮提示词不重复历史或替换为结果图', async () => {
     const { state, requests } = fixture();
-    state.drawEditingContext = context('branch A');
-    state.currentInput = 'edit A';
-    state.currentAttachments = [{ ...image('selected-A'), drawEditSource: true }, image('original-reference')];
+    const original = context('old edit');
+    original.history = ['first prompt', 'old edit'];
+    original.referenceImages = [image('previous-result'), image('original-reference')];
+    await state.regenerateDrawGalleryImage({ image: image('selected-result'), prompt: 'old edit', generation: original });
+    assert.deepEqual(plain(state.currentAttachments).map(image => image.name), ['previous-result', 'original-reference']);
+    assert.equal(state.currentAttachments[0].drawEditSource, true);
+    assert.deepEqual(plain(state.drawEditingContext.history), ['first prompt']);
+    state.currentInput = 'new edit';
     state.isLoading = true;
-    await state.sendDrawModeMessage({ id: 'current-provider' }, { id: 'gpt-image-2' });
-    assert.match(requests[0][2], /branch A[\s\S]*edit A/);
-    assert.equal(requests[0][3][0].name, 'selected-A');
+    await state.sendDrawModeMessage({ id: state.currentProvider }, { id: state.currentModelId });
+    assert.ok(requests[0][2].includes('first prompt'));
+    assert.ok(requests[0][2].includes('new edit'));
+    assert.ok(!requests[0][2].includes('old edit'));
     const saved = state.messages.at(-1).drawGeneration;
-    assert.deepEqual(plain(saved.history), ['branch A', 'edit A']);
+    assert.deepEqual(plain(saved.history), ['first prompt', 'new edit']);
     assert.deepEqual(plain(saved.originalReferenceImages).map(image => image.name), ['original-reference']);
 });
 
-test('取消卡片生成后不会提交旧结果或覆盖随后启动的新请求状态', async () => {
-    const { state } = fixture();
-    let finish;
-    state.requestDrawImages = () => new Promise(resolve => { finish = resolve; });
-    const pending = state.regenerateDrawGalleryImage({ image: image('selected'), prompt: 'original', generation: context() });
-    await new Promise(resolve => setImmediate(resolve));
-    state.abortController.abort();
-    const nextController = new AbortController();
-    state.abortController = nextController;
-    state.streamingMessage = 'new request';
-    state.isLoading = true;
-    finish([{ name: 'old.png', path: '/data/old.png', previewUrl: 'blob:old' }]);
-    await pending;
-    assert.equal(state.messages.length, 2);
-    assert.equal(state.abortController, nextController);
-    assert.equal(state.isLoading, true);
-    assert.equal(state.streamingMessage, 'new request');
-});
-
-test('从消息入口重新生成旧图时，保留原图、同批图片及后续结果，只新增一张', async () => {
+test('恢复参考图期间切换会话，迟到的结果不覆盖新会话输入', async () => {
     const { state, requests } = fixture();
-    const generation = context('original image prompt');
-    state.messages = [
-        { role: 'user', content: 'original image prompt', drawGeneration: generation },
-        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('original-a'), image('original-b')] },
-        { role: 'user', content: 'later prompt' },
-        { role: 'assistant', content: '', attachments: [image('later-result')] },
-    ];
-    const originalMessages = [...state.messages];
-    const before = plain(state.messages);
-    await state.regenerateMessage(1);
-    assert.equal(requests[0][2], generation.requestPrompt);
-    assert.equal(requests[0][5].count, 1);
-    originalMessages.forEach((message, index) => assert.equal(state.messages[index], message));
-    assert.deepEqual(plain(state.messages.slice(0, originalMessages.length)), before);
-    const cards = gallery.getDrawGalleryItems(state.messages);
-    assert.deepEqual(plain(cards).map(card => card.image.name), ['original-a', 'original-b', 'later-result', 'result.png']);
-    const reopened = gallery.getDrawGalleryItems(JSON.parse(JSON.stringify(state.messages)));
-    assert.equal(reopened.length, 4);
+    let finish;
+    state.loadAsset = () => new Promise(resolve => { finish = resolve; });
+    const restoring = state.regenerateDrawGalleryImage({ image: image('selected'), prompt: 'original', generation: context() });
+    state.currentSessionId = 'new-session';
+    state.currentInput = 'new session draft';
+    finish('loaded:old-reference');
+    await restoring;
+    assert.equal(state.currentInput, 'new session draft');
+    assert.equal(state.currentAttachments.length, 0);
+    assert.equal(requests.length, 0);
 });
 
-test('从用户提示词入口重新生成也追加新图，等待响应期间不移除原结果', async () => {
-    const { state } = fixture();
-    const generation = context();
+test('从用户消息入口重新生成也只填回草稿，不立即发起请求', async () => {
+    const { state, requests } = fixture();
     state.messages = [
-        { role: 'user', content: 'original', drawGeneration: generation },
-        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('original')] },
+        { role: 'user', content: 'original', drawGeneration: context() },
+        { role: 'assistant', content: '', drawGeneration: context(), attachments: [image('original')] },
     ];
     const originals = state.messages;
-    let finish;
-    state.requestDrawImages = () => new Promise(resolve => { finish = resolve; });
-    const pending = state.regenerateMessage(0);
-    await new Promise(resolve => setImmediate(resolve));
+    await state.regenerateMessage(0);
     assert.equal(state.messages, originals);
-    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 1);
-    finish([{ name: 'new.png', mimeType: 'image/png', path: '/data/new.png', previewUrl: 'blob:new' }]);
-    await pending;
-    assert.equal(state.messages[1], originals[1]);
-    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 2);
+    assert.equal(state.currentInput, 'original');
+    assert.equal(requests.length, 0);
 });
 
-test('重新生成失败保留所有原图，错误仅作为新增记录显示', async () => {
-    const { state } = fixture();
-    const originals = [...state.messages];
-    state.requestDrawImages = async () => { throw new Error('fixture failure'); };
-    await state.regenerateMessage(1);
-    originals.forEach((message, index) => assert.equal(state.messages[index], message));
-    assert.equal(gallery.getDrawGalleryItems(state.messages).length, 1);
-    assert.equal(state.messages.at(-1).drawGenerationError, 'fixture failure');
+test('无参考图的文生图重新生成会清除输入区旧参考图，保留可修改提示词', async () => {
+    const { state, requests } = fixture();
+    const generation = context('text to image');
+    generation.referenceImages = [];
+    generation.originalReferenceImages = [];
+    state.currentAttachments = [image('unrelated-draft')];
+    await state.regenerateDrawGalleryImage({ image: image('selected'), prompt: generation.prompt, generation });
+    assert.equal(state.currentAttachments.length, 0);
+    assert.equal(state.currentInput, 'text to image');
+    assert.equal(state.drawDraftIsRegeneration, true);
+    assert.equal(requests.length, 0);
+});
+
+test('参考图加载失败时保留草稿和原图，不请求生图接口', async () => {
+    const { state, requests, notices } = fixture();
+    const originals = state.messages;
+    state.loadAsset = async () => { throw new Error('reference unavailable'); };
+    await state.regenerateDrawGalleryImage({ image: image('selected'), prompt: 'original', generation: context() });
+    assert.equal(state.messages, originals);
+    assert.equal(state.currentInput, 'create a new image');
+    assert.equal(requests.length, 0);
+    assert.equal(notices.at(-1), 'reference unavailable');
 });

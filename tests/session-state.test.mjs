@@ -35,6 +35,7 @@ test('生成图片后会话固定为画图模式，历史记录和旧图片会�
     assert.equal(state.resolveChatSessionMode([], 'agent'), 'agent');
     assert.equal(state.resolveChatSessionMode([], undefined), 'ask');
     const context = { ...state, messages: imageMessages, drawModeLocked: false, chatMode: 'draw', isLoading: false,
+        drawDraftRestoreVersion: 0,
         getBaseSystemPrompt: () => '', currentAttachments: [], multiModelResponses: [] };
     const guard = ast.statements.filter(node => ts.isLabeledStatement(node) &&
         /hasGeneratedSessionImages\(messages\)|drawModeLocked && chatMode|drawModeSwitchDisabled =/.test(node.getText(ast)))
