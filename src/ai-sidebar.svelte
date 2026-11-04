@@ -5739,7 +5739,7 @@
     }
 
     function getGeminiImageConfig(modelId: string, size: DrawImageSize) {
-        const sizeMap: Record<string, { aspectRatio: string; imageSize?: '2K' | '4K' }> = {
+        const sizeMap: Record<string, { aspectRatio: string; imageSize?: '1K' | '2K' | '4K' }> = {
             '1024x1024': { aspectRatio: '1:1' },
             '1536x1024': { aspectRatio: '3:2' },
             '1024x1536': { aspectRatio: '2:3' },
@@ -5752,11 +5752,24 @@
             '2160x3840': { aspectRatio: '9:16', imageSize: '4K' },
         };
         const parsedSize = parseDrawImageSizeValue(size);
-        const config =
-            sizeMap[size] ||
-            (parsedSize
-                ? { aspectRatio: getClosestGeminiAspectRatio(parsedSize.width, parsedSize.height) }
-                : null);
+        let config = sizeMap[size];
+        if (!config && parsedSize) {
+            // Gemini 不接受任意像素尺寸，需同时转换比例与分辨率档位。
+            // 保留上方预设的档位；自动识别尺寸按长边匹配最近的 1K/2K/4K。
+            const longEdge = Math.max(parsedSize.width, parsedSize.height);
+            const resolutions = [
+                { pixels: 1024, imageSize: '1K' as const },
+                { pixels: 2048, imageSize: '2K' as const },
+                { pixels: 4096, imageSize: '4K' as const },
+            ];
+            const resolution = resolutions.reduce((best, item) =>
+                Math.abs(item.pixels - longEdge) < Math.abs(best.pixels - longEdge) ? item : best
+            );
+            config = {
+                aspectRatio: getClosestGeminiAspectRatio(parsedSize.width, parsedSize.height),
+                imageSize: resolution.imageSize,
+            };
+        }
         if (!config) return null;
 
         if (!geminiModelSupportsImageSize(modelId)) {
