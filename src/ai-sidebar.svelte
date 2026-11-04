@@ -453,6 +453,8 @@
     let isLoading = false;
     let streamingMessage = '';
     let streamingThinking = ''; // 流式思考内容
+    let streamingMessagePreview = '';
+    let streamingThinkingPreview = '';
     let isThinkingPhase = false; // 是否在思考阶段
     let settings: any = {};
     let messagesContainer: HTMLElement;
@@ -2629,6 +2631,7 @@
     onDestroy(async () => {
         isDestroyed = true;
         replyRenderScheduler.dispose();
+        replyPreviewScheduler.dispose();
         if (sidebarContainer) {
             sidebarContainer.removeEventListener('touchstart', handleTouchStopPropagation);
             sidebarContainer.removeEventListener('touchmove', handleTouchStopPropagation);
@@ -2744,6 +2747,23 @@
         }
     }
 
+    // 原始流式内容持续接收，预览只取最新快照；保存、工具调用和中断仍使用原文。
+    const replyPreviewScheduler = new ReplyRenderScheduler(() => {
+        if (isDestroyed) return;
+        streamingMessagePreview = streamingMessage;
+        streamingThinkingPreview = streamingThinking;
+    });
+    $: {
+        streamingMessage;
+        streamingThinking;
+        if (!streamingMessage && !streamingThinking) {
+            streamingMessagePreview = '';
+            streamingThinkingPreview = '';
+        } else {
+            replyPreviewScheduler.request(!isLoading);
+        }
+    }
+
     // 思源智能体同样会合并流式渲染，避免每个 token 都扫描整份会话 DOM。
     const replyRenderScheduler = new ReplyRenderScheduler(async () => {
         await tick();
@@ -2764,8 +2784,8 @@
         selectedTabIndex;
         selectedAnswerIndex;
         thinkingCollapsed;
-        streamingMessage;
-        streamingThinking;
+        streamingMessagePreview;
+        streamingThinkingPreview;
 
         // 首次更新立即处理；流式期间合并到 100ms，结束和静态操作立即刷新。
         replyRenderScheduler.request(!isLoading);
@@ -14987,12 +15007,12 @@
                             </span>
                         </div>
                         {#if !isThinkingPhase}
-                            {@const streamThinkingDisplay = getDisplayContent(streamingThinking)}
+                            {@const streamThinkingDisplay = getDisplayContent(streamingThinkingPreview)}
                             <div class="ai-message__thinking-content b3-typography">
                                 {@html streamThinkingDisplay}
                             </div>
                         {:else}
-                            {@const streamThinkingDisplay2 = getDisplayContent(streamingThinking)}
+                            {@const streamThinkingDisplay2 = getDisplayContent(streamingThinkingPreview)}
                             <div
                                 class="ai-message__thinking-content ai-message__thinking-content--streaming b3-typography"
                             >
@@ -15159,7 +15179,7 @@
                                 <span class="dot"></span>
                             </span>
                         {:else}
-                            {@const streamMsgDisplay = getDisplayContent(streamingMessage)}
+                            {@const streamMsgDisplay = getDisplayContent(streamingMessagePreview)}
                             {@html streamMsgDisplay}
                         {/if}
                     </div>
