@@ -799,6 +799,7 @@
     "aiSidebarDrawNewImage": "新建图片",
     "aiSidebarDrawEmpty": "在下方描述想生成的图片",
     "aiSidebarDrawBackToResult": "返回生成图片",
+    "aiSidebarDrawSessionModeLocked": "生图会话不能切换模式，请新建会话进行对话",
     "aiSidebarStopGeneration": "中断生成",
     "aiSidebarSendMessage": "发送消息",
     "aiSidebarWebLinkLabel": "网页链接（每行一个）",

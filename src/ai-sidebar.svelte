@@ -1,6 +1,10 @@
 <script lang="ts">
     import { floatingLayer } from './utils/floatingLayer';
     import { appendToolRound, createToolRound } from './utils/agentContext';
+    import {
+        createChatSessionId, diffSessionMetadata, mergeSessionMetadata, hasGeneratedSessionImages, resolveChatSessionMode,
+        type ChatSessionMode, type SessionMetadata,
+    } from './utils/sessionState';
     import { ReplyMarkdownRenderer, ReplyRenderScheduler } from './utils/replyRendering';
     import { createEventDispatcher, onMount, tick, onDestroy } from 'svelte';
     import {
@@ -429,6 +433,7 @@
     export let plugin: any;
     export let initialMessage: string = ''; // 初始消息
     export let initialSessionId: string = ''; // 初始会话ID
+    export let initialChatMode: ChatSessionMode | undefined = undefined;
     export let mode: 'sidebar' | 'dialog' = 'sidebar'; // 使用模式：sidebar或dialog
     export let respondToGlobalActions: boolean = false; // 是否响应全局事件（仅标签页实例）
     export let sessionHost = false; // 是否由会话宿主管理多个并行会话视图
@@ -446,6 +451,8 @@
         messageCount?: number; // 消息数量
         pinned?: boolean; // 是否钉住
         isLoading?: boolean; // 会话是否有后台任务正在运行
+        chatMode?: ChatSessionMode;
+        drawModeLocked?: boolean;
     }
 
     let messages: Message[] = [];
@@ -791,6 +798,8 @@
 
     // 会话管理
     let sessions: ChatSession[] = [];
+    let sessionMetadataBaseline: SessionMetadata[] = [];
+    let sessionListLoadVersion = 0;
     let currentSessionId: string = '';
     let isSessionManagerOpen = false;
     let hasUnsavedChanges = false;
@@ -799,15 +808,16 @@
     // 这样新建的会话视图和其他页签打开历史记录时也能看到后台任务。
     let reportedTaskSessionId = '';
     let notifiedSessionId = '';
+    const sessionTaskOwner = sessionViewId || `copilot-task-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     function publishSessionTaskStatus(sessionId: string, running: boolean) {
         if (!sessionId) return;
 
-        setSessionTaskStatus(sessionId, running);
+        const sessionRunning = setSessionTaskStatus(sessionId, running, sessionTaskOwner);
 
         const session = sessions.find(item => item.id === sessionId);
-        if (session && session.isLoading !== running) {
-            session.isLoading = running;
+        if (session && session.isLoading !== sessionRunning) {
+            session.isLoading = sessionRunning;
             sessions = [...sessions];
         }
 
@@ -817,7 +827,7 @@
 
         window.dispatchEvent(
             new CustomEvent('copilot-session-status', {
-                detail: { sessionId, isLoading: running },
+                detail: { sessionId, isLoading: sessionRunning },
             })
         );
     }
@@ -840,7 +850,6 @@
         const detail = (event as CustomEvent<{ sessionId?: string; isLoading?: boolean }>).detail;
         if (!detail?.sessionId || typeof detail.isLoading !== 'boolean') return;
 
-        setSessionTaskStatus(detail.sessionId, detail.isLoading);
         const session = sessions.find(item => item.id === detail.sessionId);
         if (session && session.isLoading !== detail.isLoading) {
             session.isLoading = detail.isLoading;
@@ -897,6 +906,10 @@
     // 对话模式
     type ChatMode = 'ask' | 'agent' | 'draw';
     let chatMode: ChatMode = 'ask';
+    let drawModeLocked = false;
+    $: if (hasGeneratedSessionImages(messages)) drawModeLocked = true;
+    $: if (drawModeLocked && chatMode !== 'draw') chatMode = 'draw';
+    $: drawModeSwitchDisabled = drawModeLocked || (chatMode === 'draw' && isLoading);
     let previousChatMode: ChatMode = 'ask'; // 用于模式切换时恢复对应模型
     let lastRememberedChatMode: ChatMode = 'ask';
     let isDiffDialogOpen = false;
@@ -2166,7 +2179,12 @@
 
     onMount(() => {
         window.addEventListener('copilot-session-status', handleSessionTaskStatus);
-        return () => window.removeEventListener('copilot-session-status', handleSessionTaskStatus);
+        const refreshSessions = () => { void loadSessions(); };
+        window.addEventListener('copilot-sessions-changed', refreshSessions);
+        return () => {
+            window.removeEventListener('copilot-session-status', handleSessionTaskStatus);
+            window.removeEventListener('copilot-sessions-changed', refreshSessions);
+        };
     });
 
     onMount(() => {
@@ -2188,7 +2206,9 @@
         currentModelId = settings.currentModelId || '';
 
         // 初始化模式
-        if (!settings.selectedModelPresetId && settings.lastUsedChatMode) {
+        if (initialChatMode) {
+            chatMode = initialChatMode;
+        } else if (!settings.selectedModelPresetId && settings.lastUsedChatMode) {
             chatMode =
                 settings.lastUsedChatMode === 'agent' || settings.lastUsedChatMode === 'draw'
                     ? settings.lastUsedChatMode
@@ -2543,14 +2563,15 @@
 
                 // 更新当前选择（如果设置中有保存）
                 // 生图模式使用单独保存的模型，避免被问答模式的模型覆盖
-                if (chatMode === 'draw') {
+                const followGlobalModelSelection = !currentSessionId && !isLoading && isSessionViewActive;
+                if (followGlobalModelSelection && chatMode === 'draw') {
                     if (newSettings.drawProvider) {
                         currentProvider = newSettings.drawProvider;
                     }
                     if (newSettings.drawModelId) {
                         currentModelId = newSettings.drawModelId;
                     }
-                } else {
+                } else if (followGlobalModelSelection) {
                     if (newSettings.currentProvider) {
                         currentProvider = newSettings.currentProvider;
                     }
@@ -2560,7 +2581,7 @@
                 }
 
                 // 更新多模型选择，过滤掉无效的模型
-                if (newSettings.selectedMultiModels !== undefined) {
+                if (followGlobalModelSelection && newSettings.selectedMultiModels !== undefined) {
                     const validModels = newSettings.selectedMultiModels.filter(model => {
                         const config = getProviderAndModelConfig(model.provider, model.modelId);
                         return config !== null;
@@ -2630,6 +2651,9 @@
 
     onDestroy(async () => {
         isDestroyed = true;
+        abortController?.abort();
+        isLoading = false;
+        syncSessionTaskStatus('', false);
         replyRenderScheduler.dispose();
         replyPreviewScheduler.dispose();
         if (sidebarContainer) {
@@ -3328,8 +3352,17 @@
             toolAutoApproveSettings?: Record<string, boolean>;
         }>
     ) {
-        const newSettings = event.detail;
+        const newSettings = { ...event.detail };
         const shouldPersist = newSettings.persist !== false;
+        if (drawModeSwitchDisabled && newSettings.chatMode && newSettings.chatMode !== 'draw') {
+            if (shouldPersist) pushErrMsg(i18n('aiSidebarDrawSessionModeLocked'));
+            return;
+        }
+        // 历史会话和显式新建的对话有自己的模式，自动恢复全局预设不能覆盖它。
+        if (!shouldPersist && (initialSessionId || initialChatMode) && newSettings.chatMode !== chatMode) {
+            newSettings.chatMode = chatMode;
+            newSettings.modelSelectionEnabled = false;
+        }
         if (!shouldPersist) {
             // 自动恢复预设属于视图初始化，不能修改 store 共享的配置对象。
             settings = cloneSettings(settings);
@@ -4369,7 +4402,7 @@
             if (userMessages.length === 1 && !currentSessionId) {
                 const now = Date.now();
                 const newSession: ChatSession = {
-                    id: `session_${now}`,
+                    id: createChatSessionId(),
                     title: generateSessionTitle(),
                     messages: [...messages],
                     createdAt: now,
@@ -6159,7 +6192,7 @@
         if (userMessages.length === 1 && !currentSessionId) {
             const now = Date.now();
             const newSession: ChatSession = {
-                id: `session_${now}`,
+                id: createChatSessionId(),
                 title: generateSessionTitle(),
                 messages: [...messages],
                 createdAt: now,
@@ -6486,7 +6519,7 @@
         if (userMessages.length === 1 && !currentSessionId) {
             const now = Date.now();
             const newSession: ChatSession = {
-                id: `session_${now}`,
+                id: createChatSessionId(),
                 title: generateSessionTitle(),
                 messages: [...messages],
                 createdAt: now,
@@ -9778,45 +9811,56 @@
 
     // 会话管理函数
     async function loadSessions() {
+        const loadVersion = ++sessionListLoadVersion;
         try {
             const data = await plugin.loadData('chat-sessions.json');
-            if (isDestroyed) return;
+            if (isDestroyed || loadVersion !== sessionListLoadVersion) return;
+            if (!Array.isArray(data?.sessions) && sessionMetadataBaseline.length) throw new Error('Session list unavailable');
             sessions = (data?.sessions || []).map((session: ChatSession) => {
-                const taskStatus =
-                    session.id === currentSessionId
-                        ? isLoading
-                        : getSessionTaskStatus(session.id);
+                const taskStatus = getSessionTaskStatus(session.id) ??
+                    (session.id === currentSessionId ? isLoading : false);
                 return { ...session, isLoading: taskStatus ?? false };
             });
+            sessionMetadataBaseline = JSON.parse(JSON.stringify(sessions.map(({ messages, ...metadata }) => metadata)));
             // 会话迁移已在 index.ts 的 loadSettings 中统一处理
         } catch (error) {
             console.error('Load sessions error:', error);
-            sessions = [];
         }
     }
 
     async function saveSessions() {
-        // 在排队前固定本次快照，保证 true/false 两次状态更新按调用顺序落盘。
+        sessionListLoadVersion += 1;
+        // 先固定本视图的差量，实际写入时在队列中读取最新列表，避免覆盖其他后台会话。
         const metadata = sessions.map(s => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { messages, ...rest } = s;
-            const taskStatus =
-                s.id === currentSessionId ? isLoading : getSessionTaskStatus(s.id);
+            const taskStatus = getSessionTaskStatus(s.id) ?? (s.id === currentSessionId ? isLoading : false);
             return {
                 ...rest,
+                ...(s.id === currentSessionId ? { chatMode, drawModeLocked } : {}),
                 ...(taskStatus === undefined ? {} : { isLoading: taskStatus }),
                 messageCount:
                     s.messageCount ||
                     (s.messages ? s.messages.filter(m => m.role !== 'system').length : 0),
             };
         });
+        const previousBaseline = sessionMetadataBaseline;
+        const changes = diffSessionMetadata(previousBaseline, metadata);
+        sessionMetadataBaseline = JSON.parse(JSON.stringify(metadata));
+        if (!changes.updates.length && !changes.deletedIds.length) return;
 
         try {
-            // 只保存 metadata 到 chat-sessions.json；多个会话视图共享同一写入队列。
-            await enqueueSessionMetadataSave(() =>
-                plugin.saveData('chat-sessions.json', { sessions: metadata })
-            );
+            await enqueueSessionMetadataSave(async () => {
+                const latest = await plugin.loadData('chat-sessions.json');
+                if (!Array.isArray(latest?.sessions) && previousBaseline.length) throw new Error('Session list unavailable');
+                const merged = mergeSessionMetadata(latest?.sessions || [], changes).map(session => ({
+                    ...session, isLoading: getSessionTaskStatus(session.id) ?? false,
+                }));
+                await plugin.saveData('chat-sessions.json', { sessions: merged });
+                window.dispatchEvent(new CustomEvent('copilot-sessions-changed'));
+            });
         } catch (error) {
+            if (JSON.stringify(sessionMetadataBaseline) === JSON.stringify(metadata)) sessionMetadataBaseline = previousBaseline;
             console.error('Save sessions error:', error);
             pushErrMsg(i18n('aiSidebarErrorsSaveSessionFailed'));
         }
@@ -9864,6 +9908,8 @@
                     session.updatedAt = now;
                     session.messageCount = messages.filter(m => m.role !== 'system').length;
                     session.isLoading = getSessionTaskStatus(currentSessionId) ?? isLoading;
+                    session.chatMode = chatMode;
+                    session.drawModeLocked = drawModeLocked;
 
                     // 1. 保存 metadata 列表
                     await saveSessions();
@@ -9884,6 +9930,7 @@
                     // 3. 保存完整内容到独立文件
                     await plugin.saveData(`sessions/${currentSessionId}.json`, {
                         messages: messagesToSave,
+                        chatMode, drawModeLocked,
                     });
                 } else {
                     // 如果会话不存在，创建为新会话
@@ -9916,13 +9963,14 @@
                     }));
                     await plugin.saveData(`sessions/${currentSessionId}.json`, {
                         messages: messagesToSave,
+                        chatMode, drawModeLocked,
                     });
                 }
             } else {
                 // 创建新会话
                 const userContent = messages.find(m => m.role === 'user')?.content || '';
                 const newSession: ChatSession = {
-                    id: `session_${now}`,
+                    id: createChatSessionId(),
                     title:
                         typeof userContent === 'string'
                             ? userContent.substring(0, 30)
@@ -9950,6 +9998,7 @@
                 }));
                 await plugin.saveData(`sessions/${newSession.id}.json`, {
                     messages: messagesToSave,
+                    chatMode, drawModeLocked,
                 });
             }
             hasUnsavedChanges = false;
@@ -10217,6 +10266,14 @@
                     }
                 }
 
+                drawModeLocked = Boolean(sessionData.drawModeLocked || sessionMetadata?.drawModeLocked || hasGeneratedSessionImages(loadedMessages));
+                chatMode = resolveChatSessionMode(loadedMessages, sessionData.chatMode || sessionMetadata?.chatMode, drawModeLocked);
+                const restoredProvider = chatMode === 'draw' ? settings.drawProvider : settings.currentProvider;
+                const restoredModel = chatMode === 'draw' ? settings.drawModelId : settings.currentModelId;
+                if (getProviderAndModelConfig(restoredProvider, restoredModel)) {
+                    currentProvider = restoredProvider;
+                    currentModelId = restoredModel;
+                }
                 messages = [...loadedMessages];
 
                 // 【修复】检查多模型响应是否缺少选择，自动设置第一个非错误模型为选中
@@ -10346,8 +10403,10 @@
     }
 
     function doNewSession() {
+        drawModeLocked = false;
+        chatMode = 'ask';
         drawEditingContext = null;
-        if (chatMode === 'draw') currentAttachments = [];
+        currentAttachments = [];
         messages = getBaseSystemPrompt()
             ? [{ role: 'system', content: getBaseSystemPrompt() }]
             : [];
@@ -10489,7 +10548,7 @@
     }
 
     // 处理会话更新（如钉住状态变化）
-    async function handleSessionUpdate(updatedSessions: ChatSession[]) {
+    async function handleSessionUpdate(updatedSessions: Array<Pick<ChatSession, 'id'> & Partial<Pick<ChatSession, 'title' | 'pinned'>>>) {
         // 【修复】更新前重新加载最新的会话列表，避免多页签覆盖问题
         await loadSessions();
 
@@ -16060,6 +16119,8 @@
                 id="chat-mode-select"
                 class="b3-select ai-sidebar__mode-select"
                 bind:value={chatMode}
+                disabled={drawModeSwitchDisabled || isLoading}
+                title={drawModeSwitchDisabled ? i18n('aiSidebarDrawSessionModeLocked') : ''}
             >
                 <option value="ask">{i18n('aiSidebarModeAsk')}</option>
                 <option value="agent">{i18n('aiSidebarModeAgent')}</option>

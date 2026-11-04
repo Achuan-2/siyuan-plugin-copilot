@@ -799,6 +799,7 @@
     "aiSidebarDrawNewImage": "New image",
     "aiSidebarDrawEmpty": "Describe an image below to get started",
     "aiSidebarDrawBackToResult": "Back to generated image",
+    "aiSidebarDrawSessionModeLocked": "This image session cannot switch modes. Start a new session to chat.",
     "aiSidebarStopGeneration": "Stop generation",
     "aiSidebarSendMessage": "Send message",
     "aiSidebarWebLinkLabel": "Web links (one per line)",

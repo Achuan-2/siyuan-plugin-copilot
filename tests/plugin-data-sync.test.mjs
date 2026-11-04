@@ -178,6 +178,7 @@ test('自动恢复模型预设不写设置或工具配置，用户应用仍保�
     const originalSettings = { currentProvider: 'old', currentModelId: 'old-model' };
     const context = vm.createContext({
         settings: originalSettings, tempModelSettings: {}, chatMode: 'ask', previousChatMode: 'ask',
+        drawModeSwitchDisabled: false, initialSessionId: '', initialChatMode: undefined,
         lastRememberedChatMode: 'ask', selectedToolsAsk: [], selectedTools: [],
         toolAutoApproveSettingsAsk: {}, toolAutoApproveSettings: {},
         tick: () => Promise.resolve(), saveToolsConfig: () => writes.push('tools'),

@@ -1,16 +1,16 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
-    import AISidebar from '../ai-sidebar.svelte';
+    import AIChatSessionHost from './AIChatSessionHost.svelte';
 
     export let plugin: any;
     export let initialMessage: string = '';
 
     let dialogElement: HTMLElement;
-    let aiSidebarApp: AISidebar | null = null;
+    let aiSidebarApp: AIChatSessionHost | null = null;
 
     onMount(() => {
         // 创建AI聊天组件实例
-        aiSidebarApp = new AISidebar({
+        aiSidebarApp = new AIChatSessionHost({
             target: dialogElement,
             props: {
                 plugin: plugin,

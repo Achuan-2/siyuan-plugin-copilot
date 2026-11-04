@@ -1,5 +1,6 @@
 <script lang="ts">
     import AISidebar from '../ai-sidebar.svelte';
+    import type { ChatSessionMode } from '../utils/sessionState';
 
     export let plugin: any;
     export let initialMessage = '';
@@ -12,17 +13,19 @@
         sessionId: string;
         initialSessionId: string;
         initialMessage: string;
+        initialChatMode?: ChatSessionMode;
     }
 
     let viewSequence = 0;
 
-    function createView(sessionId = '', message = ''): ChatView {
+    function createView(sessionId = '', message = '', initialChatMode?: ChatSessionMode): ChatView {
         viewSequence += 1;
         return {
-            viewId: `copilot-session-view-${Date.now()}-${viewSequence}`,
+            viewId: `copilot-session-view-${Date.now()}-${viewSequence}-${Math.random().toString(36).slice(2, 8)}`,
             sessionId,
             initialSessionId: sessionId,
             initialMessage: message,
+            initialChatMode,
         };
     }
 
@@ -44,7 +47,7 @@
     }
 
     function createNewSessionView() {
-        const view = createView();
+        const view = createView('', '', 'ask');
         views = [...views, view];
         activeViewId = view.viewId;
     }
@@ -88,6 +91,7 @@
                 respondToGlobalActions={respondToGlobalActions && view.viewId === activeViewId}
                 initialSessionId={view.initialSessionId}
                 initialMessage={view.initialMessage}
+                initialChatMode={view.initialChatMode}
                 on:session-switch={handleSessionSwitch}
                 on:session-new={handleSessionNew}
                 on:session-created={handleSessionCreated}

@@ -376,7 +376,7 @@
         if (session) {
             session.pinned = !session.pinned;
             sessions = [...sessions];
-            dispatch('update', { sessions });
+            dispatch('update', { sessions: [{ id: session.id, pinned: session.pinned }] });
             pushMsg(
                 session.pinned
                     ? i18n('aiSidebarSessionPinned')
@@ -474,7 +474,7 @@
         if (session) {
             session.title = renameSessionTitle.trim();
             sessions = [...sessions];
-            dispatch('update', { sessions });
+            dispatch('update', { sessions: [{ id: session.id, title: session.title }] });
             pushMsg(i18n('aiSidebarSessionRenameSuccess'));
         }
 
@@ -630,14 +630,18 @@
                                             <use xlink:href="#iconPin"></use>
                                         </svg>
                                     {/if}
-                                    {session.title}
+                                    <span class="session-item__title-text">{session.title}</span>
                                     {#if session.isLoading}
                                         <svg
                                             class="session-item__loading-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            role="img"
                                             title={i18n('sessionBackgroundTask')}
                                             aria-label={i18n('sessionBackgroundTask')}
                                         >
-                                            <use xlink:href="#iconRefresh"></use>
+                                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity="0.2" />
+                                            <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
                                         </svg>
                                     {/if}
                                 </div>
@@ -954,12 +958,20 @@
     }
 
     .session-item__title {
+        display: flex;
+        align-items: center;
         font-size: 13px;
         color: var(--b3-theme-on-background);
         margin-bottom: 4px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .session-item__title-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .session-item__info {
@@ -996,6 +1008,7 @@
     }
 
     .session-item__loading-icon {
+        flex-shrink: 0;
         width: 13px;
         height: 13px;
         margin-left: 5px;
