@@ -14,30 +14,62 @@
     let selected: DrawGalleryItem | null = null;
     let preview = '';
     let dialog: HTMLDivElement;
+    let isFullscreen = false;
+    let previewRequest = 0;
+    let imageItems: DrawGalleryItem[] = [];
+    $: imageItems = items.filter((item): item is DrawGalleryItem => 'image' in item);
+    // 后台任务完成会改变卡片下标，用生成记录和图片本身识别当前项。
+    $: selectedIndex = selected ? imageItems.findIndex(item =>
+        item.generation === selected.generation && item.image.name === selected.image.name &&
+        (item.image.path || item.image.data) === (selected.image.path || selected.image.data)) : -1;
     let previousFocus: HTMLElement | null = null;
     let previousSession = sessionKey;
     $: if (sessionKey !== previousSession) {
         previousSession = sessionKey;
-        selected = null;
+        resetViewer();
+        previousFocus = null;
     }
 
     async function view(item: DrawGalleryItem) {
-        previousFocus = document.activeElement as HTMLElement;
+        if (!selected) {
+            previousFocus = document.activeElement as HTMLElement;
+            isFullscreen = false;
+        }
+        const request = ++previewRequest;
         selected = item;
-        preview = item.image.data;
+        preview = item.image.data || item.image.path || '';
         await tick();
+        if (request !== previewRequest) return;
         dialog?.focus({ preventScroll: true });
         try {
             const references = await resolveReferences(item.referenceImages);
-            if (selected?.key === item.key) selected = { ...item, referenceImages: references };
+            if (request === previewRequest) selected = { ...item, referenceImages: references };
         } catch (error) {
             console.error('Failed to load draw reference previews:', error);
         }
     }
 
     function close() {
-        selected = null;
+        resetViewer();
         previousFocus?.focus({ preventScroll: true });
+        previousFocus = null;
+    }
+
+    function resetViewer() {
+        previewRequest += 1;
+        selected = null;
+        preview = '';
+        isFullscreen = false;
+    }
+
+    async function switchImage(direction: -1 | 1) {
+        if (selectedIndex < 0) return;
+        const item = imageItems[selectedIndex + direction];
+        if (item) await view(item);
+    }
+
+    function toggleFullscreen() {
+        isFullscreen = !isFullscreen;
     }
 
     function action(name: 'edit' | 'regenerate', item: DrawGalleryRequest) {
@@ -46,13 +78,21 @@
     }
 
     function handleKeydown(event: KeyboardEvent) {
-        if (!selected) return;
+        if (!selected || event.defaultPrevented || event.isComposing || event.repeat) return;
+        if (dialog && getComputedStyle(dialog).visibility === 'hidden') return;
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
-            close();
+            if (isFullscreen) isFullscreen = false;
+            else close();
+        } else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+            !event.altKey && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            void switchImage(event.key === 'ArrowLeft' ? -1 : 1);
         } else if (event.key === 'Tab' && dialog) {
-            const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), summary, [tabindex="0"]')];
+            const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), summary, [tabindex="0"]')]
+                .filter(control => control.getClientRects().length > 0);
             const first = controls[0];
             const last = controls[controls.length - 1];
             if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
@@ -127,15 +167,36 @@
 {/if}
 
 {#if selected}
-    <div use:floatingLayer class="draw-detail__overlay" role="presentation"
+    <div use:floatingLayer class="draw-detail__overlay" class:draw-detail__overlay--fullscreen={isFullscreen} role="presentation"
         on:click={event => { if (event.target === event.currentTarget) close(); }}>
-        <div class="draw-detail" bind:this={dialog} role="dialog" aria-modal="true"
+        <div class="draw-detail" class:draw-detail--fullscreen={isFullscreen} bind:this={dialog} role="dialog" aria-modal="true"
             aria-label={i18n('aiSidebarDrawDetails')} tabindex="-1">
-            <button type="button" class="draw-detail__close" aria-label={i18n('aiSidebarDrawCloseDetails')} on:click={close}>×</button>
+            <div class="draw-detail__toolbar">
+                <button type="button" on:click={toggleFullscreen}
+                    aria-label={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')}
+                    title={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')} aria-pressed={isFullscreen}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        {#if isFullscreen}<path d="M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5" />
+                        {:else}<path d="M9 4H4v5m11-5h5v5M4 15v5h5m6 0h5v-5" />{/if}
+                    </svg>
+                </button>
+                <button type="button" class="draw-detail__close" aria-label={i18n('aiSidebarDrawCloseDetails')}
+                    title={i18n('aiSidebarDrawCloseDetails')} on:click={close}>×</button>
+            </div>
             <div class="draw-detail__image">
                 <img src={preview} alt={selected.prompt || selected.image.name} />
-                {#if preview !== selected.image.data}
-                    <button type="button" class="draw-detail__back" on:click={() => preview = selected.image.data}>{i18n('aiSidebarDrawBackToResult')}</button>
+                {#if imageItems.length > 1}
+                    <button type="button" class="draw-detail__nav draw-detail__nav--previous" disabled={selectedIndex <= 0}
+                        on:click={() => switchImage(-1)} aria-label={i18n('aiSidebarDrawPreviousImage')} title={i18n('aiSidebarDrawPreviousImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7" /></svg>
+                    </button>
+                    <button type="button" class="draw-detail__nav draw-detail__nav--next" disabled={selectedIndex < 0 || selectedIndex >= imageItems.length - 1}
+                        on:click={() => switchImage(1)} aria-label={i18n('aiSidebarDrawNextImage')} title={i18n('aiSidebarDrawNextImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5 7 7-7 7" /></svg>
+                    </button>
+                {/if}
+                {#if preview !== (selected.image.data || selected.image.path || '')}
+                    <button type="button" class="draw-detail__back" on:click={() => preview = selected.image.data || selected.image.path || ''}>{i18n('aiSidebarDrawBackToResult')}</button>
                 {/if}
             </div>
             <div class="draw-detail__info">
@@ -210,9 +271,17 @@
     .draw-gallery__empty { margin: auto; padding: 48px 12px; text-align: center; color: var(--b3-theme-on-surface); font-size: 13px; }
     .draw-detail__overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; box-sizing: border-box; background: rgba(0,0,0,.55); }
     .draw-detail { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); width: min(1280px, 100%); height: min(900px, calc(100vh - 40px)); border-radius: 14px; overflow: hidden; background: var(--b3-theme-background); color: var(--b3-theme-on-background); box-shadow: 0 16px 64px rgba(0,0,0,.3); outline: none; font-size: 13px; }
-    .draw-detail__close { position: absolute; top: 10px; right: 10px; z-index: 1; width: 30px; height: 30px; border: 1px solid var(--b3-border-color); border-radius: 50%; background: var(--b3-theme-background); font-size: 22px; line-height: 1; }
+    .draw-detail__toolbar { position: absolute; top: 10px; right: 10px; z-index: 2; display: flex; align-items: center; gap: 8px; }
+    .draw-detail__toolbar button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--b3-border-color); border-radius: 50%; background: var(--b3-theme-background); }
+    .draw-detail__close { font-size: 22px; line-height: 1; }
+    .draw-detail__toolbar svg, .draw-detail__nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .draw-detail__image { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--b3-theme-surface); }
     .draw-detail__image img { position: absolute; inset: 20px; width: calc(100% - 40px); height: calc(100% - 40px); object-fit: contain; }
+    .draw-detail__nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; display: grid; place-items: center; width: 40px; height: 48px; padding: 0; border: 0; border-radius: 8px; background: rgba(0,0,0,.5); color: #fff; }
+    .draw-detail__nav:hover:not(:disabled) { background: rgba(0,0,0,.75); }
+    .draw-detail__nav:disabled { opacity: .2; }
+    .draw-detail__nav--previous { left: 12px; }
+    .draw-detail__nav--next { right: 12px; }
     .draw-detail__back { position: absolute; top: 12px; left: 12px; padding: 6px 10px; border: 1px solid var(--b3-border-color); border-radius: 7px; background: var(--b3-theme-background); font-size: 12px; }
     .draw-detail__info { min-width: 0; padding: 44px 22px 22px; overflow-y: auto; overflow-wrap: anywhere; }
     header { display: grid; gap: 8px; padding-bottom: 20px; border-bottom: 1px solid var(--b3-border-color); }
@@ -228,11 +297,24 @@
     .draw-detail__buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
     .draw-detail__buttons button { padding: 8px 10px; border: 1px solid var(--b3-border-color); border-radius: 8px; background: none; }
     .draw-detail__buttons .draw-detail__edit { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary, #fff); }
+    .draw-detail__overlay--fullscreen { padding: 0; background: #111; }
+    .draw-detail--fullscreen { grid-template-columns: 1fr; grid-template-rows: 1fr; width: 100%; height: 100%; border-radius: 0; }
+    .draw-detail--fullscreen .draw-detail__image { background: #111; }
+    .draw-detail--fullscreen .draw-detail__image img { inset: 0; width: 100%; height: 100%; }
+    .draw-detail--fullscreen .draw-detail__info { display: none; }
+    .draw-detail--fullscreen .draw-detail__toolbar button { background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.3); color: #fff; }
+    :global(html[data-frontend^="desktop"]) :global(body.body--windows) .draw-detail--fullscreen .draw-detail__toolbar,
+    :global(html[data-frontend^="desktop"]) :global(body.body--linux) .draw-detail--fullscreen .draw-detail__toolbar {
+        right: calc(12px + var(--b3-window-controls-width, var(--b3-fullscreen-controls-width, 138px)));
+    }
     @media (hover: none) { .draw-gallery__actions, .draw-gallery__caption { opacity: 1; } }
     @media (max-width: 640px) {
         .draw-detail__overlay { padding: 8px; }
         .draw-detail { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 50%) minmax(0, 1fr); height: calc(100vh - 16px); }
         .draw-detail__info { padding: 18px; }
         .draw-detail__image img { inset: 12px; width: calc(100% - 24px); height: calc(100% - 24px); }
+        .draw-detail__overlay--fullscreen { padding: 0; }
+        .draw-detail--fullscreen { grid-template-rows: 1fr; height: 100%; }
+        .draw-detail--fullscreen .draw-detail__image img { inset: 0; width: 100%; height: 100%; }
     }
 </style>

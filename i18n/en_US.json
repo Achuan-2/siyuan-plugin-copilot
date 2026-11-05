@@ -790,6 +790,8 @@
     "aiSidebarDrawGallery": "Generated images",
     "aiSidebarDrawDetails": "View image details",
     "aiSidebarDrawCloseDetails": "Close image details",
+    "aiSidebarDrawPreviousImage": "Previous image",
+    "aiSidebarDrawNextImage": "Next image",
     "aiSidebarDrawEditImage": "Edit image",
     "aiSidebarDrawRegenerateImage": "Regenerate",
     "aiSidebarDrawDownloadImage": "Download image",

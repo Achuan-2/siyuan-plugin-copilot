@@ -790,6 +790,8 @@
     "aiSidebarDrawGallery": "生成的图片",
     "aiSidebarDrawDetails": "查看图片详情",
     "aiSidebarDrawCloseDetails": "关闭图片详情",
+    "aiSidebarDrawPreviousImage": "上一张",
+    "aiSidebarDrawNextImage": "下一张",
     "aiSidebarDrawEditImage": "编辑图片",
     "aiSidebarDrawRegenerateImage": "重新生成",
     "aiSidebarDrawDownloadImage": "下载图片",
