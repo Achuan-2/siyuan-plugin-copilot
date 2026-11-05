@@ -18,13 +18,22 @@ export interface DrawGalleryFailure extends DrawGalleryRequest {
 
 export type DrawGalleryCard = DrawGalleryItem | DrawGalleryFailure;
 
+export interface DrawPendingTask {
+    key: string;
+    count: number;
+    status: string;
+    prompt: string;
+}
+
 /** 按生成批次从新到旧展示，批次内保留图片顺序；兼容旧会话且不修改消息历史。 */
 export function getDrawGalleryItems(messages: Message[]): DrawGalleryItem[] {
     return getDrawGalleryCards(messages).filter((card): card is DrawGalleryItem => 'image' in card);
 }
 
-/** 未完成的请求从已保存的用户消息恢复，当前仍在生成的最后一轮由 loading 卡片展示。 */
-export function getDrawGalleryCards(messages: Message[], loading = false): DrawGalleryCard[] {
+/** 未完成的请求恢复为失败卡片；仍在运行的各轮请求由独立任务卡片展示。 */
+export function getDrawGalleryCards(
+    messages: Message[], loading = false, activeGenerations?: ReadonlySet<DrawGenerationContext>
+): DrawGalleryCard[] {
     const batches: DrawGalleryCard[][] = [];
     let userPrompt = '';
     let userReferences: MessageAttachment[] = [];
@@ -33,6 +42,7 @@ export function getDrawGalleryCards(messages: Message[], loading = false): DrawG
     let answered = true;
     function addInterruptedRequest() {
         if (answered || userIndex < 0) return;
+        if (userGeneration && activeGenerations?.has(userGeneration)) return;
         batches.push([{
             key: `${userIndex}:failed`, prompt: userGeneration?.prompt || userPrompt,
             generation: userGeneration, referenceImages: userGeneration?.referenceImages || userReferences,
@@ -44,7 +54,7 @@ export function getDrawGalleryCards(messages: Message[], loading = false): DrawG
             addInterruptedRequest();
             userIndex = messageIndex;
             userGeneration = message.drawGeneration;
-            answered = false;
+            answered = Boolean(message.drawFailureDismissed);
             userPrompt = typeof message.content === 'string' ? message.content :
                 message.content.filter(part => part.type === 'text').map(part => part.text || '').join('\n');
             userReferences = message.attachments?.filter(image => image.type === 'image') || [];
@@ -73,7 +83,7 @@ export function getDrawGalleryCards(messages: Message[], loading = false): DrawG
             answered = true;
         } else if (error) {
             answered = true;
-            batches.push([{
+            if (!message.drawFailureDismissed) batches.push([{
                 key: `${messageIndex}:failed`, prompt: generation?.prompt || userPrompt,
                 generation, referenceImages: generation?.referenceImages || userReferences,
                 error, interrupted: false,
@@ -90,8 +100,19 @@ export function getDrawGalleryCards(messages: Message[], loading = false): DrawG
             referenceImages: generation?.referenceImages || userReferences,
         })));
     });
-    if (!loading) addInterruptedRequest();
+    if (!loading || activeGenerations) addInterruptedRequest();
     return batches.reverse().flat();
+}
+
+/** 恢复重试草稿后移除对应失败卡片；保留消息供历史和其他图片分支使用。 */
+export function dismissDrawGalleryFailure(messages: Message[], key: string, sourceMessages = messages): Message[] {
+    const failure = getDrawGalleryCards(sourceMessages).find(card => card.key === key && !('image' in card));
+    if (!failure) return messages;
+    const sourceMessage = sourceMessages[Number(failure.key.split(':')[0])];
+    if (!messages.includes(sourceMessage)) return messages;
+    return messages.map(message => message === sourceMessage
+        ? { ...message, drawFailureDismissed: true }
+        : message);
 }
 
 /** 参考图持久化只保留资源路径或稳定 URL，避免把临时 blob URL 写进生成记录。 */

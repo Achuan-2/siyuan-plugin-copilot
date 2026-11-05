@@ -59,7 +59,7 @@
         parseWebPageToMarkdown,
     } from './utils/webParser';
     import DrawImageGallery from './components/DrawImageGallery.svelte';
-    import { getDrawGalleryItems, getDrawGalleryCards, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest } from './utils/drawGallery';
+    import { getDrawGalleryCards, dismissDrawGalleryFailure, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest, type DrawPendingTask } from './utils/drawGallery';
     import type { DrawGenerationContext } from './ai-chat';
     import DrawImageSettings from './components/DrawImageSettings.svelte';
     import {
@@ -930,8 +930,17 @@
     let drawEditingContext: DrawGenerationContext | null = null;
     let drawDraftIsRegeneration = false;
     let drawDraftRestoreVersion = 0;
-    let drawPendingCount = 1;
-    $: drawGalleryCards = chatMode === 'draw' ? getDrawGalleryCards(messages, isLoading) : [];
+    interface DrawImageTask extends DrawPendingTask {
+        controller: AbortController;
+        generation: DrawGenerationContext;
+        userMessage: Message;
+        referenceImages: MessageAttachment[];
+        sessionId: string;
+    }
+    let drawTasks: DrawImageTask[] = [];
+    let drawIsSubmitting = false;
+    $: drawGalleryCards = chatMode === 'draw'
+        ? getDrawGalleryCards(messages, isLoading, new Set(drawTasks.map(task => task.generation))) : [];
     $: if (drawEditingContext && !drawDraftIsRegeneration && !currentAttachments.some(image => image.drawEditSource)) drawEditingContext = null;
 
     // 图片查看器
@@ -2407,7 +2416,7 @@
                 if (event.key === 'Enter' && event.ctrlKey && !event.shiftKey) {
                     event.preventDefault();
                     event.stopPropagation();
-                    if (isLoading) {
+                    if (isLoading && chatMode !== 'draw') {
                         abortMessage();
                     } else {
                         sendMessage();
@@ -2418,7 +2427,7 @@
                 if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
                     event.preventDefault();
                     event.stopPropagation();
-                    if (isLoading) {
+                    if (isLoading && chatMode !== 'draw') {
                         abortMessage();
                     } else {
                         sendMessage();
@@ -2654,6 +2663,7 @@
             : Promise.resolve();
         isDestroyed = true;
         abortController?.abort();
+        drawTasks.forEach(task => task.controller.abort());
         isLoading = false;
         syncSessionTaskStatus('', false);
         replyRenderScheduler.dispose();
@@ -6049,7 +6059,7 @@
     }
 
     async function editDrawGalleryImage(item: DrawGalleryItem) {
-        if (isLoading) return;
+        if (drawIsSubmitting) return;
         const sessionId = currentSessionId;
         const restoreVersion = ++drawDraftRestoreVersion;
         try {
@@ -6079,8 +6089,9 @@
     }
 
     async function regenerateDrawGalleryImage(item: DrawGalleryRequest) {
-        if (isLoading) return;
+        if (drawIsSubmitting) return;
         const sessionId = currentSessionId;
+        const sourceMessages = messages;
         const restoreVersion = ++drawDraftRestoreVersion;
         const original = item.generation;
         const provider = original?.provider || currentProvider;
@@ -6092,10 +6103,10 @@
         }
         try {
             const references = await hydrateDrawReferenceImages(original?.referenceImages || item.referenceImages);
-            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || isLoading) return;
+            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || drawIsSubmitting) return;
             handleModelSelect(new CustomEvent('select', { detail: { provider, modelId } }));
             await tick();
-            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || isLoading) return;
+            if (sessionId !== currentSessionId || restoreVersion !== drawDraftRestoreVersion || isDestroyed || drawIsSubmitting) return;
             if (original) {
                 drawImageAspectRatio = original.settings.aspectRatio;
                 drawImageResolution = original.settings.resolution;
@@ -6116,152 +6127,218 @@
             // 去掉本轮提示词，发送修改后的提示词时只追加一次本轮请求。
             drawEditingContext = original ? { ...original, history: original.history.slice(0, -1) } : null;
             if (protyle) setProtyleContent(currentInput);
+            const retryMessages = dismissDrawGalleryFailure(messages, item.key, sourceMessages);
+            const dismissedFailure = retryMessages !== messages;
+            if (dismissedFailure) {
+                messages = retryMessages;
+                hasUnsavedChanges = true;
+            }
             await tick();
             protyle?.focus();
+            if (dismissedFailure && sessionId === currentSessionId && !isDestroyed) {
+                await saveCurrentSession(true);
+            }
         } catch (error) {
             pushErrMsg((error as Error).message);
         }
     }
 
     async function sendDrawModeMessage(providerConfig: any, modelConfig: any) {
-        const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
-        if (!userContent) {
-            pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
-            isLoading = false;
-            return;
-        }
-
-        if (!modelSupportsImageGeneration(modelConfig)) {
-            pushErrMsg(i18n('aiSidebarDrawModelRequired'));
-            isLoading = false;
-            return;
-        }
-
-        const editingContext = drawEditingContext;
+        if (drawIsSubmitting) return;
+        drawIsSubmitting = true;
+        isLoading = true;
+        let task: DrawImageTask | undefined;
+        let submittedDraft: {
+            prompt: string;
+            references: MessageAttachment[];
+            documents: ContextDocument[];
+            editingContext: DrawGenerationContext | null;
+            regeneration: boolean;
+        } | undefined;
+        const draftSessionId = currentSessionId;
+        const draftVersion = ++drawDraftRestoreVersion;
         const requestProvider = currentProvider;
-        const userAttachments = [...currentAttachments];
-        normalizeDrawImageCount();
-        applyPromptDrawImageSize(userContent);
-        const requestSettings = getCurrentDrawImageSettings();
-        drawPendingCount = requestSettings.count;
+        try {
+            await waitForPendingAttachmentSaves();
+            if (isDestroyed || draftSessionId !== currentSessionId || draftVersion !== drawDraftRestoreVersion) return;
+            const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
+            if (!userContent) {
+                pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
+                return;
+            }
 
-        const contextDocumentsWithLatestContent =
-            await collectDrawModeContextDocuments(contextDocuments);
-        const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(buildDrawBranchPrompt(userContent, editingContext?.history || []));
-        const promptWithContext = buildDrawPromptWithContext(
-            promptWithSystemPrompt,
-            contextDocumentsWithLatestContent
-        );
+            if (!modelSupportsImageGeneration(modelConfig)) {
+                pushErrMsg(i18n('aiSidebarDrawModelRequired'));
+                return;
+            }
 
-        const userImageAttachments = userAttachments.filter(att => att.type === 'image');
-        const editImageSources = userImageAttachments;
-        const isEdit = editImageSources.length > 0;
+            const editingContext = drawEditingContext;
+            const userAttachments = [...currentAttachments];
+            normalizeDrawImageCount();
+            applyPromptDrawImageSize(userContent);
+            const requestSettings = getCurrentDrawImageSettings();
+            const requestDocuments = [...contextDocuments];
+            const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(buildDrawBranchPrompt(userContent, editingContext?.history || []));
+            submittedDraft = { prompt: userContent, references: userAttachments, documents: requestDocuments,
+                editingContext, regeneration: drawDraftIsRegeneration };
+            // 先固定并清空本轮草稿，准备上下文期间的新输入留给下一项任务。
+            currentInput = '';
+            if (protyle) clearProtyle();
+            currentAttachments = [];
+            drawEditingContext = null;
+            drawDraftIsRegeneration = false;
+            contextDocuments = [];
+            const contextDocumentsWithLatestContent = await collectDrawModeContextDocuments(requestDocuments);
+            if (isDestroyed || draftSessionId !== currentSessionId || draftVersion !== drawDraftRestoreVersion) return;
+            const promptWithContext = buildDrawPromptWithContext(
+                promptWithSystemPrompt,
+                contextDocumentsWithLatestContent
+            );
 
-        const generation = createDrawGenerationContext(userContent, promptWithContext, editingContext?.history || [],
-            editImageSources, requestProvider, modelConfig.id, requestSettings);
-        const userMessage: Message = {
-            drawGeneration: generation,
-            role: 'user',
-            content: userContent,
-            attachments: userImageAttachments.length > 0 ? userImageAttachments : undefined,
-            contextDocuments:
-                contextDocumentsWithLatestContent.length > 0
-                    ? [...contextDocumentsWithLatestContent]
-                    : undefined,
-        };
+            const userImageAttachments = userAttachments.filter(att => att.type === 'image');
+            const editImageSources = userImageAttachments;
+            const isEdit = editImageSources.length > 0;
 
-        messages = [...messages, userMessage];
-        currentInput = '';
-        if (protyle) {
-            clearProtyle();
-        }
-        currentAttachments = [];
-        drawEditingContext = null;
-        drawDraftIsRegeneration = false;
-        contextDocuments = [];
-        isAborted = false;
-        streamingMessage = isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating');
-        streamingThinking = '';
-        isThinkingPhase = false;
-        hasUnsavedChanges = true;
-        autoScroll = true;
-
-        await scrollToTop();
-
-        const isNewSession = !currentSessionId;
-        const userMessages = messages.filter(m => m.role === 'user');
-        if (userMessages.length === 1 && !currentSessionId) {
-            const now = Date.now();
-            const newSession: ChatSession = {
-                id: createChatSessionId(),
-                title: generateSessionTitle(),
-                messages: [...messages],
-                createdAt: now,
-                updatedAt: now,
+            const generation = createDrawGenerationContext(userContent, promptWithContext, editingContext?.history || [],
+                editImageSources, requestProvider, modelConfig.id, requestSettings);
+            const userMessage: Message = {
+                drawGeneration: generation,
+                role: 'user',
+                content: userContent,
+                attachments: userImageAttachments.length > 0 ? userImageAttachments : undefined,
+                contextDocuments:
+                    contextDocumentsWithLatestContent.length > 0
+                        ? [...contextDocumentsWithLatestContent]
+                        : undefined,
             };
-            sessions = [newSession, ...sessions];
-            currentSessionId = newSession.id;
+
+            messages = [...messages, userMessage];
+            hasUnsavedChanges = true;
+            autoScroll = true;
+
+            const isNewSession = !currentSessionId;
+            const userMessages = messages.filter(m => m.role === 'user');
+            if (userMessages.length === 1 && !currentSessionId) {
+                const now = Date.now();
+                const newSession: ChatSession = {
+                    id: createChatSessionId(),
+                    title: generateSessionTitle(),
+                    messages: [...messages],
+                    createdAt: now,
+                    updatedAt: now,
+                };
+                sessions = [newSession, ...sessions];
+                currentSessionId = newSession.id;
+            }
+
+            task = {
+                key: createChatSessionId(), count: requestSettings.count, prompt: userContent,
+                status: isEdit ? i18n('aiSidebarDrawEditing') : i18n('aiSidebarDrawGenerating'),
+                controller: new AbortController(), generation, userMessage,
+                referenceImages: editImageSources, sessionId: currentSessionId,
+            };
+            drawTasks = [...drawTasks, task];
+            await scrollToTop();
+            await saveCurrentSession(true);
+            if (isNewSession) autoRenameSession(userContent);
+        } catch (error) {
+            if (task) {
+                task.controller.abort();
+                drawTasks = drawTasks.filter(item => item !== task);
+            } else if (submittedDraft && !isDestroyed && draftSessionId === currentSessionId &&
+                draftVersion === drawDraftRestoreVersion && !currentInput.trim() &&
+                !currentAttachments.length && !contextDocuments.length) {
+                currentInput = submittedDraft.prompt;
+                currentAttachments = submittedDraft.references;
+                contextDocuments = submittedDraft.documents;
+                drawEditingContext = submittedDraft.editingContext;
+                drawDraftIsRegeneration = submittedDraft.regeneration;
+                if (protyle) setProtyleContent(currentInput);
+            }
+            pushErrMsg((error as Error).message);
+            return;
+        } finally {
+            drawIsSubmitting = false;
+            isLoading = drawTasks.length > 0;
         }
+        if (task && !isDestroyed && task.sessionId === currentSessionId && !task.controller.signal.aborted) {
+            await runDrawImageTask(task, providerConfig, modelConfig);
+        }
+    }
 
-        await saveCurrentSession(true);
-        if (isNewSession) autoRenameSession(userContent);
-
-        abortController = new AbortController();
-
+    async function runDrawImageTask(task: DrawImageTask, providerConfig: any, modelConfig: any) {
         try {
             const generatedImages = await requestDrawImages(
                 providerConfig,
                 modelConfig,
-                promptWithContext,
-                editImageSources,
-                abortController.signal,
-                requestSettings,
-                requestProvider
+                task.generation.requestPrompt,
+                task.referenceImages,
+                task.controller.signal,
+                task.generation.settings,
+                task.generation.provider
             );
 
-            if (isAborted) {
-                return;
-            }
-
+            if (task.controller.signal.aborted || isDestroyed || task.sessionId !== currentSessionId) return;
             if (generatedImages.length === 0) {
                 throw new Error(i18n('aiSidebarDrawNoImages'));
             }
-
-            const assistantMessage = createDrawAssistantMessage(generatedImages, generation);
-
-            messages = [...messages, assistantMessage];
-            streamingMessage = '';
-            isLoading = false;
-            abortController = null;
+            const assistantMessage = createDrawAssistantMessage(generatedImages, task.generation);
+            // 按请求位置插入，完成顺序不会让结果关联到其他任务的提示词。
+            const userIndex = messages.indexOf(task.userMessage);
+            if (userIndex < 0) return;
+            messages = [...messages.slice(0, userIndex + 1), assistantMessage, ...messages.slice(userIndex + 1)];
             hasUnsavedChanges = true;
-
-            if (autoScroll) await scrollToTop();
-            await saveCurrentSession(true);
-            autoRenameSession(userContent);
         } catch (error) {
-            if (
-                (error as Error).name === 'AbortError' ||
-                (error as Error).message === 'Request aborted'
-            ) {
-                isAborted = true;
-            } else {
+            if (!task.controller.signal.aborted && !isDestroyed && task.sessionId === currentSessionId &&
+                (error as Error).name !== 'AbortError' && (error as Error).message !== 'Request aborted') {
                 const errorMessage: Message = {
                     role: 'assistant',
-                    drawGeneration: generation,
+                    drawGeneration: task.generation,
                     drawGenerationError: (error as Error).message,
                     content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
-                messages = [...messages, errorMessage];
+                const userIndex = messages.indexOf(task.userMessage);
+                if (userIndex < 0) return;
+                messages = [...messages.slice(0, userIndex + 1), errorMessage, ...messages.slice(userIndex + 1)];
                 hasUnsavedChanges = true;
             }
-            streamingMessage = '';
-            isLoading = false;
-            abortController = null;
+        } finally {
+            drawTasks = drawTasks.filter(item => item !== task);
+            isLoading = drawIsSubmitting || drawTasks.length > 0;
+            if (!isDestroyed && task.sessionId === currentSessionId) {
+                try {
+                    await saveCurrentSession(true);
+                } catch (error) {
+                    pushErrMsg((error as Error).message);
+                }
+            }
         }
+    }
+
+    function cancelDrawImageTask(key: string) {
+        const task = drawTasks.find(item => item.key === key);
+        task?.controller.abort();
+        drawTasks = drawTasks.filter(item => item.key !== key);
+        isLoading = drawIsSubmitting || drawTasks.length > 0;
     }
 
     // 发送消息
     async function sendMessage() {
+        if (chatMode === 'draw') {
+            if (drawIsSubmitting || !currentInput.trim()) return;
+            const providerConfig = getCurrentProviderConfig();
+            const modelConfig = getCurrentModelConfig();
+            if (!providerConfig || !modelConfig) {
+                pushErrMsg(i18n(!providerConfig ? 'aiSidebarErrorsNoProvider' : 'aiSidebarErrorsNoModel'));
+                return;
+            }
+            if (currentProvider !== 'codex' && !providerConfig.apiKey) {
+                pushErrMsg(i18n('aiSidebarErrorsNoApiKey'));
+                return;
+            }
+            await sendDrawModeMessage(providerConfig, modelConfig);
+            return;
+        }
         if ((!currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0) || isLoading) return;
 
         // 【修复】立即设置加载状态，防止并发点击触发多次发送
@@ -6310,11 +6387,6 @@
         if (!modelConfig) {
             pushErrMsg(i18n('aiSidebarErrorsNoModel'));
             isLoading = false;
-            return;
-        }
-
-        if (chatMode === 'draw') {
-            await sendDrawModeMessage(providerConfig, modelConfig);
             return;
         }
 
@@ -7550,6 +7622,13 @@
 
     // 中断消息生成
     function abortMessage() {
+        if (chatMode === 'draw') {
+            drawDraftRestoreVersion += 1;
+            drawTasks.forEach(task => task.controller.abort());
+            drawTasks = [];
+            isLoading = drawIsSubmitting;
+            return;
+        }
         if (abortController) {
             abortController.abort();
             isAborted = true; // 设置中断标志，防止 onComplete 再次添加消息
@@ -7666,7 +7745,7 @@
     // 清空对话
     function clearChat() {
         // 如果消息正在生成，先中断
-        if (isLoading && abortController) {
+        if (isLoading && (abortController || drawTasks.length > 0 || drawIsSubmitting)) {
             abortMessage();
         }
 
@@ -9871,7 +9950,7 @@
         if (chatMode === 'draw') currentAttachments = [];
 
         // 如果消息正在生成，先中断
-        if (isLoading && abortController) {
+        if (isLoading && (abortController || drawTasks.length > 0 || drawIsSubmitting)) {
             abortMessage();
         }
 
@@ -10199,7 +10278,7 @@
         }
 
         // 如果消息正在生成，先中断
-        if (isLoading && abortController) {
+        if (isLoading && (abortController || drawTasks.length > 0 || drawIsSubmitting)) {
             abortMessage();
         }
 
@@ -11746,7 +11825,7 @@
         const providerConfig = getCurrentProviderConfig();
         const modelConfig = getCurrentModelConfig();
 
-        if (isLoading) {
+        if (isLoading && chatMode !== 'draw') {
             pushErrMsg(i18n('aiSidebarErrorsGenerating'));
             return;
         }
@@ -11757,9 +11836,9 @@
             return;
         }
 
-        // 生图重试始终追加结果，必须在普通对话截断历史消息之前分流。
+        // 生图重试恢复草稿；成功结果保留，失败卡片在恢复后移除。
         if (chatMode === 'draw') {
-            const cards = getDrawGalleryItems(messages);
+            const cards = getDrawGalleryCards(messages);
             const nextUserIndex = messages.findIndex((message, messageIndex) =>
                 messageIndex > index && message.role === 'user'
             );
@@ -13190,9 +13269,10 @@
             <div class="ai-sidebar__session-recovery" role="status">{sessionRecoveryNotice}</div>
         {/if}
         {#if chatMode === 'draw'}
-            <DrawImageGallery items={drawGalleryCards} loading={isLoading} status={streamingMessage}
-                pendingCount={drawPendingCount} sessionKey={currentSessionId}
+            <DrawImageGallery items={drawGalleryCards} pendingTasks={[...drawTasks].reverse()}
+                sessionKey={currentSessionId} disabled={drawIsSubmitting}
                 resolveReferences={hydrateDrawReferenceImages}
+                on:cancel={event => cancelDrawImageTask(event.detail)}
                 on:edit={event => editDrawGalleryImage(event.detail)}
                 on:regenerate={event => regenerateDrawGalleryImage(event.detail)}
                 on:download={event => downloadImage(event.detail.data, event.detail.name)} />
@@ -16179,13 +16259,13 @@
 
                 <button
                     class="b3-button ai-sidebar__send-btn"
-                    class:b3-button--primary={!isLoading}
-                    class:ai-sidebar__send-btn--abort={isLoading}
-                    on:click={isLoading ? abortMessage : sendMessage}
-                    disabled={!isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
-                    title={isLoading ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
+                    class:b3-button--primary={!isLoading || chatMode === 'draw'}
+                    class:ai-sidebar__send-btn--abort={isLoading && chatMode !== 'draw'}
+                    on:click={isLoading && chatMode !== 'draw' ? abortMessage : sendMessage}
+                    disabled={chatMode === 'draw' ? drawIsSubmitting || !currentInput.trim() : !isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
+                    title={isLoading && chatMode !== 'draw' ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
                 >
-                    {#if isLoading}
+                    {#if isLoading && chatMode !== 'draw'}
                         <svg class="b3-button__icon">
                             <use xlink:href="#iconPause"></use>
                         </svg>
@@ -16209,7 +16289,7 @@
             <button
                 class="b3-button b3-button--text ai-sidebar__upload-btn"
                 on:click={triggerFileUpload}
-                disabled={isUploadingFile || isLoading}
+                disabled={isUploadingFile || (chatMode === 'draw' ? drawIsSubmitting : isLoading)}
                 title={i18n('aiSidebarActionsUpload')}
             >
                 {#if isUploadingFile}

@@ -2,13 +2,12 @@
     import { createEventDispatcher, tick } from 'svelte';
     import { floatingLayer } from '../utils/floatingLayer';
     import { i18n } from '../utils/i18n';
-    import type { DrawGalleryCard, DrawGalleryItem, DrawGalleryRequest } from '../utils/drawGallery';
+    import type { DrawGalleryCard, DrawGalleryItem, DrawGalleryRequest, DrawPendingTask } from '../utils/drawGallery';
     import type { MessageAttachment } from '../ai-chat';
 
     export let items: DrawGalleryCard[] = [];
-    export let loading = false;
-    export let status = '';
-    export let pendingCount = 1;
+    export let pendingTasks: DrawPendingTask[] = [];
+    export let disabled = false;
     export let sessionKey = '';
     export let resolveReferences: (images: MessageAttachment[]) => Promise<MessageAttachment[]> = async images => images;
     const dispatch = createEventDispatcher();
@@ -77,11 +76,15 @@
 <svelte:window on:keydown|capture={handleKeydown} />
 
 <div class="draw-gallery" aria-label={i18n('aiSidebarDrawGallery')}>
-    {#if loading}
-        {#each Array(Math.max(1, Math.min(10, pendingCount))) as _}
-            <div class="draw-gallery__pending" role="status"><span class="draw-gallery__spinner"></span>{status || i18n('aiSidebarDrawGenerating')}</div>
+    {#each pendingTasks as task (task.key)}
+        {#each Array(Math.max(1, Math.min(10, task.count))) as _}
+            <div class="draw-gallery__pending" role="status" title={task.prompt}>
+                <span class="draw-gallery__spinner"></span>{task.status || i18n('aiSidebarDrawGenerating')}
+                <button type="button" class="draw-gallery__cancel" on:click={() => dispatch('cancel', task.key)}
+                    aria-label={i18n('aiSidebarStopGeneration')} title={i18n('aiSidebarStopGeneration')}>×</button>
+            </div>
         {/each}
-    {/if}
+    {/each}
     {#each items as item (item.key)}
         <article class="draw-gallery__card" class:draw-gallery__card--failed={!('image' in item)}>
             {#if 'image' in item}
@@ -100,12 +103,12 @@
             {/if}
             <div class="draw-gallery__actions">
                 {#if 'image' in item}
-                    <button type="button" disabled={loading} on:click={() => action('edit', item)}
+                    <button type="button" {disabled} on:click={() => action('edit', item)}
                         aria-label={i18n('aiSidebarDrawEditImage')} title={i18n('aiSidebarDrawEditImage')}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg>
                     </button>
                 {/if}
-                <button type="button" disabled={loading} on:click={() => action('regenerate', item)}
+                <button type="button" {disabled} on:click={() => action('regenerate', item)}
                     aria-label={i18n('aiSidebarDrawRegenerateImage')} title={i18n('aiSidebarDrawRegenerateImage')}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 7a7.5 7.5 0 0 1 12-2L20 8M4 16l2.5 3a7.5 7.5 0 0 0 12-2" /></svg>
                 </button>
@@ -119,7 +122,7 @@
         </article>
     {/each}
 </div>
-{#if !items.length && !loading}
+{#if !items.length && !pendingTasks.length}
     <div class="draw-gallery__empty">{i18n('aiSidebarDrawEmpty')}</div>
 {/if}
 
@@ -173,8 +176,8 @@
                     </details>
                 {/if}
                 <div class="draw-detail__buttons">
-                    <button type="button" class="draw-detail__edit" disabled={loading} on:click={() => action('edit', selected)}>{i18n('aiSidebarDrawEditImage')}</button>
-                    <button type="button" disabled={loading} on:click={() => action('regenerate', selected)}>{i18n('aiSidebarDrawRegenerateImage')}</button>
+                    <button type="button" class="draw-detail__edit" {disabled} on:click={() => action('edit', selected)}>{i18n('aiSidebarDrawEditImage')}</button>
+                    <button type="button" {disabled} on:click={() => action('regenerate', selected)}>{i18n('aiSidebarDrawRegenerateImage')}</button>
                     <button type="button" on:click={() => dispatch('download', selected.image)}>{i18n('aiSidebarDrawDownloadImage')}</button>
                 </div>
             </div>
@@ -200,7 +203,8 @@
     .draw-gallery__actions button { width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(0,0,0,.65); color: #fff; }
     .draw-gallery__actions button:hover { background: rgba(0,0,0,.9); }
     .draw-gallery__actions svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-    .draw-gallery__pending { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 220px; border: 1px solid var(--b3-border-color); border-radius: 12px; background: var(--b3-theme-surface); color: var(--b3-theme-on-surface); font-size: 13px; }
+    .draw-gallery__pending { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 220px; border: 1px solid var(--b3-border-color); border-radius: 12px; background: var(--b3-theme-surface); color: var(--b3-theme-on-surface); font-size: 13px; }
+    .draw-gallery__cancel { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--b3-theme-background); font-size: 20px; line-height: 1; }
     .draw-gallery__spinner { width: 16px; height: 16px; border: 2px solid var(--b3-border-color); border-top-color: var(--b3-theme-primary); border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .draw-gallery__empty { margin: auto; padding: 48px 12px; text-align: center; color: var(--b3-theme-on-surface); font-size: 13px; }
