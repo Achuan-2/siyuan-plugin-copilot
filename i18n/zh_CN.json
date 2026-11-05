@@ -791,6 +791,8 @@
     "aiSidebarDrawDetails": "查看图片详情",
     "aiSidebarDrawCloseDetails": "关闭图片详情",
     "aiSidebarDrawPreviousImage": "上一张",
+    "aiSidebarSessionChat": "聊天",
+    "aiSidebarSessionDraw": "画图",
     "aiSidebarDrawNextImage": "下一张",
     "aiSidebarDrawEditImage": "编辑图片",
     "aiSidebarDrawRegenerateImage": "重新生成",

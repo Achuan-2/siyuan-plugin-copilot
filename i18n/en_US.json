@@ -791,6 +791,8 @@
     "aiSidebarDrawDetails": "View image details",
     "aiSidebarDrawCloseDetails": "Close image details",
     "aiSidebarDrawPreviousImage": "Previous image",
+    "aiSidebarSessionChat": "Chat",
+    "aiSidebarSessionDraw": "Images",
     "aiSidebarDrawNextImage": "Next image",
     "aiSidebarDrawEditImage": "Edit image",
     "aiSidebarDrawRegenerateImage": "Regenerate",

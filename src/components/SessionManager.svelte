@@ -3,10 +3,14 @@
     import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
     import { pushMsg } from '../api';
     import { i18n, tf, getCurrentLanguage } from '../utils/i18n';
+    import { resolveChatSessionMode, type ChatSessionMode } from '../utils/sessionState';
 
     export let sessions: ChatSession[] = [];
     export let currentSessionId: string = '';
     export let isOpen = false;
+    export let chatMode: ChatSessionMode = 'ask';
+    type SessionCategory = 'chat' | 'draw';
+    let activeCategory: SessionCategory = 'chat';
     // 父组件提供的「按需加载会话完整对话文本」函数：会话内容通常存放在独立文件，搜索正文时需要由父组件读取。
     export let loadSessionText: ((sessionId: string) => Promise<string>) | null = null;
 
@@ -28,6 +32,22 @@
         updatedAt: number;
         pinned?: boolean; // 是否钉住
         isLoading?: boolean; // 会话是否有后台任务正在运行
+        chatMode?: ChatSessionMode;
+        drawModeLocked?: boolean;
+    }
+
+    function getSessionCategory(session: ChatSession): SessionCategory {
+        const messages = session.messages || [];
+        return resolveChatSessionMode(messages, session.chatMode, session.drawModeLocked) === 'draw' ||
+            messages.some(message => message.drawGeneration || message.drawGenerationError) ? 'draw' : 'chat';
+    }
+
+    function selectCategory(category: SessionCategory) {
+        if (activeCategory === category) return;
+        activeCategory = category;
+        selectedSessionIds = new Set();
+        closeContextMenu();
+        void updateDropdownPosition();
     }
 
     function handleSessionStatus(event: Event) {
@@ -120,7 +140,7 @@
     async function ensureMessagesLoaded() {
         if (!loadSessionText) return;
         const myToken = ++searchToken;
-        const pending = sessions.filter(s => !messagesTextCache.has(s.id));
+        const pending = sessions.filter(s => getSessionCategory(s) === activeCategory && !messagesTextCache.has(s.id));
         if (pending.length === 0) return;
 
         isSearchLoading = true;
@@ -190,7 +210,7 @@
     }
 
     function newSession() {
-        dispatch('new');
+        dispatch('new', { chatMode: activeCategory === 'draw' ? 'draw' : 'ask' });
         isOpen = false;
     }
 
@@ -291,6 +311,7 @@
     }
 
     $: if (isOpen) {
+        selectCategory(chatMode === 'draw' ? 'draw' : 'chat');
         // 打开时触发刷新事件，重新加载最新的会话列表
         dispatch('refresh');
         updateDropdownPosition();
@@ -307,10 +328,11 @@
         list: ChatSession[],
         query: string,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        _cache: Map<string, string>
+        _cache: Map<string, string>,
+        category: SessionCategory
     ): ChatSession[] {
         return list
-            .filter(s => sessionMatchesSearch(s, query))
+            .filter(s => getSessionCategory(s) === category && sessionMatchesSearch(s, query))
             .sort((a, b) => {
                 if (a.pinned && !b.pinned) return -1;
                 if (!a.pinned && b.pinned) return 1;
@@ -318,7 +340,7 @@
             });
     }
 
-    $: sortedSessions = buildSortedSessions(sessions, searchQuery, messagesTextCache);
+    $: sortedSessions = buildSortedSessions(sessions, searchQuery, messagesTextCache, activeCategory);
 
     // 关闭抽屉时清空搜索关键词，避免下次打开仍残留
     $: if (!isOpen && searchQuery) {
@@ -326,9 +348,11 @@
     }
 
     // 监听搜索词变化：非空时（去抖后）按需加载所有会话的正文进行匹配
-    $: handleSearchQueryChange(searchQuery, isOpen);
+    $: handleSearchQueryChange(searchQuery, isOpen, activeCategory);
 
-    function handleSearchQueryChange(query: string, open: boolean) {
+    function handleSearchQueryChange(query: string, open: boolean, _category: SessionCategory) {
+        searchToken++;
+        isSearchLoading = false;
         if (searchDebounceTimer) {
             clearTimeout(searchDebounceTimer);
             searchDebounceTimer = null;
@@ -511,7 +535,12 @@
             style="top: {dropdownTop}px; left: {dropdownLeft}px;"
         >
             <div class="session-manager__header">
-                <h4>{i18n('aiSidebarSessionHistory')}</h4>
+                <div class="session-manager__categories" role="group" aria-label={i18n('aiSidebarSessionHistory')}>
+                    <button type="button" class:session-manager__category--active={activeCategory === 'chat'}
+                        aria-pressed={activeCategory === 'chat'} on:click={() => selectCategory('chat')}>{i18n('aiSidebarSessionChat')}</button>
+                    <button type="button" class:session-manager__category--active={activeCategory === 'draw'}
+                        aria-pressed={activeCategory === 'draw'} on:click={() => selectCategory('draw')}>{i18n('aiSidebarSessionDraw')}</button>
+                </div>
                 <div class="session-manager__header-actions">
                     {#if isMultiSelectMode}
                         <!-- 多选模式下的操作按钮 -->
@@ -804,13 +833,6 @@
         padding: 12px 16px;
         border-bottom: 1px solid var(--b3-border-color);
 
-        h4 {
-            margin: 0;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--b3-theme-on-background);
-        }
-
         .session-manager__header-actions {
             display: flex;
             gap: 8px;
@@ -827,6 +849,11 @@
             }
         }
     }
+
+    .session-manager__categories { display: flex; gap: 4px; flex-shrink: 0; }
+    .session-manager__categories button { padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--b3-theme-on-surface); cursor: pointer; }
+    .session-manager__categories button:hover { background: var(--b3-theme-surface); }
+    .session-manager__categories .session-manager__category--active { background: var(--b3-theme-primary-lightest); color: var(--b3-theme-primary); font-weight: 600; }
 
     .session-manager__list {
         flex: 1;

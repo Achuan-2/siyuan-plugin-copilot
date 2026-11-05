@@ -10270,10 +10270,10 @@
             }
     }
 
-    async function newSession() {
+    async function newSession(nextMode: ChatMode = chatMode) {
         // 新建会话只创建/切换到一个新的独立视图，旧视图中的请求继续在后台运行。
         if (sessionHost) {
-            dispatch('session-new', { viewId: sessionViewId, chatMode });
+            dispatch('session-new', { viewId: sessionViewId, chatMode: nextMode });
             return;
         }
 
@@ -10323,13 +10323,13 @@
         if (hasUnsavedChanges && messages.filter(m => m.role !== 'system').length > 0) {
             await saveCurrentSession();
         }
-        doNewSession();
+        doNewSession(nextMode);
     }
 
-    function doNewSession() {
+    function doNewSession(nextMode: ChatMode = chatMode) {
         sessionRecoveryNotice = '';
         drawModeLocked = false;
-        chatMode = chatMode === 'draw' ? 'draw' : 'ask';
+        chatMode = nextMode === 'draw' ? 'draw' : 'ask';
         drawEditingContext = null;
         drawDraftIsRegeneration = false;
         drawDraftRestoreVersion += 1;
@@ -13188,12 +13188,13 @@
         <div class="ai-sidebar__actions">
             <button
                 class="b3-button b3-button--text"
-                on:click={newSession}
+                on:click={() => newSession()}
                 title={i18n('aiSidebarSessionNew')}
             >
                 <svg class="b3-button__icon"><use xlink:href="#iconAdd"></use></svg>
             </button>
             <SessionManager
+                {chatMode}
                 bind:sessions
                 bind:currentSessionId
                 bind:isOpen={isSessionManagerOpen}
@@ -13202,7 +13203,7 @@
                 on:load={e => loadSession(e.detail.sessionId)}
                 on:delete={e => deleteSession(e.detail.sessionId)}
                 on:batchDelete={e => batchDeleteSessions(e.detail.sessionIds)}
-                on:new={newSession}
+                on:new={event => newSession(event.detail.chatMode)}
                 on:update={e => handleSessionUpdate(e.detail.sessions)}
                 on:saveToNote={e => handleSaveSessionToNote(e.detail.sessionId)}
             />
