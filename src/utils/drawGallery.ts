@@ -1,20 +1,50 @@
 import type { DrawGenerationContext, Message, MessageAttachment } from '../ai-chat';
 
-export interface DrawGalleryItem {
+export interface DrawGalleryRequest {
     key: string;
-    image: MessageAttachment;
     prompt: string;
     generation?: DrawGenerationContext;
     referenceImages: MessageAttachment[];
 }
 
+export interface DrawGalleryItem extends DrawGalleryRequest {
+    image: MessageAttachment;
+}
+
+export interface DrawGalleryFailure extends DrawGalleryRequest {
+    error: string;
+    interrupted: boolean;
+}
+
+export type DrawGalleryCard = DrawGalleryItem | DrawGalleryFailure;
+
 /** 按生成批次从新到旧展示，批次内保留图片顺序；兼容旧会话且不修改消息历史。 */
 export function getDrawGalleryItems(messages: Message[]): DrawGalleryItem[] {
-    const batches: DrawGalleryItem[][] = [];
+    return getDrawGalleryCards(messages).filter((card): card is DrawGalleryItem => 'image' in card);
+}
+
+/** 未完成的请求从已保存的用户消息恢复，当前仍在生成的最后一轮由 loading 卡片展示。 */
+export function getDrawGalleryCards(messages: Message[], loading = false): DrawGalleryCard[] {
+    const batches: DrawGalleryCard[][] = [];
     let userPrompt = '';
     let userReferences: MessageAttachment[] = [];
+    let userGeneration: DrawGenerationContext | undefined;
+    let userIndex = -1;
+    let answered = true;
+    function addInterruptedRequest() {
+        if (answered || userIndex < 0) return;
+        batches.push([{
+            key: `${userIndex}:failed`, prompt: userGeneration?.prompt || userPrompt,
+            generation: userGeneration, referenceImages: userGeneration?.referenceImages || userReferences,
+            error: '', interrupted: true,
+        }]);
+    }
     messages.forEach((message, messageIndex) => {
         if (message.role === 'user') {
+            addInterruptedRequest();
+            userIndex = messageIndex;
+            userGeneration = message.drawGeneration;
+            answered = false;
             userPrompt = typeof message.content === 'string' ? message.content :
                 message.content.filter(part => part.type === 'text').map(part => part.text || '').join('\n');
             userReferences = message.attachments?.filter(image => image.type === 'image') || [];
@@ -36,14 +66,31 @@ export function getDrawGalleryItems(messages: Message[]): DrawGalleryItem[] {
                     path: match[2].startsWith('/data/') ? match[2] : undefined });
             }
         }
+        const generation = message.drawGeneration || userGeneration;
+        const error = message.drawGenerationError ||
+            (typeof message.content === 'string' && message.content.startsWith('❌') ? message.content : '');
+        if (images.length) {
+            answered = true;
+        } else if (error) {
+            answered = true;
+            batches.push([{
+                key: `${messageIndex}:failed`, prompt: generation?.prompt || userPrompt,
+                generation, referenceImages: generation?.referenceImages || userReferences,
+                error, interrupted: false,
+            }]);
+        } else if (!generation && typeof message.content === 'string' && message.content.trim()) {
+            // 兼容会话中切换到画图模式之前已经完成的普通文字回复。
+            answered = true;
+        }
         batches.push(images.map((image, imageIndex) => ({
             key: `${messageIndex}:${imageIndex}:${image.path || image.name}`,
             image,
-            prompt: message.drawGeneration?.prompt || userPrompt,
-            generation: message.drawGeneration,
-            referenceImages: message.drawGeneration?.referenceImages || userReferences,
+            prompt: generation?.prompt || userPrompt,
+            generation,
+            referenceImages: generation?.referenceImages || userReferences,
         })));
     });
+    if (!loading) addInterruptedRequest();
     return batches.reverse().flat();
 }
 

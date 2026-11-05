@@ -17,6 +17,68 @@ const settings = { aspectRatio: '3:4', resolution: '4K', quality: 'high', count:
 const context = (prompt = 'original') => gallery.createDrawGenerationContext(prompt, `system + ${prompt}`, [],
     [image('original-reference')], 'original-provider', 'gemini-3-pro-image-4k', settings);
 
+test('重启后只有已发送的生图请求时恢复失败卡片，保留原始记录且不修改历史', () => {
+    const sessionModule = { exports: {} };
+    vm.runInNewContext(compile(read('../src/utils/sessionState.ts')), sessionModule);
+    const original = [{ role: 'user', content: 'original', drawGeneration: context(), attachments: [image('reference')] }];
+    const saved = sessionModule.exports.createChatSessionSnapshot(original, 'draw', false, true);
+    const reopened = sessionModule.exports.recoverChatSession(JSON.parse(JSON.stringify(saved))).snapshot;
+    const before = JSON.stringify(reopened.messages);
+    const cards = gallery.getDrawGalleryCards(reopened.messages);
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].interrupted, true);
+    assert.equal(cards[0].prompt, 'original');
+    assert.equal(cards[0].generation.modelId, 'gemini-3-pro-image-4k');
+    assert.equal(cards[0].generation.settings.resolution, '4K');
+    assert.equal(cards[0].referenceImages[0].path, '/data/assets/original-reference.png');
+    assert.equal('image' in cards[0], false);
+    assert.equal(JSON.stringify(reopened.messages), before);
+    assert.equal(gallery.getDrawGalleryItems(reopened.messages).length, 0);
+});
+
+test('当前生图请求运行中不显示失败卡片，较早中断的请求仍然可重试', () => {
+    const messages = [
+        { role: 'user', content: 'interrupted', drawGeneration: context('interrupted') },
+        { role: 'user', content: 'running', drawGeneration: context('running') },
+    ];
+    const running = gallery.getDrawGalleryCards(messages, true);
+    assert.deepEqual(plain(running).map(card => card.prompt), ['interrupted']);
+    const stopped = gallery.getDrawGalleryCards(messages, false);
+    assert.deepEqual(plain(stopped).map(card => card.prompt), ['running', 'interrupted']);
+    assert.equal(new Set(stopped.map(card => card.key)).size, 2);
+});
+
+test('接口失败与旧格式错误只显示一张失败卡片，重试成功的新图排在失败记录前', () => {
+    for (const error of [{ drawGenerationError: 'upstream unavailable', content: '❌ failed' }, { content: '❌ legacy error' }]) {
+        const messages = [
+            { role: 'user', content: 'failed prompt', drawGeneration: context('failed prompt') },
+            { role: 'assistant', ...error },
+            { role: 'user', content: 'retry prompt', drawGeneration: context('retry prompt') },
+            { role: 'assistant', content: '', attachments: [image('success-a'), image('success-b')] },
+        ];
+        const cards = gallery.getDrawGalleryCards(messages);
+        assert.equal(cards.length, 3);
+        assert.deepEqual(plain(cards).map(card => card.image?.name || card.prompt), ['success-a', 'success-b', 'failed prompt']);
+        assert.equal(cards[2].error, error.drawGenerationError || error.content);
+        assert.equal(cards[2].interrupted, false);
+        assert.equal(cards[2].generation.prompt, 'failed prompt');
+        assert.equal(cards[2].referenceImages[0].name, 'original-reference');
+    }
+});
+
+test('普通已完成文字对话和空会话不产生失败卡片，空的助手占位不算完成', () => {
+    assert.equal(gallery.getDrawGalleryCards([{ role: 'system', content: 'system' }]).length, 0);
+    assert.equal(gallery.getDrawGalleryCards([
+        { role: 'user', content: 'question' }, { role: 'assistant', content: 'answer' },
+    ]).length, 0);
+    const incomplete = gallery.getDrawGalleryCards([
+        { role: 'user', content: 'legacy image request', attachments: [image('legacy reference')] },
+        { role: 'assistant', content: '' },
+    ]);
+    assert.equal(incomplete[0].interrupted, true);
+    assert.equal(incomplete[0].referenceImages[0].name, 'legacy reference');
+});
+
 test('画廊合并全部生成结果，附件和 generatedImages 不重复，旧 Markdown 图片仍可见', () => {
     const messages = [
         { role: 'user', content: 'first prompt', attachments: [image('reference')] },
@@ -146,6 +208,19 @@ test('点击重新生成只恢复原提示词、参考图和参数，不请求�
     assert.equal(state.currentAttachments[0].data, 'loaded:/data/assets/original-reference.png');
     originalMessages.forEach((message, index) => assert.equal(state.messages[index], message));
     assert.deepEqual(plain(generation), before);
+});
+
+test('没有结果图的失败卡片也能恢复提示词和参考图，点击重试不调用接口', async () => {
+    const { state, requests } = fixture();
+    state.messages = [{ role: 'user', content: 'failed original', drawGeneration: context('failed original') }];
+    const failed = gallery.getDrawGalleryCards(state.messages)[0];
+    assert.equal('image' in failed, false);
+    await state.regenerateDrawGalleryImage(failed);
+    assert.equal(requests.length, 0);
+    assert.equal(state.currentInput, 'failed original');
+    assert.equal(state.currentAttachments[0].data, 'loaded:/data/assets/original-reference.png');
+    assert.equal(state.drawImageResolution, '4K');
+    assert.equal(state.messages.length, 1);
 });
 
 test('修改恢复的提示词和参考图后发送才生成，旧图及后续结果保留', async () => {

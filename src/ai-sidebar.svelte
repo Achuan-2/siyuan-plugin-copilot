@@ -59,7 +59,7 @@
         parseWebPageToMarkdown,
     } from './utils/webParser';
     import DrawImageGallery from './components/DrawImageGallery.svelte';
-    import { getDrawGalleryItems, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem } from './utils/drawGallery';
+    import { getDrawGalleryItems, getDrawGalleryCards, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest } from './utils/drawGallery';
     import type { DrawGenerationContext } from './ai-chat';
     import DrawImageSettings from './components/DrawImageSettings.svelte';
     import {
@@ -931,10 +931,7 @@
     let drawDraftIsRegeneration = false;
     let drawDraftRestoreVersion = 0;
     let drawPendingCount = 1;
-    $: drawGalleryItems = chatMode === 'draw' ? getDrawGalleryItems(messages) : [];
-    $: drawGalleryErrors = messages.filter(message => message.role === 'assistant' &&
-        (message.drawGenerationError || (typeof message.content === 'string' && message.content.startsWith('❌'))))
-        .map(message => message.drawGenerationError || String(message.content));
+    $: drawGalleryCards = chatMode === 'draw' ? getDrawGalleryCards(messages, isLoading) : [];
     $: if (drawEditingContext && !drawDraftIsRegeneration && !currentAttachments.some(image => image.drawEditSource)) drawEditingContext = null;
 
     // 图片查看器
@@ -6081,7 +6078,7 @@
         }
     }
 
-    async function regenerateDrawGalleryImage(item: DrawGalleryItem) {
+    async function regenerateDrawGalleryImage(item: DrawGalleryRequest) {
         if (isLoading) return;
         const sessionId = currentSessionId;
         const restoreVersion = ++drawDraftRestoreVersion;
@@ -6250,6 +6247,7 @@
             } else {
                 const errorMessage: Message = {
                     role: 'assistant',
+                    drawGeneration: generation,
                     drawGenerationError: (error as Error).message,
                     content: `❌ **${i18n('aiSidebarErrorsRequestFailed')}**\n\n${(error as Error).message}`,
                 };
@@ -11781,7 +11779,6 @@
             }
             await regenerateDrawGalleryImage(card || {
                 key: `retry:${index}`,
-                image: { type: 'image', name: '', data: '' },
                 prompt,
                 generation: targetMessage.drawGeneration || userMessage?.drawGeneration,
                 referenceImages: targetMessage.drawGeneration?.referenceImages ||
@@ -13189,12 +13186,12 @@
     </div>
 
     <div class="ai-sidebar__messages" bind:this={messagesContainer} on:scroll={handleScroll}>
-        {#if sessionRecoveryNotice}
+        {#if sessionRecoveryNotice && !drawGalleryCards.some(card => 'interrupted' in card && card.interrupted)}
             <div class="ai-sidebar__session-recovery" role="status">{sessionRecoveryNotice}</div>
         {/if}
         {#if chatMode === 'draw'}
-            <DrawImageGallery items={drawGalleryItems} loading={isLoading} status={streamingMessage}
-                pendingCount={drawPendingCount} errors={drawGalleryErrors} sessionKey={currentSessionId}
+            <DrawImageGallery items={drawGalleryCards} loading={isLoading} status={streamingMessage}
+                pendingCount={drawPendingCount} sessionKey={currentSessionId}
                 resolveReferences={hydrateDrawReferenceImages}
                 on:edit={event => editDrawGalleryImage(event.detail)}
                 on:regenerate={event => regenerateDrawGalleryImage(event.detail)}

@@ -2,14 +2,13 @@
     import { createEventDispatcher, tick } from 'svelte';
     import { floatingLayer } from '../utils/floatingLayer';
     import { i18n } from '../utils/i18n';
-    import type { DrawGalleryItem } from '../utils/drawGallery';
+    import type { DrawGalleryCard, DrawGalleryItem, DrawGalleryRequest } from '../utils/drawGallery';
     import type { MessageAttachment } from '../ai-chat';
 
-    export let items: DrawGalleryItem[] = [];
+    export let items: DrawGalleryCard[] = [];
     export let loading = false;
     export let status = '';
     export let pendingCount = 1;
-    export let errors: string[] = [];
     export let sessionKey = '';
     export let resolveReferences: (images: MessageAttachment[]) => Promise<MessageAttachment[]> = async images => images;
     const dispatch = createEventDispatcher();
@@ -42,7 +41,7 @@
         previousFocus?.focus({ preventScroll: true });
     }
 
-    function action(name: 'edit' | 'regenerate', item: DrawGalleryItem) {
+    function action(name: 'edit' | 'regenerate', item: DrawGalleryRequest) {
         if (selected) close();
         dispatch(name, item);
     }
@@ -84,33 +83,43 @@
         {/each}
     {/if}
     {#each items as item (item.key)}
-        <article class="draw-gallery__card">
-            <button type="button" class="draw-gallery__preview" on:click={() => view(item)}
-                aria-label={i18n('aiSidebarDrawDetails')} title={item.prompt}>
-                <img src={item.image.data} alt={item.prompt || item.image.name} loading="lazy" />
-                <span class="draw-gallery__caption">{item.prompt}</span>
-            </button>
-            <div class="draw-gallery__actions">
-                <button type="button" disabled={loading} on:click={() => action('edit', item)}
-                    aria-label={i18n('aiSidebarDrawEditImage')} title={i18n('aiSidebarDrawEditImage')}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg>
+        <article class="draw-gallery__card" class:draw-gallery__card--failed={!('image' in item)}>
+            {#if 'image' in item}
+                <button type="button" class="draw-gallery__preview" on:click={() => view(item)}
+                    aria-label={i18n('aiSidebarDrawDetails')} title={item.prompt}>
+                    <img src={item.image.data} alt={item.prompt || item.image.name} loading="lazy" />
+                    <span class="draw-gallery__caption">{item.prompt}</span>
                 </button>
+            {:else}
+                <div class="draw-gallery__failure" role="status">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v6m0 4h.01" /></svg>
+                    <strong>{i18n('aiSidebarDrawGenerateFailed')}</strong>
+                    {#if item.error}<span title={item.error}>{item.error}</span>{/if}
+                </div>
+                <span class="draw-gallery__caption">{item.prompt}</span>
+            {/if}
+            <div class="draw-gallery__actions">
+                {#if 'image' in item}
+                    <button type="button" disabled={loading} on:click={() => action('edit', item)}
+                        aria-label={i18n('aiSidebarDrawEditImage')} title={i18n('aiSidebarDrawEditImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg>
+                    </button>
+                {/if}
                 <button type="button" disabled={loading} on:click={() => action('regenerate', item)}
                     aria-label={i18n('aiSidebarDrawRegenerateImage')} title={i18n('aiSidebarDrawRegenerateImage')}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 7a7.5 7.5 0 0 1 12-2L20 8M4 16l2.5 3a7.5 7.5 0 0 0 12-2" /></svg>
                 </button>
-                <button type="button" on:click={() => dispatch('download', item.image)}
-                    aria-label={i18n('aiSidebarDrawDownloadImage')} title={i18n('aiSidebarDrawDownloadImage')}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></svg>
-                </button>
+                {#if 'image' in item}
+                    <button type="button" on:click={() => dispatch('download', item.image)}
+                        aria-label={i18n('aiSidebarDrawDownloadImage')} title={i18n('aiSidebarDrawDownloadImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></svg>
+                    </button>
+                {/if}
             </div>
         </article>
     {/each}
 </div>
-{#each errors as error}
-    <div class="draw-gallery__error" role="alert">{error}</div>
-{/each}
-{#if !items.length && !loading && !errors.length}
+{#if !items.length && !loading}
     <div class="draw-gallery__empty">{i18n('aiSidebarDrawEmpty')}</div>
 {/if}
 
@@ -181,6 +190,9 @@
     .draw-gallery__card { position: relative; border-radius: 12px; overflow: hidden; background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); }
     .draw-gallery__preview { display: block; padding: 0; border: 0; width: 100%; background: none; position: relative; }
     .draw-gallery__preview img { display: block; width: 100%; height: auto; min-height: 120px; max-height: 520px; object-fit: contain; }
+    .draw-gallery__failure { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 220px; padding: 52px 20px; text-align: center; color: var(--b3-theme-error); font-size: 13px; }
+    .draw-gallery__failure > svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+    .draw-gallery__failure > span { color: var(--b3-theme-on-surface); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 64px; overflow: hidden; font-size: 12px; }
     .draw-gallery__caption { box-sizing: border-box; position: absolute; bottom: 0; left: 0; right: 0; padding: 28px 12px 12px; background: linear-gradient(transparent, rgba(0,0,0,.8)); color: #fff; font-size: 12px; line-height: 1.5; text-align: left; white-space: pre-wrap; max-height: 45%; overflow: hidden; opacity: 0; transition: opacity .15s; pointer-events: none; }
     .draw-gallery__actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 5px; opacity: 0; transition: opacity .15s; }
     .draw-gallery__card:hover .draw-gallery__caption, .draw-gallery__card:focus-within .draw-gallery__caption,
@@ -192,7 +204,6 @@
     .draw-gallery__spinner { width: 16px; height: 16px; border: 2px solid var(--b3-border-color); border-top-color: var(--b3-theme-primary); border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .draw-gallery__empty { margin: auto; padding: 48px 12px; text-align: center; color: var(--b3-theme-on-surface); font-size: 13px; }
-    .draw-gallery__error { padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--b3-theme-error); border-radius: 8px; color: var(--b3-theme-error); }
     .draw-detail__overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; box-sizing: border-box; background: rgba(0,0,0,.55); }
     .draw-detail { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); width: min(1280px, 100%); height: min(900px, calc(100vh - 40px)); border-radius: 14px; overflow: hidden; background: var(--b3-theme-background); color: var(--b3-theme-on-background); box-shadow: 0 16px 64px rgba(0,0,0,.3); outline: none; font-size: 13px; }
     .draw-detail__close { position: absolute; top: 10px; right: 10px; z-index: 1; width: 30px; height: 30px; border: 1px solid var(--b3-border-color); border-radius: 50%; background: var(--b3-theme-background); font-size: 22px; line-height: 1; }
