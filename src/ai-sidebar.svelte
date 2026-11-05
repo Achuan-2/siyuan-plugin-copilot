@@ -10194,7 +10194,7 @@
     async function newSession() {
         // 新建会话只创建/切换到一个新的独立视图，旧视图中的请求继续在后台运行。
         if (sessionHost) {
-            dispatch('session-new', { viewId: sessionViewId });
+            dispatch('session-new', { viewId: sessionViewId, chatMode });
             return;
         }
 
@@ -10250,7 +10250,7 @@
     function doNewSession() {
         sessionRecoveryNotice = '';
         drawModeLocked = false;
-        chatMode = 'ask';
+        chatMode = chatMode === 'draw' ? 'draw' : 'ask';
         drawEditingContext = null;
         drawDraftIsRegeneration = false;
         drawDraftRestoreVersion += 1;

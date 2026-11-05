@@ -46,8 +46,8 @@
         activeViewId = view.viewId;
     }
 
-    function createNewSessionView() {
-        const view = createView('', '', 'ask');
+    function createNewSessionView(chatMode?: ChatSessionMode) {
+        const view = createView('', '', chatMode === 'draw' ? 'draw' : 'ask');
         views = [...views, view];
         activeViewId = view.viewId;
     }
@@ -56,8 +56,8 @@
         activateSession(event.detail?.sessionId || '');
     }
 
-    function handleSessionNew() {
-        createNewSessionView();
+    function handleSessionNew(event: CustomEvent<{ chatMode?: ChatSessionMode }>) {
+        createNewSessionView(event.detail?.chatMode);
     }
 
     function handleSessionCreated(

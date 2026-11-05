@@ -50,9 +50,11 @@ test('生成图片后会话固定为画图模式，历史记录和旧图片会�
     vm.runInNewContext(compile(functions(['doNewSession'])), context);
     context.doNewSession();
     flush();
-    assert.equal(context.chatMode, 'ask');
+    assert.equal(context.chatMode, 'draw');
     assert.equal(context.drawModeLocked, false);
     assert.equal(context.drawModeSwitchDisabled, false);
+    assert.equal(context.messages.length, 0);
+    assert.equal(context.currentAttachments.length, 0);
 });
 
 test('已有生图记录的会话不能通过应用对话预设绕过模式限制', () => {
@@ -68,13 +70,14 @@ test('已有生图记录的会话不能通过应用对话预设绕过模式限�
 test('新建后台视图立即返回，不中断原会话或清空它的消息', async () => {
     const events = [];
     const context = { sessionHost: true, sessionViewId: 'original', isLoading: true,
+        chatMode: 'draw',
         abortMessage: () => assert.fail('Must keep original request running'),
         dispatch: (...args) => events.push(args), messages: imageMessages };
     vm.runInNewContext(compile(functions(['newSession'])), context);
     await context.newSession();
     assert.equal(context.messages, imageMessages);
     assert.equal(context.isLoading, true);
-    assert.deepEqual(plain(events), [['session-new', { viewId: 'original' }]]);
+    assert.deepEqual(plain(events), [['session-new', { viewId: 'original', chatMode: 'draw' }]]);
 });
 
 test('会话运行状态按任务来源计数，其他视图完成或销毁不清除仍在运行的任务', () => {
@@ -184,6 +187,15 @@ test('宿主为新会话创建独立视图，切回已有会话时复用原视�
     assert.equal(host.activeViewId, original.viewId);
     assert.equal(host.views[0], original);
     assert.equal(host.views.length, 2);
+    host.handleSessionNew({ detail: { viewId: original.viewId, chatMode: 'draw' } });
+    const drawingView = host.views[2];
+    assert.equal(drawingView.initialChatMode, 'draw');
+    assert.equal(drawingView.initialSessionId, '');
+    assert.equal(drawingView.initialMessage, '');
+    assert.equal(host.activeViewId, drawingView.viewId);
+    host.activateSession('running');
+    assert.equal(host.views[0], original);
+    assert.equal(host.activeViewId, original.viewId);
 });
 
 test('迟到的列表读取不能覆盖更新的会话列表', async () => {
