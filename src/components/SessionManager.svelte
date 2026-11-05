@@ -311,7 +311,10 @@
     }
 
     $: if (isOpen) {
-        selectCategory(chatMode === 'draw' ? 'draw' : 'chat');
+        // 显式赋值让分类筛选在同一轮 Svelte 更新中紧随初始化执行。
+        activeCategory = chatMode === 'draw' ? 'draw' : 'chat';
+        selectedSessionIds = new Set();
+        closeContextMenu();
         // 打开时触发刷新事件，重新加载最新的会话列表
         dispatch('refresh');
         updateDropdownPosition();
