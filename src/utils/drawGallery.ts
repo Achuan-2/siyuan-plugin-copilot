@@ -19,11 +19,9 @@ export interface DrawGalleryFailure extends DrawGalleryRequest {
 
 export type DrawGalleryCard = DrawGalleryItem | DrawGalleryFailure;
 
-export interface DrawPendingTask {
-    key: string;
+export interface DrawPendingTask extends DrawGalleryRequest {
     count: number;
     status: string;
-    prompt: string;
 }
 
 /** 按生成批次从新到旧展示，批次内保留图片顺序；兼容旧会话且不修改消息历史。 */

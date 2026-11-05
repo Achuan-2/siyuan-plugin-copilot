@@ -19,7 +19,7 @@ function fixture() {
     let focusRestored = 0;
     const trigger = { focus: () => { focusRestored++; } };
     const state = {
-        disabled: false, dispatch() {},
+        disabled: false, dispatch() {}, pendingTasks: [],
         selected: null, preview: '', previewRequest: 0, isFullscreen: false,
         items: [image('a'), { key: 'failed', prompt: 'failed', error: 'error', referenceImages: [] }, image('b'), image('c')],
         imageItems: [], selectedIndex: -1, previousFocus: null, previousSession: 'session', sessionKey: 'session',
@@ -39,6 +39,78 @@ function key(value, extra = {}) {
 }
 
 const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+function pendingTask(name) {
+    return { key: name, prompt: `pending ${name}`, count: 2, status: 'editing',
+        referenceImages: [{ name: `reference ${name}`, path: `/data/${name}-ref.png` }],
+        generation: { modelId: 'gemini-image', createdAt: 123,
+            settings: { aspectRatio: '3:4', resolution: '4K', quality: 'high', count: 2 },
+            history: ['previous prompt', `pending ${name}`] } };
+}
+
+test('生成中的卡片打开同一个详情，保留任务的提示词、参数和参考图且不参与结果图切换', async () => {
+    const { state, flush, restored } = fixture();
+    const task = pendingTask('a');
+    state.pendingTasks = [task, pendingTask('b')];
+    state.resolveReferences = async references => references.map(image => ({ ...image, data: 'blob:reference' }));
+    await state.view(task);
+    flush();
+    assert.equal(state.selected.prompt, 'pending a');
+    assert.equal(state.selected.generation, task.generation);
+    assert.equal(state.selected.generation.settings.resolution, '4K');
+    assert.equal(state.selected.referenceImages[0].data, 'blob:reference');
+    assert.equal(task.referenceImages[0].data, undefined);
+    assert.equal(state.preview, '');
+    assert.equal(state.selectedIndex, -1);
+    await state.switchImage(1);
+    assert.equal(state.selected.key, task.key);
+    state.close();
+    assert.equal(restored(), 1);
+    assert.equal(state.pendingTasks.length, 2);
+});
+
+test('查看任务完成后自动展示同一批次的结果，迟到的参考图不会覆盖结果详情', async () => {
+    const { state, flush } = fixture();
+    const task = pendingTask('a');
+    state.pendingTasks = [task];
+    let resolvePending;
+    state.resolveReferences = () => new Promise(resolve => { resolvePending = resolve; });
+    const opening = state.view(task);
+    await settle();
+    const result = { ...image('result'), generation: task.generation };
+    state.items = [image('unrelated'), result, ...state.items];
+    flush();
+    assert.equal(state.selected.key, task.key);
+    state.resolveReferences = async references => references;
+    state.pendingTasks = [];
+    flush();
+    await settle();
+    assert.equal(state.selected.image.name, 'result');
+    assert.equal(state.preview, 'blob:result');
+    resolvePending(task.referenceImages);
+    await opening;
+    assert.equal(state.selected.image.name, 'result');
+});
+
+test('取消只发送当前任务标识并关闭其详情，外部取消或失败也会清理等待详情', async () => {
+    const { state, flush } = fixture();
+    const a = pendingTask('a');
+    const b = pendingTask('b');
+    const events = [];
+    state.pendingTasks = [a, b];
+    state.dispatch = (...args) => events.push(args);
+    await state.view(a);
+    state.cancelTask(b.key);
+    assert.equal(state.selected.key, a.key);
+    state.cancelTask(a.key);
+    assert.equal(state.selected, null);
+    assert.deepEqual(events, [['cancel', 'b'], ['cancel', 'a']]);
+    await state.view(a);
+    state.pendingTasks = [b];
+    flush();
+    assert.equal(state.selected, null);
+    assert.equal(state.preview, '');
+});
 
 test('放大视图左右切换只遍历成功图片，到达两端不越界，关闭后回到原始入口', async () => {
     const { state, flush, restored } = fixture();

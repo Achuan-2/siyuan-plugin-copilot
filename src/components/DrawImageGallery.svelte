@@ -11,7 +11,7 @@
     export let sessionKey = '';
     export let resolveReferences: (images: MessageAttachment[]) => Promise<MessageAttachment[]> = async images => images;
     const dispatch = createEventDispatcher();
-    let selected: DrawGalleryItem | null = null;
+    let selected: DrawGalleryItem | DrawPendingTask | null = null;
     let preview = '';
     let dialog: HTMLDivElement;
     let isFullscreen = false;
@@ -19,9 +19,15 @@
     let imageItems: DrawGalleryItem[] = [];
     $: imageItems = items.filter((item): item is DrawGalleryItem => 'image' in item);
     // 后台任务完成会改变卡片下标，用生成记录和图片本身识别当前项。
-    $: selectedIndex = selected ? imageItems.findIndex(item =>
+    $: selectedIndex = selected && 'image' in selected ? imageItems.findIndex(item =>
         item.generation === selected.generation && item.image.name === selected.image.name &&
         (item.image.path || item.image.data) === (selected.image.path || selected.image.data)) : -1;
+    // 请求结束后转到同一批次的结果；取消或失败时关闭等待详情。
+    $: if (selected && !('image' in selected) && !pendingTasks.some(task => task.key === selected.key)) {
+        const result = imageItems.find(item => item.generation === selected.generation);
+        if (result) void view(result);
+        else close();
+    }
     let previousFocus: HTMLElement | null = null;
     let previousSession = sessionKey;
     $: if (sessionKey !== previousSession) {
@@ -30,14 +36,14 @@
         previousFocus = null;
     }
 
-    async function view(item: DrawGalleryItem) {
+    async function view(item: DrawGalleryItem | DrawPendingTask) {
         if (!selected) {
             previousFocus = document.activeElement as HTMLElement;
             isFullscreen = false;
         }
         const request = ++previewRequest;
         selected = item;
-        preview = item.image.data || item.image.path || '';
+        preview = 'image' in item ? item.image.data || item.image.path || '' : '';
         await tick();
         if (request !== previewRequest) return;
         dialog?.focus({ preventScroll: true });
@@ -83,6 +89,11 @@
         dispatch('delete', item);
     }
 
+    function cancelTask(key: string) {
+        if (selected && !('image' in selected) && selected.key === key) close();
+        dispatch('cancel', key);
+    }
+
     function handleKeydown(event: KeyboardEvent) {
         if (!selected || event.defaultPrevented || event.isComposing || event.repeat) return;
         if (dialog && getComputedStyle(dialog).visibility === 'hidden') return;
@@ -125,8 +136,11 @@
     {#each pendingTasks as task (task.key)}
         {#each Array(Math.max(1, Math.min(10, task.count))) as _}
             <div class="draw-gallery__pending" role="status" title={task.prompt}>
-                <span class="draw-gallery__spinner"></span>{task.status || i18n('aiSidebarDrawGenerating')}
-                <button type="button" class="draw-gallery__cancel" on:click={() => dispatch('cancel', task.key)}
+                <button type="button" class="draw-gallery__pending-preview" on:click={() => view(task)}
+                    aria-label={i18n('aiSidebarDrawDetails')}>
+                    <span class="draw-gallery__spinner"></span>{task.status || i18n('aiSidebarDrawGenerating')}
+                </button>
+                <button type="button" class="draw-gallery__cancel" on:click={() => cancelTask(task.key)}
                     aria-label={i18n('aiSidebarStopGeneration')} title={i18n('aiSidebarStopGeneration')}>×</button>
             </div>
         {/each}
@@ -182,10 +196,17 @@
         <div class="draw-detail" class:draw-detail--fullscreen={isFullscreen} bind:this={dialog} role="dialog" aria-modal="true"
             aria-label={i18n('aiSidebarDrawDetails')} tabindex="-1">
             <div class="draw-detail__toolbar">
-                <button type="button" class="draw-gallery__delete" {disabled} on:click={() => deleteImage(selected)}
-                    aria-label={i18n('aiSidebarDrawDeleteImage')} title={i18n('aiSidebarDrawDeleteImage')}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
-                </button>
+                {#if 'image' in selected}
+                    <button type="button" class="draw-gallery__delete" {disabled} on:click={() => deleteImage(selected)}
+                        aria-label={i18n('aiSidebarDrawDeleteImage')} title={i18n('aiSidebarDrawDeleteImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
+                    </button>
+                {:else}
+                    <button type="button" on:click={() => cancelTask(selected.key)}
+                        aria-label={i18n('aiSidebarStopGeneration')} title={i18n('aiSidebarStopGeneration')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg>
+                    </button>
+                {/if}
                 <button type="button" on:click={toggleFullscreen}
                     aria-label={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')}
                     title={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')} aria-pressed={isFullscreen}>
@@ -198,8 +219,14 @@
                     title={i18n('aiSidebarDrawCloseDetails')} on:click={close}>×</button>
             </div>
             <div class="draw-detail__image">
-                <img src={preview} alt={selected.prompt || selected.image.name} />
-                {#if imageItems.length > 1}
+                {#if preview}
+                    <img src={preview} alt={selected.prompt || ('image' in selected ? selected.image.name : '')} />
+                {:else if !('image' in selected)}
+                    <div class="draw-detail__pending" role="status">
+                        <span class="draw-gallery__spinner"></span>{selected.status || i18n('aiSidebarDrawGenerating')}
+                    </div>
+                {/if}
+                {#if 'image' in selected && imageItems.length > 1}
                     <button type="button" class="draw-detail__nav draw-detail__nav--previous" disabled={selectedIndex <= 0}
                         on:click={() => switchImage(-1)} aria-label={i18n('aiSidebarDrawPreviousImage')} title={i18n('aiSidebarDrawPreviousImage')}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7" /></svg>
@@ -209,7 +236,7 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5 7 7-7 7" /></svg>
                     </button>
                 {/if}
-                {#if preview !== (selected.image.data || selected.image.path || '')}
+                {#if 'image' in selected && preview !== (selected.image.data || selected.image.path || '')}
                     <button type="button" class="draw-detail__back" on:click={() => preview = selected.image.data || selected.image.path || ''}>{i18n('aiSidebarDrawBackToResult')}</button>
                 {/if}
             </div>
@@ -250,11 +277,13 @@
                         <ol>{#each selected.generation.history as prompt}<li>{prompt}</li>{/each}</ol>
                     </details>
                 {/if}
-                <div class="draw-detail__buttons">
-                    <button type="button" class="draw-detail__edit" {disabled} on:click={() => action('edit', selected)}>{i18n('aiSidebarDrawEditImage')}</button>
-                    <button type="button" {disabled} on:click={() => action('regenerate', selected)}>{i18n('aiSidebarDrawRegenerateImage')}</button>
-                    <button type="button" on:click={() => dispatch('download', selected.image)}>{i18n('aiSidebarDrawDownloadImage')}</button>
-                </div>
+                {#if 'image' in selected}
+                    <div class="draw-detail__buttons">
+                        <button type="button" class="draw-detail__edit" {disabled} on:click={() => action('edit', selected)}>{i18n('aiSidebarDrawEditImage')}</button>
+                        <button type="button" {disabled} on:click={() => action('regenerate', selected)}>{i18n('aiSidebarDrawRegenerateImage')}</button>
+                        <button type="button" on:click={() => dispatch('download', selected.image)}>{i18n('aiSidebarDrawDownloadImage')}</button>
+                    </div>
+                {/if}
             </div>
         </div>
     </div>
@@ -281,6 +310,8 @@
     .draw-detail__toolbar .draw-gallery__delete:hover:not(:disabled) { background: var(--b3-theme-error); color: #fff; }
     .draw-gallery__actions svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
     .draw-gallery__pending { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 220px; border: 1px solid var(--b3-border-color); border-radius: 12px; background: var(--b3-theme-surface); color: var(--b3-theme-on-surface); font-size: 13px; }
+    .draw-gallery__pending-preview { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 10px; align-self: stretch; width: 100%; min-height: inherit; padding: 44px 16px; border: 0; border-radius: inherit; background: none; }
+    .draw-detail__pending { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--b3-theme-on-surface); }
     .draw-gallery__cancel { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--b3-theme-background); font-size: 20px; line-height: 1; }
     .draw-gallery__spinner { width: 16px; height: 16px; border: 2px solid var(--b3-border-color); border-top-color: var(--b3-theme-primary); border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
