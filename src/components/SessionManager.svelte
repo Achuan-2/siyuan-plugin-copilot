@@ -247,6 +247,8 @@
 
     function closeOnOutsideClick(event: MouseEvent) {
         const target = event.target as HTMLElement;
+        // 删除确认弹窗属于会话管理流程，确认或取消时保留历史列表。
+        if (target.closest('[data-key="dialog-confirm"]')) return;
         if (!containsFloatingTarget(managerElement, target)) {
             isOpen = false;
         }
