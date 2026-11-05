@@ -16069,7 +16069,7 @@
                     />
                 </div>
             {:else}
-                <div class="ai-sidebar__model-selector-container">
+                <div class="ai-sidebar__model-selector-container" class:ai-sidebar__model-selector-container--draw={chatMode === 'draw'}>
                     {#if chatMode !== 'draw' && showThinkingToggle}
                         <div class="ai-sidebar__thinking-toggle-container">
                             {#if showThinkingToggle}
@@ -16119,7 +16119,6 @@
                             bind:quality={drawImageQuality}
                             bind:count={drawImageCount}
                             on:resolutionchange={() => drawImageResolutionExplicit = true}
-                            on:reset={() => drawImageResolutionExplicit = false}
                         />
                     {/if}
                 </div>
@@ -18300,6 +18299,15 @@
         gap: 8px;
         /* 保证在 flex 布局中可以缩小，避免在窄宽度下溢出 */
         max-width: 100%;
+
+        &--draw {
+            flex-wrap: wrap;
+            min-width: 0;
+
+            :global(.multi-model-selector) { min-width: 0; max-width: 100%; }
+            :global(.multi-model-selector__button) { min-width: 0; max-width: 100%; }
+            :global(.multi-model-selector__label) { overflow: hidden; text-overflow: ellipsis; }
+        }
 
         /* 只对模型选择器按钮内的文本应用省略处理，避免影响弹窗显示 */
         :global(.model-selector__button) {

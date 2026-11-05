@@ -5,8 +5,11 @@
 
     export let value = 'auto';
     export let options: string[] = [];
+    export let label = '';
+    export let labels: Record<string, string> = {};
+    export let showRatioPreview = false;
 
-    const listId = `draw-ratios-${Math.random().toString(36).slice(2)}`;
+    const listId = `draw-options-${Math.random().toString(36).slice(2)}`;
     const dispatch = createEventDispatcher();
     let root: HTMLDivElement;
     let trigger: HTMLButtonElement;
@@ -20,6 +23,10 @@
     $: if (options !== previousOptions) {
         previousOptions = options;
         open = false;
+    }
+
+    function optionLabel(option: string) {
+        return labels[option] || (option === 'auto' ? i18n('aiSidebarDrawQualityAuto') : option);
     }
 
     function previewStyle(ratio: string) {
@@ -58,6 +65,7 @@
     function select(index: number) {
         if (!options[index]) return;
         value = options[index];
+        dispatch('change', value);
         close(true);
     }
 
@@ -98,27 +106,33 @@
 
 <svelte:window on:pointerdown={handleOutside} on:keydown|capture={handleEscape} on:resize={() => close()} />
 
-<div class="draw-ratio" bind:this={root}>
-    <button bind:this={trigger} type="button" class="draw-ratio__trigger" class:draw-ratio__trigger--open={open}
-        role="combobox" aria-label={i18n('aiSidebarDrawAspectRatio')} aria-haspopup="listbox"
-        aria-controls={listId} aria-expanded={open} title={i18n('aiSidebarDrawAspectRatio')}
+<div class="draw-option" bind:this={root}>
+    <button bind:this={trigger} type="button" class="draw-option__trigger" class:draw-option__trigger--open={open}
+        role="combobox" aria-label={label} aria-haspopup="listbox"
+        aria-controls={listId} aria-expanded={open} title={label}
         on:click|stopPropagation={() => open ? close() : show()} on:keydown={handleTriggerKeydown}>
-        <span class="draw-ratio__preview" aria-hidden="true"><span class:auto={value === 'auto'} style={previewStyle(value)}></span></span>
-        <span>{value === 'auto' ? i18n('aiSidebarDrawQualityAuto') : value}</span>
+        {#if showRatioPreview}
+            <span class="draw-option__preview" aria-hidden="true"><span class:auto={value === 'auto'} style={previewStyle(value)}></span></span>
+        {:else}
+            <span class="draw-option__label">{label}</span>
+        {/if}
+        <span>{optionLabel(value)}</span>
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
     </button>
     {#if open}
-        <div use:floatingLayer bind:this={list} id={listId} class="draw-ratio__list"
+        <div use:floatingLayer bind:this={list} id={listId} class="draw-option__list"
             style:left="{left}px" style:top="{top}px" style:max-height="{maxHeight}px" role="listbox" tabindex="-1"
-            aria-label={i18n('aiSidebarDrawAspectRatio')} aria-activedescendant={`${listId}-${activeIndex}`}
+            aria-label={label} aria-activedescendant={`${listId}-${activeIndex}`}
             on:keydown={handleListKeydown}>
-            {#each options as ratio, index}
+            {#each options as option, index}
                 <button type="button" role="option" tabindex="-1" id={`${listId}-${index}`} data-index={index}
-                    class="draw-ratio__option" class:selected={value === ratio} class:active={activeIndex === index}
-                    aria-selected={value === ratio} on:click={() => select(index)}>
-                    <span class="draw-ratio__preview" aria-hidden="true"><span class:auto={ratio === 'auto'} style={previewStyle(ratio)}></span></span>
-                    <span>{ratio === 'auto' ? i18n('aiSidebarDrawQualityAuto') : ratio}</span>
-                    {#if value === ratio}<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8 3 3 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}
+                    class="draw-option__option" class:selected={value === option} class:active={activeIndex === index}
+                    aria-selected={value === option} on:click={() => select(index)}>
+                    {#if showRatioPreview}
+                        <span class="draw-option__preview" aria-hidden="true"><span class:auto={option === 'auto'} style={previewStyle(option)}></span></span>
+                    {/if}
+                    <span>{optionLabel(option)}</span>
+                    {#if value === option}<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8 3 3 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}
                 </button>
             {/each}
         </div>
@@ -126,17 +140,18 @@
 </div>
 
 <style>
-    .draw-ratio { display: flex; flex-shrink: 0; }
+    .draw-option { display: flex; flex-shrink: 0; }
     button { font: inherit; cursor: pointer; color: inherit; }
-    .draw-ratio__trigger { display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--b3-theme-on-surface); font-size: 13px; }
-    .draw-ratio__trigger:hover, .draw-ratio__trigger--open { background: var(--b3-theme-surface); color: var(--b3-theme-on-background); }
-    .draw-ratio__trigger:focus-visible { outline: 2px solid var(--b3-theme-primary); outline-offset: 2px; }
-    .draw-ratio__preview { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; }
-    .draw-ratio__preview > span { box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 2px; }
-    .draw-ratio__preview > span.auto { width: 19px !important; height: 19px !important; border-style: dashed; }
-    .draw-ratio__list { position: fixed; z-index: 12; box-sizing: border-box; width: 146px; max-width: calc(100vw - 16px); max-height: min(400px, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--b3-border-color); border-radius: 10px; background: var(--b3-theme-background); color: var(--b3-theme-on-background); box-shadow: 0 8px 28px rgba(0,0,0,.16); outline: none; font-size: 13px; }
-    .draw-ratio__option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; }
-    .draw-ratio__option > svg { margin-left: auto; flex-shrink: 0; }
-    .draw-ratio__option:hover, .draw-ratio__option.active { background: var(--b3-theme-surface); }
-    .draw-ratio__option.selected { color: var(--b3-theme-primary); }
+    .draw-option__trigger { display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--b3-theme-on-surface); font-size: 13px; }
+    .draw-option__trigger:hover, .draw-option__trigger--open { background: var(--b3-theme-surface); color: var(--b3-theme-on-background); }
+    .draw-option__trigger:focus-visible { outline: 2px solid var(--b3-theme-primary); outline-offset: 2px; }
+    .draw-option__label { font-size: 12px; }
+    .draw-option__preview { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; }
+    .draw-option__preview > span { box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 2px; }
+    .draw-option__preview > span.auto { width: 19px !important; height: 19px !important; border-style: dashed; }
+    .draw-option__list { position: fixed; z-index: 12; box-sizing: border-box; width: 146px; max-width: calc(100vw - 16px); max-height: min(400px, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--b3-border-color); border-radius: 10px; background: var(--b3-theme-background); color: var(--b3-theme-on-background); box-shadow: 0 8px 28px rgba(0,0,0,.16); outline: none; font-size: 13px; }
+    .draw-option__option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; }
+    .draw-option__option > svg { margin-left: auto; flex-shrink: 0; }
+    .draw-option__option:hover, .draw-option__option.active { background: var(--b3-theme-surface); }
+    .draw-option__option.selected { color: var(--b3-theme-primary); }
 </style>
