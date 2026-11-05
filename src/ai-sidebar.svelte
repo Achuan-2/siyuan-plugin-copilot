@@ -61,7 +61,7 @@
     import DrawImageGallery from './components/DrawImageGallery.svelte';
     import DrawReferenceAnnotator from './components/DrawReferenceAnnotator.svelte';
     import { buildDrawAnnotationPrompt, createDrawRequestReferences, hasDrawAnnotationComments } from './utils/drawAnnotations';
-    import { getDrawGalleryCards, dismissDrawGalleryFailure, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest, type DrawPendingTask } from './utils/drawGallery';
+    import { getDrawGalleryCards, deleteDrawGalleryImage, dismissDrawGalleryFailure, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest, type DrawPendingTask } from './utils/drawGallery';
     import type { DrawGenerationContext } from './ai-chat';
     import DrawImageSettings from './components/DrawImageSettings.svelte';
     import {
@@ -6086,6 +6086,19 @@
                 data: image.previewUrl, path: image.path, mimeType: image.mimeType || 'image/png',
             })),
         };
+    }
+
+    async function handleDeleteDrawGalleryImage(item: DrawGalleryItem) {
+        if (drawIsSubmitting) return;
+        const updated = deleteDrawGalleryImage(messages, item);
+        if (updated === messages) return;
+        messages = updated;
+        hasUnsavedChanges = true;
+        try {
+            await saveCurrentSession(true);
+        } catch (error) {
+            pushErrMsg((error as Error).message);
+        }
     }
 
     async function editDrawGalleryImage(item: DrawGalleryItem) {
@@ -13312,6 +13325,7 @@
                 sessionKey={currentSessionId} disabled={drawIsSubmitting}
                 resolveReferences={hydrateDrawReferenceImages}
                 on:cancel={event => cancelDrawImageTask(event.detail)}
+                on:delete={event => handleDeleteDrawGalleryImage(event.detail)}
                 on:edit={event => editDrawGalleryImage(event.detail)}
                 on:regenerate={event => regenerateDrawGalleryImage(event.detail)}
                 on:download={event => downloadImage(event.detail.data, event.detail.name)} />

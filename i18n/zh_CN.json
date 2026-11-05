@@ -810,6 +810,7 @@
     "aiSidebarDrawEditImage": "编辑图片",
     "aiSidebarDrawRegenerateImage": "重新生成",
     "aiSidebarDrawDownloadImage": "下载图片",
+    "aiSidebarDrawDeleteImage": "删除图片",
     "aiSidebarDrawPrompt": "提示词",
     "aiSidebarDrawReferences": "参考图",
     "aiSidebarDrawConversation": "图片对话",

@@ -181,7 +181,7 @@ function fixture() {
             return [{ name: 'result.png', mimeType: 'image/png', path: '/data/result.png', previewUrl: 'blob:result' }];
         },
     };
-    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'editDrawGalleryImage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
+    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'handleDeleteDrawGalleryImage', 'editDrawGalleryImage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
     const code = functions.map(name => {
         const node = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
         assert.ok(node, name);
@@ -571,4 +571,97 @@ test('编辑上一轮结果只发送当前图，连续编辑不累积旧参考�
     assert.deepEqual(plain(state.currentAttachments).map(reference => reference.name), ['original-reference']);
     assert.equal(state.currentAttachments[0].drawAnnotations.imagePath, '/data/old-guide.png');
     assert.equal(state.currentInput, 'original prompt');
+});
+
+test('删除同批其中一张图同步移除 generatedImages、附件和正文镜像，保留其他结果及选中项', () => {
+    const generation = context();
+    const messages = [
+        { role: 'user', content: 'original', drawGeneration: generation },
+        { role: 'assistant', content: 'done\n![a](/data/assets/a.png)\n![b](/data/assets/b.png)\n![c](/data/assets/c.png)',
+            generatedImages: [image('a'), image('b'), image('c')], attachments: [image('a'), image('b'), image('c')],
+            drawGeneration: generation, drawSelectedImageIndex: 2 },
+    ];
+    const before = JSON.stringify(messages);
+    const updated = gallery.deleteDrawGalleryImage(messages, gallery.getDrawGalleryItems(messages)[1]);
+    assert.equal(JSON.stringify(messages), before);
+    assert.equal(updated[0], messages[0]);
+    assert.equal(updated[1].drawGeneration, generation);
+    assert.equal(updated[1].drawSelectedImageIndex, 1);
+    assert.deepEqual(plain(updated[1].generatedImages).map(image => image.name), ['a', 'c']);
+    assert.deepEqual(plain(updated[1].attachments).map(image => image.name), ['a', 'c']);
+    assert.ok(!JSON.stringify(updated).includes('/data/assets/b.png'));
+    assert.deepEqual(plain(gallery.getDrawGalleryCards(plain(updated))).map(card => card.image.name), ['a', 'c']);
+});
+
+test('删完最后一张后重开会话不恢复图片或生成失败卡片，原始输入和被其他分支引用的图片保留', () => {
+    const generation = context();
+    const later = { ...context('later'), referenceImages: [image('result')] };
+    const messages = [
+        { role: 'user', content: 'original', attachments: [image('reference')], drawGeneration: generation },
+        { role: 'assistant', content: 'done', attachments: [image('result')], drawGeneration: generation },
+        { role: 'user', content: 'later', attachments: [image('result')], drawGeneration: later },
+        { role: 'assistant', content: 'later done', attachments: [image('later-result')], drawGeneration: later },
+    ];
+    const target = gallery.getDrawGalleryItems(messages).find(card => card.image.name === 'result');
+    const updated = gallery.deleteDrawGalleryImage(messages, target);
+    assert.equal(updated[1].drawResultDeleted, true);
+    assert.equal(updated[2], messages[2]);
+    assert.equal(updated[0].attachments[0].name, 'reference');
+    assert.equal(updated[2].drawGeneration.referenceImages[0].name, 'result');
+    assert.deepEqual(plain(gallery.getDrawGalleryCards(plain(updated))).map(card => card.image.name), ['later-result']);
+});
+
+test('旧 Markdown 图片删除后将剩余图存入附件，文件附件保留，最后一张删除不会重新显示', () => {
+    const file = { type: 'file', name: 'notes.txt', data: 'notes' };
+    let messages = [{ role: 'user', content: 'legacy' }, { role: 'assistant',
+        content: 'images\n![a](/data/a.png)\n![b](/data/b.png)', attachments: [file] }];
+    messages = gallery.deleteDrawGalleryImage(messages, gallery.getDrawGalleryItems(messages)[0]);
+    assert.equal(messages[1].content, 'images');
+    assert.equal(messages[1].attachments[0], file);
+    assert.equal(gallery.getDrawGalleryItems(messages)[0].image.path, '/data/b.png');
+    messages = gallery.deleteDrawGalleryImage(messages, gallery.getDrawGalleryItems(messages)[0]);
+    assert.equal(gallery.getDrawGalleryCards(plain(messages)).length, 0);
+    assert.equal(messages[1].attachments.length, 1);
+});
+
+test('同资源路径的不同结果可独立删除，过期的卡片不能误删当前其他图片', () => {
+    const messages = [{ role: 'assistant', content: '', attachments: [image('same'), image('same'), image('other')] }];
+    const target = gallery.getDrawGalleryItems(messages)[1];
+    const updated = gallery.deleteDrawGalleryImage(messages, target);
+    assert.equal(gallery.getDrawGalleryItems(updated).length, 2);
+    assert.equal(updated[0].attachments[0].name, 'same');
+    assert.equal(gallery.deleteDrawGalleryImage(updated, target), updated);
+});
+
+test('生图任务运行时删除其他结果并保存，独立任务和编辑草稿继续保留', async () => {
+    const { state, pending, saved, cards } = concurrentFixture();
+    state.currentInput = 'running';
+    const running = state.sendMessage();
+    await flush();
+    state.currentInput = 'next draft';
+    state.currentAttachments = [image('unrelated')];
+    const task = state.drawTasks[0];
+    await state.handleDeleteDrawGalleryImage(cards().find(card => card.image?.name === 'unrelated'));
+    assert.equal(state.drawTasks[0], task);
+    assert.equal(task.controller.signal.aborted, false);
+    assert.equal(state.currentInput, 'next draft');
+    assert.equal(state.currentAttachments[0].name, 'unrelated');
+    assert.equal(cards().length, 0);
+    pending[0].resolve(result('new-result'));
+    await running;
+    assert.deepEqual(plain(gallery.getDrawGalleryCards(saved.at(-1))).map(card => card.image.name), ['new-result']);
+});
+
+test('放大预览期间后台任务插入消息，删除仍定位原图而非旧下标处的其他图片', () => {
+    const messages = [
+        { role: 'user', content: 'earlier task' },
+        { role: 'user', content: 'selected task' },
+        { role: 'assistant', content: 'done', attachments: [image('selected')] },
+    ];
+    const selected = gallery.getDrawGalleryItems(messages)[0];
+    const earlierResult = { role: 'assistant', content: 'done', attachments: [image('earlier')] };
+    const updated = gallery.deleteDrawGalleryImage([messages[0], earlierResult, ...messages.slice(1)], selected);
+    assert.equal(updated[1], earlierResult);
+    assert.equal(updated[3].drawResultDeleted, true);
+    assert.deepEqual(plain(gallery.getDrawGalleryItems(updated)).map(card => card.image.name), ['earlier']);
 });

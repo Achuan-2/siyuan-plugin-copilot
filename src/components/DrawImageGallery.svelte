@@ -77,6 +77,12 @@
         dispatch(name, item);
     }
 
+    function deleteImage(item: DrawGalleryItem) {
+        if (disabled) return;
+        if (selected) close();
+        dispatch('delete', item);
+    }
+
     function handleKeydown(event: KeyboardEvent) {
         if (!selected || event.defaultPrevented || event.isComposing || event.repeat) return;
         if (dialog && getComputedStyle(dialog).visibility === 'hidden') return;
@@ -157,6 +163,10 @@
                         aria-label={i18n('aiSidebarDrawDownloadImage')} title={i18n('aiSidebarDrawDownloadImage')}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></svg>
                     </button>
+                    <button type="button" class="draw-gallery__delete" {disabled} on:click={() => deleteImage(item)}
+                        aria-label={i18n('aiSidebarDrawDeleteImage')} title={i18n('aiSidebarDrawDeleteImage')}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
+                    </button>
                 {/if}
             </div>
         </article>
@@ -172,6 +182,10 @@
         <div class="draw-detail" class:draw-detail--fullscreen={isFullscreen} bind:this={dialog} role="dialog" aria-modal="true"
             aria-label={i18n('aiSidebarDrawDetails')} tabindex="-1">
             <div class="draw-detail__toolbar">
+                <button type="button" class="draw-gallery__delete" {disabled} on:click={() => deleteImage(selected)}
+                    aria-label={i18n('aiSidebarDrawDeleteImage')} title={i18n('aiSidebarDrawDeleteImage')}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
+                </button>
                 <button type="button" on:click={toggleFullscreen}
                     aria-label={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')}
                     title={isFullscreen ? i18n('fullscreenExit') : i18n('fullscreenTitle')} aria-pressed={isFullscreen}>
@@ -263,6 +277,8 @@
     .draw-gallery__card:hover .draw-gallery__actions, .draw-gallery__card:focus-within .draw-gallery__actions { opacity: 1; }
     .draw-gallery__actions button { width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(0,0,0,.65); color: #fff; }
     .draw-gallery__actions button:hover { background: rgba(0,0,0,.9); }
+    .draw-gallery__actions .draw-gallery__delete:hover:not(:disabled),
+    .draw-detail__toolbar .draw-gallery__delete:hover:not(:disabled) { background: var(--b3-theme-error); color: #fff; }
     .draw-gallery__actions svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
     .draw-gallery__pending { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 220px; border: 1px solid var(--b3-border-color); border-radius: 12px; background: var(--b3-theme-surface); color: var(--b3-theme-on-surface); font-size: 13px; }
     .draw-gallery__cancel { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--b3-theme-background); font-size: 20px; line-height: 1; }

@@ -810,6 +810,7 @@
     "aiSidebarDrawEditImage": "Edit image",
     "aiSidebarDrawRegenerateImage": "Regenerate",
     "aiSidebarDrawDownloadImage": "Download image",
+    "aiSidebarDrawDeleteImage": "Delete image",
     "aiSidebarDrawPrompt": "Prompt",
     "aiSidebarDrawReferences": "Reference images",
     "aiSidebarDrawConversation": "Image conversation",

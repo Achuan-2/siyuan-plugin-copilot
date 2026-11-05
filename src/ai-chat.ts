@@ -150,6 +150,7 @@ export interface Message {
     drawGeneration?: DrawGenerationContext; // 同批图片共享不可变的生成记录，各卡片独立读取
     drawGenerationError?: string;
     drawFailureDismissed?: boolean; // 重试时移除失败卡片，保留原始请求记录
+    drawResultDeleted?: boolean; // 已删除本轮全部结果，仍是完成的请求而非生成失败
     drawImageSelectionRequired?: boolean; // 画图模式多图结果是否需要用户选择
     drawSelectedImageIndex?: number; // 画图模式多图结果中用户选中的图片索引
     questionCards?: Array<{ card: QuestionCardData; answers: QuestionCardAnswers }>; // 已回答的 question card（保留在对话中）

@@ -9,6 +9,7 @@ export interface DrawGalleryRequest {
 
 export interface DrawGalleryItem extends DrawGalleryRequest {
     image: MessageAttachment;
+    sourceMessage?: Message; // 保留来源身份，后台任务插入消息后仍定位同一张图
 }
 
 export interface DrawGalleryFailure extends DrawGalleryRequest {
@@ -70,7 +71,7 @@ export function getDrawGalleryCards(
                 data: attachments[index]?.data || (image as typeof image & { previewUrl?: string }).previewUrl ||
                     image.url || (image.data ? `data:${image.mimeType || 'image/png'};base64,${image.data}` : '') || image.path || '',
             })) : [...attachments];
-        if (!images.length && typeof message.content === 'string') {
+        if (!images.length && !message.drawResultDeleted && typeof message.content === 'string') {
             for (const match of message.content.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)) {
                 images.push({ type: 'image', name: match[1] || 'image.png', data: match[2],
                     path: match[2].startsWith('/data/') ? match[2] : undefined });
@@ -79,7 +80,7 @@ export function getDrawGalleryCards(
         const generation = message.drawGeneration || userGeneration;
         const error = message.drawGenerationError ||
             (typeof message.content === 'string' && message.content.startsWith('❌') ? message.content : '');
-        if (images.length) {
+        if (images.length || message.drawResultDeleted) {
             answered = true;
         } else if (error) {
             answered = true;
@@ -95,6 +96,7 @@ export function getDrawGalleryCards(
         batches.push(images.map((image, imageIndex) => ({
             key: `${messageIndex}:${imageIndex}:${image.path || image.name}`,
             image,
+            sourceMessage: message,
             prompt: generation?.prompt || userPrompt,
             generation,
             referenceImages: generation?.referenceImages || userReferences,
@@ -102,6 +104,34 @@ export function getDrawGalleryCards(
     });
     if (!loading || activeGenerations) addInterruptedRequest();
     return batches.reverse().flat();
+}
+
+/** 只删除当前结果，不删除可能仍被编辑分支或其他会话引用的资源文件。 */
+export function deleteDrawGalleryImage(messages: Message[], item: DrawGalleryItem): Message[] {
+    const cards = getDrawGalleryItems(messages);
+    const target = cards.find(card => (item.sourceMessage ?
+        card.sourceMessage === item.sourceMessage && card.key.split(':')[1] === item.key.split(':')[1] : card.key === item.key) &&
+        card.image.name === item.image.name &&
+        (card.image.path || card.image.data) === (item.image.path || item.image.data));
+    if (!target) return messages;
+    const [messageIndex, imageIndex] = target.key.split(':').map(Number);
+    const message = messages[messageIndex];
+    const remaining = cards.filter(card => Number(card.key.split(':')[0]) === messageIndex && card.key !== target.key);
+    const selectedIndex = message.drawSelectedImageIndex;
+    const updated: Message = {
+        ...message,
+        generatedImages: message.generatedImages?.filter((_, index) => index !== imageIndex),
+        // 统一保留剩余图片附件，兼容 generatedImages、附件及仅有 Markdown 图片的旧会话。
+        attachments: [...(message.attachments?.filter(attachment => attachment.type !== 'image') || []),
+            ...remaining.map(card => card.image)],
+        // 正文中的镜像图片转由附件保存，避免删除后又被 Markdown 回退逻辑重新展示。
+        content: typeof message.content === 'string' ? message.content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim() : message.content,
+        drawResultDeleted: remaining.length === 0,
+        drawSelectedImageIndex: selectedIndex === undefined || selectedIndex === imageIndex ? undefined :
+            selectedIndex > imageIndex ? selectedIndex - 1 : selectedIndex,
+        drawImageSelectionRequired: remaining.length > 1 && (selectedIndex === undefined || selectedIndex === imageIndex),
+    };
+    return messages.map((source, index) => index === messageIndex ? updated : source);
 }
 
 /** 恢复重试草稿后移除对应失败卡片；保留消息供历史和其他图片分支使用。 */

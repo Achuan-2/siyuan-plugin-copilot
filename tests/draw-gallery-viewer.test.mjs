@@ -19,6 +19,7 @@ function fixture() {
     let focusRestored = 0;
     const trigger = { focus: () => { focusRestored++; } };
     const state = {
+        disabled: false, dispatch() {},
         selected: null, preview: '', previewRequest: 0, isFullscreen: false,
         items: [image('a'), { key: 'failed', prompt: 'failed', error: 'error', referenceImages: [] }, image('b'), image('c')],
         imageItems: [], selectedIndex: -1, previousFocus: null, previousSession: 'session', sessionKey: 'session',
@@ -154,4 +155,20 @@ test('全屏焦点循环跳过隐藏的详情控件', async () => {
     state.document.activeElement = first;
     state.handleKeydown(key('Tab', { shiftKey: true }));
     assert.deepEqual(focused, ['fullscreen', 'next']);
+});
+
+test('放大图片删除时关闭预览并发送对应图片，提交锁定时不触发删除', async () => {
+    const { state } = fixture();
+    const events = [];
+    state.dispatch = (...args) => events.push(args);
+    const target = state.items[2];
+    await state.view(target);
+    state.disabled = true;
+    state.deleteImage(target);
+    assert.equal(state.selected.image.name, 'b');
+    assert.equal(events.length, 0);
+    state.disabled = false;
+    state.deleteImage(target);
+    assert.equal(state.selected, null);
+    assert.deepEqual(events, [['delete', target]]);
 });
