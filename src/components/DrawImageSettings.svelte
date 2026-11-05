@@ -1,5 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher, tick } from 'svelte';
+    import DrawAspectRatioSelector from './DrawAspectRatioSelector.svelte';
     import { floatingLayer, containsFloatingTarget } from '../utils/floatingLayer';
     import { i18n } from '../utils/i18n';
     import {
@@ -77,16 +78,7 @@
 <svelte:window on:pointerdown={handleOutside} on:keydown|capture={handleKeydown} on:resize={() => close(false)} />
 
 <div class="draw-settings" bind:this={root}>
-    <label class="draw-settings__ratio" title={i18n('aiSidebarDrawAspectRatio')}>
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <rect x="4" y="2" width="12" height="16" rx="2" stroke="currentColor" stroke-width="1.5" />
-        </svg>
-        <select class="b3-select" aria-label={i18n('aiSidebarDrawAspectRatio')} bind:value={aspectRatio}>
-            {#each capabilities.aspectRatios as ratio}
-                <option value={ratio}>{ratio === 'auto' ? i18n('aiSidebarDrawQualityAuto') : ratio}</option>
-            {/each}
-        </select>
-    </label>
+    <DrawAspectRatioSelector bind:value={aspectRatio} options={capabilities.aspectRatios} on:open={() => close(false)} />
     <button
         bind:this={button}
         type="button"
@@ -155,8 +147,6 @@
 
 <style>
     .draw-settings { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    .draw-settings__ratio { display: flex; align-items: center; gap: 2px; color: var(--b3-theme-on-surface); }
-    .draw-settings__ratio select { background: transparent; border: 0; box-shadow: none; font-size: 13px; max-width: 100px; }
     button { cursor: pointer; font: inherit; color: inherit; }
     button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--b3-theme-primary); outline-offset: 2px; }
     .draw-settings__toggle { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--b3-theme-on-surface); }
