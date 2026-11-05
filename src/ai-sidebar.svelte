@@ -11250,7 +11250,8 @@
             if (
                 !target.closest('.ai-message__content img') &&
                 !target.closest('.ai-message__thinking-content img') &&
-                !target.closest('.ai-message__attachment-image')
+                !target.closest('.ai-message__attachment-image') &&
+                !target.closest('.ai-sidebar__context-attachment-open')
             ) {
                 closeImageViewer();
             }
@@ -15959,10 +15960,13 @@
                         {#if attachment.type === 'image'}
                             <button
                                 class="ai-sidebar__context-attachment-open"
-                                on:click={() => openImageViewer(attachment.data, attachment.name)}
-                                title={attachment.name}
-                            ><img class="ai-sidebar__context-attachment-preview" src={attachment.data} alt={attachment.name} /></button>
-                            <span class="ai-sidebar__context-doc-name" title={attachment.name}>{attachment.name}</span>
+                                on:click|stopPropagation={() => openImageViewer(attachment.data || attachment.path || '', attachment.name)}
+                                aria-label={attachment.name}
+                                title={i18n('aiSidebarImageViewLarge')}
+                            >
+                                <img class="ai-sidebar__context-attachment-preview" src={attachment.data || attachment.path || ''} alt={attachment.name} />
+                                <span class="ai-sidebar__context-doc-name" title={attachment.name}>{attachment.name}</span>
+                            </button>
                         {:else}
                             {#if attachment.isWebPage}
                                 <span class="ai-sidebar__context-attachment-icon-emoji">🔗</span>
@@ -17472,10 +17476,20 @@
     }
     .ai-sidebar__context-attachment-open {
         display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        text-align: left;
         padding: 0;
         border: 0;
         background: none;
-        cursor: pointer;
+        cursor: zoom-in;
+
+        &:focus-visible {
+            outline: 2px solid var(--b3-theme-primary);
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
     }
     .ai-sidebar__context-attachment-icon {
         width: 18px;
