@@ -26,7 +26,7 @@ export function createDrawAnnotation(start: AnnotationPoint, end: AnnotationPoin
         height: Math.max(clamp(start.y), clamp(end.y)) - top, comment: '' };
 }
 
-/** 在原图分辨率绘制边框和编号，评论通过文本单独传给模型。 */
+/** 在原图分辨率绘制本地预览用的边框和编号，不作为模型输入图片。 */
 export function paintDrawAnnotations(
     context: CanvasRenderingContext2D, width: number, height: number,
     regions: DrawImageAnnotation[], selectedId = ''
@@ -57,8 +57,8 @@ export function paintDrawAnnotations(
 }
 
 function annotatedRegions(image: MessageAttachment): DrawImageAnnotation[] {
-    return image.type === 'image' && image.drawAnnotations?.imagePath
-        ? image.drawAnnotations.regions.filter(region => region.comment.trim() && region.width > 0 && region.height > 0)
+    return image.type === 'image'
+        ? image.drawAnnotations?.regions.filter(region => region.comment.trim() && region.width > 0 && region.height > 0) || []
         : [];
 }
 
@@ -66,29 +66,27 @@ export function hasDrawAnnotationComments(images: MessageAttachment[]): boolean 
     return images.some(image => annotatedRegions(image).length > 0);
 }
 
-/** 每张原图后紧接对应的标注副本；原图与生成快照均不被覆盖。 */
+/** 只上传干净原图，标注坐标与评论由提示词提供，避免模型把标记当作画面内容。 */
 export function createDrawRequestReferences(images: MessageAttachment[]): MessageAttachment[] {
-    return images.flatMap(image => annotatedRegions(image).length ? [image, {
-        type: 'image' as const, name: `annotation-guide-${image.name}.png`,
-        path: image.drawAnnotations!.imagePath, mimeType: 'image/png', data: '',
-    }] : [image]);
+    return images.filter(image => image.type === 'image').map(({ drawAnnotations, ...image }) => image);
 }
 
 export function buildDrawAnnotationPrompt(prompt: string, images: MessageAttachment[]): string {
     const instructions: string[] = [];
     let imageNumber = 0;
-    for (const image of images) {
+    for (const image of images.filter(image => image.type === 'image')) {
         imageNumber++;
         const regions = annotatedRegions(image);
         if (!regions.length) continue;
-        const originalNumber = imageNumber++;
-        instructions.push(`Original input image ${originalNumber} (${image.name}), annotated guide image ${imageNumber}:\n` +
+        instructions.push(`Input image ${imageNumber} (${image.name}):\n` +
             regions.map((region, index) => `${index + 1}. Region (left ${Math.round(region.x * 100)}%, top ${Math.round(region.y * 100)}%, ` +
                 `width ${Math.round(region.width * 100)}%, height ${Math.round(region.height * 100)}%): ${region.comment.trim()}`).join('\n'));
     }
     if (!instructions.length) return prompt;
     return `${prompt}\n\nReference image annotations (editing instructions):\n` +
-        'Each original image is followed by its numbered annotation guide. Match each numbered box to the comment below. ' +
-        'Boxes and number badges are guides only; do not include them in the output. ' +
+        'Use the supplied clean original images as the editing base. The regions below are described only in text; ' +
+        'coordinates are percentages of each image, measured from its top-left corner (x increases to the right, y increases downward). ' +
+        'Apply each comment to the corresponding region. Region numbers and coordinates are instructions only: ' +
+        'do not draw region boundaries, boxes, outlines, number badges, labels, coordinates or comments in the output. ' +
         'Preserve unmentioned areas unless the user requests otherwise.\n\n' + instructions.join('\n\n');
 }

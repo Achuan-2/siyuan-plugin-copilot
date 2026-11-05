@@ -520,7 +520,7 @@ test('视图销毁后并发请求迟到完成，不写回结果或再次保存�
     assert.equal(state.drawTasks.length, 0);
 });
 
-test('仅填写参考图标注评论也能发送，模型收到原图、标注图和对应说明，重试不重复叠加副本', async () => {
+test('仅填写标注评论也能发送，首次生成和旧会话重试均只传原图与文本说明', async () => {
     const { state, requests } = fixture();
     state.currentInput = '';
     state.currentAttachments = [{ ...image('annotated-original'), drawAnnotations: {
@@ -529,9 +529,10 @@ test('仅填写参考图标注评论也能发送，模型收到原图、标注�
     } }];
     await state.sendMessage();
     assert.equal(requests.length, 1);
-    assert.equal(requests[0][3].length, 2);
+    assert.equal(requests[0][3].length, 1);
     assert.equal(requests[0][3][0].path, '/data/assets/annotated-original.png');
-    assert.equal(requests[0][3][1].path, '/data/annotation-guide.png');
+    assert.equal(requests[0][3][0].drawAnnotations, undefined);
+    assert.ok(!JSON.stringify(requests[0][3]).includes('/data/annotation-guide.png'));
     assert.match(requests[0][2], /仅修正物镜边缘/);
     const savedGeneration = state.messages.at(-1).drawGeneration;
     assert.equal(savedGeneration.referenceImages.length, 1);
@@ -541,7 +542,11 @@ test('仅填写参考图标注评论也能发送，模型收到原图、标注�
     assert.equal(state.currentAttachments.length, 1);
     await state.sendMessage();
     assert.equal(requests.length, 2);
-    assert.equal(requests[1][3].length, 2);
+    assert.equal(requests[1][3].length, 1);
+    assert.equal(requests[1][3][0].path, '/data/assets/annotated-original.png');
+    assert.ok(!JSON.stringify(requests[1][3]).includes('/data/annotation-guide.png'));
+    assert.match(requests[1][2], /仅修正物镜边缘/);
+    assert.ok(!requests[1][2].includes('annotated guide image'));
     assert.equal((requests[1][2].match(/Reference image annotations/g) || []).length, 1);
 });
 

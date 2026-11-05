@@ -47,7 +47,7 @@ export interface MessageAttachment {
     url?: string; // 原始URL（网页附件时使用）
     drawEditSource?: boolean; // 输入框中明确选中的待编辑图片
     drawAnnotations?: {
-        imagePath: string; // 带编号的标注图，附件自身仍指向未修改的原图
+        imagePath: string; // 仅供本地预览的标注图，模型接收原图与文本坐标评论
         regions: DrawImageAnnotation[]; // 坐标相对于原图宽高归一化到 0-1
     };
 }

@@ -47,27 +47,33 @@ test('标注在原始分辨率绘制且编号与评论顺序一致，导出不�
     assert.equal(calls.at(-1)[0], 'restore');
 });
 
-test('原图与标注图交替送入模型，多个参考图的编号和评论对应正确且不改写原附件', () => {
+test('模型只接收干净原图，多个参考图的文本坐标评论对应正确且不上传标记', () => {
     const images = [image('plain'), marked('reference'), marked('another')];
     const before = JSON.stringify(images);
     const request = annotations.createDrawRequestReferences(images);
-    assert.deepEqual(plain(request).map(image => image.path), ['/data/plain.png', '/data/reference.png',
-        '/data/reference-guide.png', '/data/another.png', '/data/another-guide.png']);
+    assert.deepEqual(plain(request).map(image => image.path), ['/data/plain.png', '/data/reference.png', '/data/another.png']);
+    assert.ok(request.every(image => !image.drawAnnotations));
+    assert.ok(!JSON.stringify(request).includes('-guide.png'));
     const prompt = annotations.buildDrawAnnotationPrompt('只修改指定区域', images);
-    assert.match(prompt, /Original input image 2 \(reference\), annotated guide image 3/);
-    assert.match(prompt, /Original input image 4 \(another\), annotated guide image 5/);
+    assert.match(prompt, /Input image 2 \(reference\):/);
+    assert.match(prompt, /Input image 3 \(another\):/);
     assert.match(prompt, /1\. Region \(left 10%, top 20%, width 30%, height 40%\): 改进物镜轮廓/);
-    assert.match(prompt, /do not include them in the output/);
+    assert.match(prompt, /do not draw region boundaries/);
+    assert.match(prompt, /top-left corner/);
+    assert.ok(!prompt.includes('annotated guide image'));
     assert.equal(JSON.stringify(images), before);
     assert.equal(annotations.hasDrawAnnotationComments(images), true);
 });
 
-test('清空标注后发送原图，不插入标注副本或提示词，没有保存标注图时不伪造有效标注', () => {
+test('清空标注后不附加标注提示词，标注预览缺失也能使用坐标评论', () => {
     const images = [image('original')];
     assert.equal(annotations.buildDrawAnnotationPrompt('keep prompt', images), 'keep prompt');
     assert.equal(annotations.createDrawRequestReferences(images).length, 1);
     assert.equal(annotations.hasDrawAnnotationComments(images), false);
-    assert.equal(annotations.hasDrawAnnotationComments([{ ...marked('bad'), drawAnnotations: { imagePath: '', regions: [region('x', 'comment')] } }]), false);
+    const withoutPreview = [{ ...marked('valid'), drawAnnotations: { imagePath: '', regions: [region('x', 'comment')] } }];
+    assert.equal(annotations.hasDrawAnnotationComments(withoutPreview), true);
+    assert.equal(annotations.createDrawRequestReferences(withoutPreview).length, 1);
+    assert.match(annotations.buildDrawAnnotationPrompt('edit', withoutPreview), /comment/);
 });
 
 test('生成快照保存原图和可编辑标注，后续修改草稿不改变已发送评论', () => {
@@ -79,6 +85,6 @@ test('生成快照保存原图和可编辑标注，后续修改草稿不改变�
     assert.equal(snapshot[0].data, '');
     assert.equal(snapshot[0].drawAnnotations.imagePath, '/data/original-guide.png');
     const reopened = plain(snapshot);
-    assert.equal(annotations.createDrawRequestReferences(reopened).length, 2);
+    assert.equal(annotations.createDrawRequestReferences(reopened).length, 1);
     assert.match(annotations.buildDrawAnnotationPrompt('retry', reopened), /改进物镜轮廓/);
 });
