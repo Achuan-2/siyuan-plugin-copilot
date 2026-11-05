@@ -117,19 +117,17 @@ export function dismissDrawGalleryFailure(messages: Message[], key: string, sour
 
 /** 参考图持久化只保留资源路径或稳定 URL，避免把临时 blob URL 写进生成记录。 */
 export function snapshotDrawReferences(images: MessageAttachment[]): MessageAttachment[] {
-    return images.map(image => ({ ...image, data: image.path ? '' : image.data, drawEditSource: undefined }));
+    return images.map(image => ({ ...image, data: image.path ? '' : image.data, drawEditSource: undefined,
+        drawAnnotations: image.drawAnnotations ? {
+            imagePath: image.drawAnnotations.imagePath,
+            regions: image.drawAnnotations.regions.map(region => ({ ...region })),
+        } : undefined,
+    }));
 }
 
 export function getDrawEditReferences(item: DrawGalleryItem): MessageAttachment[] {
-    const originalReferences = item.generation?.originalReferenceImages || item.referenceImages;
-    const images = [{ ...item.image, drawEditSource: true }, ...originalReferences];
-    const seen = new Set<string>();
-    return images.filter(image => {
-        const key = image.path || image.data;
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    // 编辑以当前结果为新的基底，不继承生成该结果时使用的参考图或标注。
+    return [{ ...item.image, drawEditSource: true, drawAnnotations: undefined }];
 }
 
 export function buildDrawBranchPrompt(prompt: string, history: string[]): string {

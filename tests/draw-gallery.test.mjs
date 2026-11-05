@@ -11,6 +11,8 @@ const compile = source => ts.transpileModule(source, {
 const module = { exports: {} };
 vm.runInNewContext(compile(read('../src/utils/drawGallery.ts')), module);
 const gallery = module.exports;
+const annotations = { exports: {} };
+vm.runInNewContext(compile(read('../src/utils/drawAnnotations.ts')), annotations);
 const plain = value => JSON.parse(JSON.stringify(value));
 const image = (name, path = `/data/assets/${name}.png`) => ({ type: 'image', name, path, data: `blob:${name}`, mimeType: 'image/png' });
 const settings = { aspectRatio: '3:4', resolution: '4K', quality: 'high', count: 3 };
@@ -116,15 +118,15 @@ test('生成记录持久化后保留各自的对话和参考图，不依赖最�
     assert.ok(!JSON.stringify(saved).includes('blob:original-reference'));
 });
 
-test('编辑某张卡片使用该结果和原始参考图，原结果不会随编辑链无限叠加', () => {
+test('编辑卡片只使用当前结果，不继承上一轮的原始参考图或标注', () => {
     const generation = context();
     generation.referenceImages.unshift(image('previous-result'));
     const refs = gallery.getDrawEditReferences({ image: image('selected-result'), generation, referenceImages: generation.referenceImages });
-    assert.deepEqual(plain(refs).map(item => item.name), ['selected-result', 'original-reference']);
+    assert.deepEqual(plain(refs).map(item => item.name), ['selected-result']);
     assert.equal(refs[0].drawEditSource, true);
     assert.equal(generation.referenceImages.length, 2);
     const next = gallery.createDrawGenerationContext('next edit', 'request', generation.history, refs, 'p', 'm', settings);
-    assert.deepEqual(plain(next.originalReferenceImages).map(item => item.name), ['original-reference']);
+    assert.deepEqual(plain(next.originalReferenceImages).map(item => item.name), []);
     assert.deepEqual(plain(next.history), ['original', 'next edit']);
 });
 
@@ -148,10 +150,11 @@ function fixture() {
     const notices = [];
     let sequence = 0;
     const state = {
-        ...gallery, AbortController, console, currentProvider: 'current-provider', currentModelId: 'gpt-image-2', chatMode: 'draw',
+        ...gallery, ...annotations.exports, AbortController, console, currentProvider: 'current-provider', currentModelId: 'gpt-image-2', chatMode: 'draw',
         isLoading: false, isAborted: false, currentSessionId: 'session', drawEditingContext: null,
         drawDraftIsRegeneration: false, drawDraftRestoreVersion: 0, isDestroyed: false,
         drawTasks: [], drawIsSubmitting: false, createChatSessionId: () => `request-${++sequence}`,
+        drawAnnotationTarget: null,
         messages: [{ role: 'user', content: 'old prompt' }, { role: 'assistant', content: '', attachments: [image('unrelated')] }],
         currentInput: 'create a new image', currentAttachments: [], contextDocuments: [], protyle: null,
         i18n: key => key, pushErrMsg: text => notices.push(text), hasUnsavedChanges: false,
@@ -178,7 +181,7 @@ function fixture() {
             return [{ name: 'result.png', mimeType: 'image/png', path: '/data/result.png', previewUrl: 'blob:result' }];
         },
     };
-    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
+    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'editDrawGalleryImage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
     const code = functions.map(name => {
         const node = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
         assert.ok(node, name);
@@ -515,4 +518,57 @@ test('视图销毁后并发请求迟到完成，不写回结果或再次保存�
     assert.equal(state.messages, before);
     assert.equal(saved.length, saves);
     assert.equal(state.drawTasks.length, 0);
+});
+
+test('仅填写参考图标注评论也能发送，模型收到原图、标注图和对应说明，重试不重复叠加副本', async () => {
+    const { state, requests } = fixture();
+    state.currentInput = '';
+    state.currentAttachments = [{ ...image('annotated-original'), drawAnnotations: {
+        imagePath: '/data/annotation-guide.png',
+        regions: [{ id: 'region', x: .1, y: .2, width: .3, height: .4, comment: '仅修正物镜边缘' }],
+    } }];
+    await state.sendMessage();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0][3].length, 2);
+    assert.equal(requests[0][3][0].path, '/data/assets/annotated-original.png');
+    assert.equal(requests[0][3][1].path, '/data/annotation-guide.png');
+    assert.match(requests[0][2], /仅修正物镜边缘/);
+    const savedGeneration = state.messages.at(-1).drawGeneration;
+    assert.equal(savedGeneration.referenceImages.length, 1);
+    assert.equal(savedGeneration.referenceImages[0].drawAnnotations.regions[0].comment, '仅修正物镜边缘');
+    const card = gallery.getDrawGalleryItems(state.messages)[0];
+    await state.regenerateDrawGalleryImage(card);
+    assert.equal(state.currentAttachments.length, 1);
+    await state.sendMessage();
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1][3].length, 2);
+    assert.equal((requests[1][2].match(/Reference image annotations/g) || []).length, 1);
+});
+
+test('编辑上一轮结果只发送当前图，连续编辑不累积旧参考图，重新生成仍恢复当轮输入', async () => {
+    const { state, requests } = fixture();
+    const generation = context('original prompt');
+    generation.referenceImages[0].drawAnnotations = {
+        imagePath: '/data/old-guide.png',
+        regions: [{ id: 'old', x: .1, y: .1, width: .2, height: .2, comment: 'old comment' }],
+    };
+    state.messages = [
+        { role: 'user', content: 'original prompt', drawGeneration: generation },
+        { role: 'assistant', content: '', drawGeneration: generation, attachments: [image('selected-result')] },
+    ];
+    const card = gallery.getDrawGalleryItems(state.messages)[0];
+    await state.editDrawGalleryImage(card);
+    assert.deepEqual(plain(state.currentAttachments).map(reference => reference.name), ['selected-result']);
+    state.currentInput = 'edit selected';
+    await state.sendMessage();
+    assert.equal(requests[0][3].length, 1);
+    assert.equal(requests[0][3][0].path, '/data/assets/selected-result.png');
+    assert.ok(!requests[0][2].includes('old comment'));
+    const edited = gallery.getDrawGalleryItems(state.messages)[0];
+    await state.editDrawGalleryImage(edited);
+    assert.deepEqual(plain(state.currentAttachments).map(reference => reference.name), ['result.png']);
+    await state.regenerateDrawGalleryImage(card);
+    assert.deepEqual(plain(state.currentAttachments).map(reference => reference.name), ['original-reference']);
+    assert.equal(state.currentAttachments[0].drawAnnotations.imagePath, '/data/old-guide.png');
+    assert.equal(state.currentInput, 'original prompt');
 });

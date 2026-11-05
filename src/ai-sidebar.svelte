@@ -59,6 +59,8 @@
         parseWebPageToMarkdown,
     } from './utils/webParser';
     import DrawImageGallery from './components/DrawImageGallery.svelte';
+    import DrawReferenceAnnotator from './components/DrawReferenceAnnotator.svelte';
+    import { buildDrawAnnotationPrompt, createDrawRequestReferences, hasDrawAnnotationComments } from './utils/drawAnnotations';
     import { getDrawGalleryCards, dismissDrawGalleryFailure, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest, type DrawPendingTask } from './utils/drawGallery';
     import type { DrawGenerationContext } from './ai-chat';
     import DrawImageSettings from './components/DrawImageSettings.svelte';
@@ -493,6 +495,11 @@
 
     // 附件管理
     let currentAttachments: MessageAttachment[] = [];
+    let drawAnnotationTarget: MessageAttachment | null = null;
+    let drawAnnotationOpenVersion = 0;
+    $: if (drawAnnotationTarget && (chatMode !== 'draw' || !currentAttachments.includes(drawAnnotationTarget))) {
+        drawAnnotationTarget = null;
+    }
     let isUploadingFile = false;
     const pendingAttachmentSaveTasks = new Set<Promise<void>>();
 
@@ -3006,7 +3013,30 @@
 
     // 移除附件
     function removeAttachment(index: number) {
+        if (currentAttachments[index] === drawAnnotationTarget) drawAnnotationTarget = null;
         currentAttachments = currentAttachments.filter((_, i) => i !== index);
+    }
+
+    async function openDrawReferenceAnnotations(attachment: MessageAttachment) {
+        if (drawIsSubmitting) return;
+        const sessionId = currentSessionId;
+        const version = ++drawAnnotationOpenVersion;
+        try {
+            await waitForPendingAttachmentSaves();
+            if (isDestroyed || sessionId !== currentSessionId || version !== drawAnnotationOpenVersion || drawIsSubmitting) return;
+            drawAnnotationTarget = currentAttachments.find(image => image === attachment ||
+                (image.data === attachment.data && image.name === attachment.name)) || null;
+        } catch (error) {
+            pushErrMsg((error as Error).message);
+        }
+    }
+
+    function handleSaveDrawAnnotations(event: CustomEvent<{ original: MessageAttachment; attachment: MessageAttachment }>) {
+        const { original, attachment } = event.detail;
+        if (drawAnnotationTarget !== original || !currentAttachments.includes(original)) return;
+        currentAttachments = currentAttachments.map(image => image === original ? attachment : image);
+        drawAnnotationTarget = null;
+        drawDraftRestoreVersion += 1;
     }
 
     // 打开网页链接对话框
@@ -6161,7 +6191,8 @@
         try {
             await waitForPendingAttachmentSaves();
             if (isDestroyed || draftSessionId !== currentSessionId || draftVersion !== drawDraftRestoreVersion) return;
-            const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim());
+            const userContent = transformEditorMarkdownForSend((protyle ? getMarkdownFromProtyle() : currentInput).trim()) ||
+                (hasDrawAnnotationComments(currentAttachments) ? i18n('aiSidebarDrawAnnotationPrompt') : '');
             if (!userContent) {
                 pushErrMsg(i18n('aiSidebarDrawPromptRequired'));
                 return;
@@ -6178,7 +6209,8 @@
             applyPromptDrawImageSize(userContent);
             const requestSettings = getCurrentDrawImageSettings();
             const requestDocuments = [...contextDocuments];
-            const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(buildDrawBranchPrompt(userContent, editingContext?.history || []));
+            const promptWithSystemPrompt = buildDrawPromptWithSystemPrompt(buildDrawAnnotationPrompt(
+                buildDrawBranchPrompt(userContent, editingContext?.history || []), userAttachments.filter(image => image.type === 'image')));
             submittedDraft = { prompt: userContent, references: userAttachments, documents: requestDocuments,
                 editingContext, regeneration: drawDraftIsRegeneration };
             // 先固定并清空本轮草稿，准备上下文期间的新输入留给下一项任务。
@@ -6196,11 +6228,11 @@
             );
 
             const userImageAttachments = userAttachments.filter(att => att.type === 'image');
-            const editImageSources = userImageAttachments;
+            const editImageSources = createDrawRequestReferences(userImageAttachments);
             const isEdit = editImageSources.length > 0;
 
             const generation = createDrawGenerationContext(userContent, promptWithContext, editingContext?.history || [],
-                editImageSources, requestProvider, modelConfig.id, requestSettings);
+                userImageAttachments, requestProvider, modelConfig.id, requestSettings);
             const userMessage: Message = {
                 drawGeneration: generation,
                 role: 'user',
@@ -6325,7 +6357,7 @@
     // 发送消息
     async function sendMessage() {
         if (chatMode === 'draw') {
-            if (drawIsSubmitting || !currentInput.trim()) return;
+            if (drawIsSubmitting || drawAnnotationTarget || (!currentInput.trim() && !hasDrawAnnotationComments(currentAttachments))) return;
             const providerConfig = getCurrentProviderConfig();
             const modelConfig = getCurrentModelConfig();
             if (!providerConfig || !modelConfig) {
@@ -7799,6 +7831,8 @@
     }
 
     function doClearChat() {
+        drawAnnotationTarget = null;
+        drawAnnotationOpenVersion += 1;
         sessionRecoveryNotice = '';
         messages = getBaseSystemPrompt()
             ? [{ role: 'system', content: getBaseSystemPrompt() }]
@@ -9936,6 +9970,8 @@
     }
 
     async function loadSession(sessionId: string) {
+        drawAnnotationTarget = null;
+        drawAnnotationOpenVersion += 1;
         // 会话宿主通过切换独立视图来加载会话。当前视图即使正在生成，也不能被中断。
         if (sessionHost) {
             if (sessionId && sessionId !== currentSessionId) {
@@ -10327,6 +10363,8 @@
     }
 
     function doNewSession(nextMode: ChatMode = chatMode) {
+        drawAnnotationTarget = null;
+        drawAnnotationOpenVersion += 1;
         sessionRecoveryNotice = '';
         drawModeLocked = false;
         chatMode = nextMode === 'draw' ? 'draw' : 'ask';
@@ -16045,6 +16083,13 @@
                                 <img class="ai-sidebar__context-attachment-preview" src={attachment.data || attachment.path || ''} alt={attachment.name} />
                                 <span class="ai-sidebar__context-doc-name" title={attachment.name}>{attachment.name}</span>
                             </button>
+                            {#if chatMode === 'draw'}
+                                <button type="button" class="b3-button b3-button--text ai-sidebar__reference-annotate"
+                                    disabled={drawIsSubmitting} on:click|stopPropagation={() => openDrawReferenceAnnotations(attachment)}
+                                    title={i18n('aiSidebarDrawAnnotationTitle')}>
+                                    {i18n('aiSidebarDrawAnnotateReference')}{attachment.drawAnnotations?.regions.length ? ` ${attachment.drawAnnotations.regions.length}` : ''}
+                                </button>
+                            {/if}
                         {:else}
                             {#if attachment.isWebPage}
                                 <span class="ai-sidebar__context-attachment-icon-emoji">🔗</span>
@@ -16263,7 +16308,7 @@
                     class:b3-button--primary={!isLoading || chatMode === 'draw'}
                     class:ai-sidebar__send-btn--abort={isLoading && chatMode !== 'draw'}
                     on:click={isLoading && chatMode !== 'draw' ? abortMessage : sendMessage}
-                    disabled={chatMode === 'draw' ? drawIsSubmitting || !currentInput.trim() : !isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
+                    disabled={chatMode === 'draw' ? drawIsSubmitting || !!drawAnnotationTarget || (!currentInput.trim() && !hasDrawAnnotationComments(currentAttachments)) : !isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
                     title={isLoading && chatMode !== 'draw' ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
                 >
                     {#if isLoading && chatMode !== 'draw'}
@@ -17142,6 +17187,13 @@
         </div>
     {/if}
 
+    {#if drawAnnotationTarget}
+        {#key drawAnnotationTarget}
+            <DrawReferenceAnnotator attachment={drawAnnotationTarget} readImage={imageAttachmentToBlob}
+                on:save={handleSaveDrawAnnotations} on:close={() => drawAnnotationTarget = null} />
+        {/key}
+    {/if}
+
     <!-- 图片查看器 -->
     {#if isImageViewerOpen}
         <div use:floatingLayer class="image-viewer" class:image-viewer--fullscreen={isImageViewerFullscreen}>
@@ -17551,6 +17603,7 @@
             opacity: 0.9;
         }
     }
+    .ai-sidebar__reference-annotate { flex-shrink: 0; margin-left: 4px; padding: 4px 6px; font-size: 12px; }
     .ai-sidebar__context-attachment-open {
         display: flex;
         align-items: center;

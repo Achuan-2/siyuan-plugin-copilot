@@ -28,6 +28,15 @@ export interface ToolCall {
     };
 }
 
+export interface DrawImageAnnotation {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    comment: string;
+}
+
 export interface MessageAttachment {
     type: 'image' | 'file';
     name: string;
@@ -37,6 +46,10 @@ export interface MessageAttachment {
     isWebPage?: boolean; // 标记是否为网页附件
     url?: string; // 原始URL（网页附件时使用）
     drawEditSource?: boolean; // 输入框中明确选中的待编辑图片
+    drawAnnotations?: {
+        imagePath: string; // 带编号的标注图，附件自身仍指向未修改的原图
+        regions: DrawImageAnnotation[]; // 坐标相对于原图宽高归一化到 0-1
+    };
 }
 
 export interface DrawGenerationContext {
