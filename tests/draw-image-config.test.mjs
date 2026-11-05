@@ -18,7 +18,7 @@ const functions = [
     'roundToDrawSizeUnit', 'normalizeDrawImagePixelSize', 'parseDrawImageSizeValue',
     'findKnownDrawRatioLabel', 'formatDrawRatio', 'createDrawImageSizeOption',
     'createDrawImageSizeOptionFromRatio', 'getPromptImageSizeMatch', 'getPromptImageRatioMatch',
-    'applyPromptDrawImageSize', 'requestGeminiDrawImages', 'requestDrawImages', 'isGeminiImageApi',
+    'applyPromptDrawImageSize', 'requestGeminiDrawImages', 'requestDrawImages', 'requestSingleDrawImages', 'isGeminiImageApi',
     'getCurrentDrawImageSettings',
 ];
 
@@ -26,7 +26,7 @@ function fixture(model = 'gemini-3-pro-image-4k', isGemini = true) {
     const requests = [];
     const capabilities = config.getDrawImageCapabilities(model, isGemini);
     const sandbox = {
-        ...config, FormData, File, currentProvider: 'custom', DRAW_IMAGE_SIZE_STEP: 16,
+        ...config, DOMException, FormData, File, currentProvider: 'custom', DRAW_IMAGE_SIZE_STEP: 16,
         DRAW_IMAGE_BASE_UNIT: 640, drawImageCount: 1, drawImageAspectRatio: 'auto',
         drawImageResolution: capabilities.defaultResolution, drawImageResolutionExplicit: false,
         drawIsGemini: isGemini, drawCapabilities: capabilities, drawImageQuality: 'auto',
@@ -52,7 +52,8 @@ function fixture(model = 'gemini-3-pro-image-4k', isGemini = true) {
     vm.runInNewContext(compile(declarations), sandbox);
     return { sandbox, requests, request: async (images = []) => {
         await sandbox.requestDrawImages({ apiKey: 'fixture-key' }, { id: model },
-            '封面', images, new AbortController().signal);
+            '封面', images, new AbortController().signal, sandbox.getCurrentDrawImageSettings(),
+            sandbox.currentProvider, () => {}, () => {});
         return requests;
     } };
 }
@@ -108,7 +109,8 @@ test('GPT 文生图发送 size 与 quality，比例不再与质量混合', async
     const requests = await request();
     assert.equal(requests[0].body.size, '1152x1536');
     assert.equal(requests[0].body.quality, 'max');
-    assert.equal(requests[0].body.n, 3);
+    assert.equal(requests.length, 3);
+    for (const item of requests) assert.equal(item.body.n, 1);
     assert.equal(requests[0].body.generationConfig, undefined);
     assert.ok(requests[0].url.endsWith('/images/generations'));
 });
@@ -153,7 +155,7 @@ test('图片快照请求不受当前面板的模型平台、数量和质量影�
     sandbox.drawImageQuality = 'low';
     const snapshot = { aspectRatio: '3:4', resolution: '4K', quality: 'max', count: 1 };
     await sandbox.requestDrawImages({ apiKey: 'fixture' }, { id: 'gpt-image-2.5-sunburst' }, 'saved prompt', [],
-        new AbortController().signal, snapshot, 'openai');
+        new AbortController().signal, snapshot, 'openai', () => {}, () => {});
     assert.equal(requests.length, 1);
     assert.equal(requests[0].body.size, '1152x1536');
     assert.equal(requests[0].body.quality, 'max');
