@@ -4357,7 +4357,7 @@
 
     function normalizeDrawImageCount() {
         const parsed = Number(drawImageCount);
-        drawImageCount = Math.max(1, Math.min(10, Number.isFinite(parsed) ? parsed : 1));
+        drawImageCount = Math.max(1, Math.min(10, Number.isFinite(parsed) ? Math.floor(parsed) : 1));
     }
 
     // 多模型发送消息
@@ -5836,12 +5836,7 @@
             return extractGeminiImagesFromResponse(await response.json(), prompt);
         };
 
-        const count = Math.max(1, Math.min(10, Number(requestSettings.count) || 1));
-        const results = await Promise.all(
-            Array.from({ length: count }, () => requestOnce())
-        );
-        const rawImages = results.flatMap(r => r.images);
-        const responseText = results.map(r => r.responseText).filter(Boolean).join('\n');
+        const { images: rawImages, responseText } = await requestOnce();
 
         if (rawImages.length === 0) {
             const reason = responseText
@@ -5850,11 +5845,10 @@
             throw new Error(reason);
         }
 
-        const savedImages = await Promise.all(rawImages.map(saveGeneratedImageFromApiResult));
-        return savedImages.filter(Boolean);
+        return rawImages;
     }
 
-    async function saveGeneratedImageFromApiResult(image: any, index: number) {
+    async function saveGeneratedImageFromApiResult(image: any, signal: AbortSignal) {
         const mimeType = image.mime_type || image.mimeType || 'image/png';
         let blob: Blob | null = null;
         let previewUrl = image.url || '';
@@ -5863,7 +5857,7 @@
             blob = base64ToBlob(image.b64_json || image.data, mimeType);
         } else if (image.url) {
             try {
-                const response = await fetch(image.url);
+                const response = await fetch(image.url, { signal });
                 blob = await response.blob();
             } catch (error) {
                 console.error('Failed to download generated image:', error);
@@ -5881,7 +5875,7 @@
         }
 
         const actualMimeType = blob.type || mimeType;
-        const name = createGeneratedImageFileName(actualMimeType, index);
+        const name = createGeneratedImageFileName(actualMimeType);
         const assetPath = await saveAsset(blob, name);
         previewUrl = URL.createObjectURL(blob);
 
@@ -5896,6 +5890,48 @@
     }
 
     async function requestDrawImages(
+        providerConfig: any,
+        modelConfig: any,
+        prompt: string,
+        editImageSources: MessageAttachment[],
+        signal: AbortSignal,
+        requestSettings: DrawGenerationContext['settings'],
+        providerId: string,
+        onImage: (image: Awaited<ReturnType<typeof saveGeneratedImageFromApiResult>>) => void,
+        onRequestSettled: () => void
+    ) {
+        const count = Math.max(1, Math.min(10, Math.floor(Number(requestSettings.count) || 1)));
+        const ensureActive = () => {
+            if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
+        };
+        // 每张图单独请求、保存并发布，等待整批结束仅用于收尾和汇总错误。
+        const results = await Promise.allSettled(Array.from({ length: count }, async () => {
+            try {
+                ensureActive();
+                const rawImages = await requestSingleDrawImages(
+                    providerConfig, modelConfig, prompt, editImageSources, signal, requestSettings, providerId
+                );
+                ensureActive();
+                if (!rawImages.length) throw new Error(i18n('aiSidebarDrawNoImages'));
+                const saved = await Promise.allSettled(rawImages.map(async image => {
+                    ensureActive();
+                    const savedImage = await saveGeneratedImageFromApiResult(image, signal);
+                    ensureActive();
+                    onImage(savedImage);
+                    return savedImage;
+                }));
+                const failure = saved.find(result => result.status === 'rejected');
+                if (failure?.status === 'rejected') throw failure.reason;
+            } finally {
+                if (!signal.aborted) onRequestSettled();
+            }
+        }));
+        ensureActive();
+        const failure = results.find(result => result.status === 'rejected');
+        if (failure?.status === 'rejected') throw failure.reason;
+    }
+
+    async function requestSingleDrawImages(
         providerConfig: any,
         modelConfig: any,
         prompt: string,
@@ -5931,7 +5967,7 @@
             const formData = new FormData();
             formData.append('model', modelConfig.id);
             formData.append('prompt', prompt);
-            formData.append('n', String(requestSettings.count));
+            formData.append('n', '1');
             formData.append('size', size);
             formData.append('quality', quality);
 
@@ -5965,7 +6001,7 @@
                 body: JSON.stringify({
                     model: modelConfig.id,
                     prompt,
-                    n: requestSettings.count,
+                    n: 1,
                     size,
                     quality,
                 }),
@@ -5988,8 +6024,7 @@
                 ? [data]
                 : [];
 
-        const savedImages = await Promise.all(rawImages.map(saveGeneratedImageFromApiResult));
-        return savedImages.filter(Boolean);
+        return rawImages;
     }
 
     function buildDrawAssistantContent(images: any[], isEdit: boolean): string {
@@ -6313,26 +6348,20 @@
 
     async function runDrawImageTask(task: DrawImageTask, providerConfig: any, modelConfig: any) {
         try {
-            const generatedImages = await requestDrawImages(
+            await requestDrawImages(
                 providerConfig,
                 modelConfig,
                 task.generation.requestPrompt,
                 task.referenceImages,
                 task.controller.signal,
                 task.generation.settings,
-                task.generation.provider
+                task.generation.provider,
+                image => appendDrawImageResult(task, image),
+                () => {
+                    task.count = Math.max(0, task.count - 1);
+                    drawTasks = [...drawTasks];
+                }
             );
-
-            if (task.controller.signal.aborted || isDestroyed || task.sessionId !== currentSessionId) return;
-            if (generatedImages.length === 0) {
-                throw new Error(i18n('aiSidebarDrawNoImages'));
-            }
-            const assistantMessage = createDrawAssistantMessage(generatedImages, task.generation);
-            // 按请求位置插入，完成顺序不会让结果关联到其他任务的提示词。
-            const userIndex = messages.indexOf(task.userMessage);
-            if (userIndex < 0) return;
-            messages = [...messages.slice(0, userIndex + 1), assistantMessage, ...messages.slice(userIndex + 1)];
-            hasUnsavedChanges = true;
         } catch (error) {
             if (!task.controller.signal.aborted && !isDestroyed && task.sessionId === currentSessionId &&
                 (error as Error).name !== 'AbortError' && (error as Error).message !== 'Request aborted') {
@@ -6358,6 +6387,30 @@
                 }
             }
         }
+    }
+
+    function appendDrawImageResult(
+        task: DrawImageTask, image: Awaited<ReturnType<typeof saveGeneratedImageFromApiResult>>
+    ) {
+        if (task.controller.signal.aborted || isDestroyed || task.sessionId !== currentSessionId) return;
+        const userIndex = messages.indexOf(task.userMessage);
+        if (userIndex < 0) return;
+        const result = createDrawAssistantMessage([image], task.generation);
+        const existing = messages.find(message => message.role === 'assistant' &&
+            message.drawGeneration === task.generation && !message.drawGenerationError);
+        if (existing) {
+            // 从当前消息追加，保留生成期间的删除操作及已打开卡片的来源身份。
+            existing.generatedImages = [...(existing.generatedImages || []), ...result.generatedImages];
+            existing.attachments = [...(existing.attachments || []), ...result.attachments];
+            existing.content = buildDrawAssistantContent(existing.generatedImages, task.referenceImages.length > 0);
+            existing.drawResultDeleted = false;
+            messages = [...messages];
+        } else {
+            // 按请求位置插入，其他任务先完成也不会改变图片所属的提示词。
+            messages = [...messages.slice(0, userIndex + 1), result, ...messages.slice(userIndex + 1)];
+        }
+        hasUnsavedChanges = true;
+        void saveCurrentSession(true).catch(error => pushErrMsg((error as Error).message));
     }
 
     function cancelDrawImageTask(key: string) {

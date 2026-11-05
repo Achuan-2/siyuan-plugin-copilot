@@ -178,10 +178,11 @@ function fixture() {
         saveCurrentSession: async () => {}, autoRenameSession() {},
         requestDrawImages: async (...args) => {
             requests.push(args);
-            return [{ name: 'result.png', mimeType: 'image/png', path: '/data/result.png', previewUrl: 'blob:result' }];
+            args[7]({ name: 'result.png', mimeType: 'image/png', path: '/data/result.png', previewUrl: 'blob:result' });
+            args[8]();
         },
     };
-    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'handleDeleteDrawGalleryImage', 'editDrawGalleryImage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
+    const functions = ['hydrateDrawReferenceImages', 'createDrawAssistantMessage', 'handleDeleteDrawGalleryImage', 'editDrawGalleryImage', 'regenerateDrawGalleryImage', 'sendDrawModeMessage', 'runDrawImageTask', 'appendDrawImageResult', 'cancelDrawImageTask', 'abortMessage', 'sendMessage', 'regenerateMessage'];
     const code = functions.map(name => {
         const node = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
         assert.ok(node, name);
@@ -377,12 +378,73 @@ function concurrentFixture() {
     const f = fixture();
     const pending = [];
     const saved = [];
-    f.state.requestDrawImages = (...args) => new Promise((resolve, reject) => pending.push({ args, resolve, reject }));
+    f.state.requestDrawImages = (...args) => new Promise((resolve, reject) => pending.push({ args,
+        resolve: images => { images.forEach(args[7]); args[8](); resolve(); }, reject,
+    }));
     f.state.saveCurrentSession = async () => { saved.push(plain(f.state.messages)); };
     const cards = () => gallery.getDrawGalleryCards(f.state.messages, f.state.isLoading,
         new Set(f.state.drawTasks.map(task => task.generation)));
     return { ...f, pending, saved, cards };
 }
+
+test('同批三张图逐张追加并落盘，等待卡片减少，已显示图片的来源身份保持稳定', async () => {
+    const { state, pending, saved, cards } = concurrentFixture();
+    state.getCurrentDrawImageSettings = () => ({ ...settings, count: 3 });
+    const sending = state.sendMessage();
+    await flush();
+    const task = state.drawTasks[0];
+    pending[0].args[7](result('first')[0]);
+    pending[0].args[8]();
+    await flush();
+    const first = cards()[0];
+    assert.equal(first.image.name, 'first');
+    assert.equal(task.count, 2);
+    assert.equal(state.isLoading, true);
+    assert.equal(gallery.getDrawGalleryItems(saved.at(-1))[0].image.name, 'first');
+    pending[0].args[7](result('second')[0]);
+    pending[0].args[8]();
+    assert.equal(task.count, 1);
+    assert.deepEqual(plain(cards()).map(card => card.image.name), ['first', 'second', 'unrelated']);
+    assert.equal(cards()[0].sourceMessage, first.sourceMessage);
+    pending[0].resolve(result('third'));
+    await sending;
+    assert.equal(task.count, 0);
+    assert.equal(state.isLoading, false);
+    assert.deepEqual(plain(cards()).map(card => card.image.name), ['first', 'second', 'third', 'unrelated']);
+    assert.equal(gallery.getDrawGalleryItems(saved.at(-1)).length, 4);
+});
+
+test('同批部分失败仍保留已显示和已保存的结果，继续生成期间删除的图片不会恢复', async () => {
+    const { state, pending, saved, cards } = concurrentFixture();
+    const sending = state.sendMessage();
+    await flush();
+    pending[0].args[7](result('deleted')[0]);
+    await state.handleDeleteDrawGalleryImage(cards()[0]);
+    assert.deepEqual(plain(cards()).map(card => card.image.name), ['unrelated']);
+    pending[0].args[7](result('kept')[0]);
+    pending[0].args[8]();
+    pending[0].reject(new Error('one image failed'));
+    await sending;
+    assert.equal(state.drawTasks.length, 0);
+    assert.deepEqual(plain(cards()).map(card => card.image?.name || card.error), ['kept', 'one image failed', 'unrelated']);
+    assert.ok(!JSON.stringify(saved.at(-1)).includes('deleted'));
+    assert.equal(gallery.getDrawGalleryItems(saved.at(-1))[0].image.name, 'kept');
+});
+
+test('第一张显示后取消或切换会话，后续结果不写入，已完成图片保留', async () => {
+    for (const action of ['cancel', 'switch']) {
+        const { state, pending, cards } = concurrentFixture();
+        const sending = state.sendMessage();
+        await flush();
+        pending[0].args[7](result('completed')[0]);
+        pending[0].args[8]();
+        if (action === 'cancel') state.cancelDrawImageTask(state.drawTasks[0].key);
+        else state.currentSessionId = 'another-session';
+        pending[0].resolve(result('late'));
+        await sending;
+        assert.deepEqual(plain(cards()).map(card => card.image.name), ['completed', 'unrelated']);
+    }
+});
 
 test('同一对话可连续发送三个生图任务，乱序成功和失败不串提示词、参考图或参数', async () => {
     const { state, pending, saved, cards } = concurrentFixture();

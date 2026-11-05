@@ -134,7 +134,7 @@
 
 <div class="draw-gallery" aria-label={i18n('aiSidebarDrawGallery')}>
     {#each pendingTasks as task (task.key)}
-        {#each Array(Math.max(1, Math.min(10, task.count))) as _}
+        {#each Array(Math.max(0, Math.min(10, task.count))) as _}
             <div class="draw-gallery__pending" role="status" title={task.prompt}>
                 <button type="button" class="draw-gallery__pending-preview" on:click={() => view(task)}
                     aria-label={i18n('aiSidebarDrawDetails')}>
