@@ -1983,9 +1983,38 @@ export default class PluginSample extends Plugin {
         }
     }
 
+    private registerTranslateTab(): void {
+        const pluginInstance = this;
+        this.addTab({
+            type: TRANSLATE_TAB_TYPE,
+            init() {
+                const model = this;
+                const element = this.element as HTMLElement;
+                element.style.height = '100%';
+                element.style.minHeight = '0';
+                this.translateApp = new TranslateWindowHost({
+                    target: element,
+                    props: {
+                        plugin: pluginInstance,
+                        defaultProvider: this.data?.provider || '',
+                        defaultModelId: this.data?.modelId || '',
+                        close: () => model.tab?.close(),
+                    },
+                });
+            },
+            destroy() {
+                this.translateApp?.$destroy();
+                this.translateApp = null;
+            },
+        });
+    }
+
     async onload() {
         // 插件被启用时会自动调用这个函数
         setPluginInstance(this);
+        // 思源可能在 onload 的异步初始化完成前恢复独立窗口布局，
+        // 自定义页签必须在第一个 await 前同步注册，避免停在宿主加载动画。
+        this.registerTranslateTab();
         configureChatGPTStorage(this);
         // 桌面迁移已有登录；手机读取工作空间同步过来的账号。
         try { await getChatGPTClient().accounts(); }
@@ -2035,30 +2064,8 @@ export default class PluginSample extends Plugin {
 <path d="M878.159424 565.40635l-327.396585 0c-11.307533 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.15859 20.466124 20.466124 20.466124l327.396585 0c11.2973 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C898.625548 574.575174 889.456724 565.40635 878.159424 565.40635zM857.6933 892.802936l-286.464337 0 0-286.464337 286.464337 0L857.6933 892.802936z" p-id="7151"></path><path d="M430.606225 565.40635l-327.396585 0c-11.2973 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C451.072349 574.575174 441.913758 565.40635 430.606225 565.40635zM410.140101 892.802936l-286.464337 0 0-286.464337 286.464337 0L410.140101 892.802936z" p-id="7152"></path><path d="M430.606225 115.601878l-327.396585 0c-11.2973 0-20.466124 9.15859-20.466124 20.466124l0 327.386352c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.386352C451.072349 124.760468 441.913758 115.601878 430.606225 115.601878zM410.140101 442.98823l-286.464337 0 0-286.454104 286.464337 0L410.140101 442.98823z" p-id="7153"></path><path d="M965.529307 277.744745l-214.433814-214.433814c-3.837398-3.837398-9.046027-5.996574-14.46955-5.996574-5.433756 0-10.632151 2.159176-14.479783 5.996574l-214.433814 214.433814c-7.992021 7.992021-7.992021 20.957311 0 28.949332l214.433814 214.433814c4.001127 3.990894 9.240455 5.996574 14.479783 5.996574 5.229095 0 10.468422-2.00568 14.46955-5.996574l214.433814-214.433814c3.837398-3.837398 5.996574-9.046027 5.996574-14.46955C971.525881 286.790772 969.366705 281.582143 965.529307 277.744745zM736.625944 477.709009l-185.494715-185.484482 185.494715-185.494715 185.484482 185.494715L736.625944 477.709009z" p-id="7154"></path>
     </symbol>
     `);
-        // 注册翻译和 AI 标签页类型，原生独立窗口通过这些类型还原界面。
+        // 注册 AI 标签页类型。
         const pluginInstance = this;
-        this.addTab({
-            type: TRANSLATE_TAB_TYPE,
-            init() {
-                const model = this;
-                const element = this.element as HTMLElement;
-                element.style.height = '100%';
-                element.style.minHeight = '0';
-                this.translateApp = new TranslateWindowHost({
-                    target: element,
-                    props: {
-                        plugin: pluginInstance,
-                        defaultProvider: this.data?.provider || '',
-                        defaultModelId: this.data?.modelId || '',
-                        close: () => model.tab?.close(),
-                    },
-                });
-            },
-            destroy() {
-                this.translateApp?.$destroy();
-                this.translateApp = null;
-            },
-        });
         this.addTab({
             type: AI_TAB_TYPE,
             init() {

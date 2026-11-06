@@ -18,6 +18,58 @@ const sidebarScript = read('src/ai-sidebar.svelte').match(/<script lang="ts">([\
 const sidebarAst = ts.createSourceFile('sidebar.ts', sidebarScript, ts.ScriptTarget.Latest, true);
 const openDialog = sidebarAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openTranslateDialog');
 
+test('独立窗口在异步初始化未完成时即可恢复翻译页签，关闭后销毁组件', () => {
+    const mounted = [];
+    const registered = new Map();
+    let disposed = 0;
+    class Plugin {
+        name = name;
+        models = {};
+        addTab(options) {
+            registered.set(options.type, options);
+            this.models[this.name + options.type] = ({ data, tab }) => {
+                const model = { element: { style: {} }, data, tab };
+                options.init.call(model);
+                return model;
+            };
+        }
+    }
+    const sandbox = {
+        exports: {}, console,
+        require(id) {
+            if (id === 'siyuan') return { Plugin };
+            if (id === './utils/translateWindow') return { TRANSLATE_TAB_TYPE: 'copilot-translate' };
+            if (id === './utils/i18n') return { setPluginInstance() {} };
+            if (id === './chatgpt/storage') return { configureChatGPTStorage() {} };
+            if (id === './chatgpt/client') return {
+                getChatGPTClient: () => ({ accounts: () => new Promise(() => {}) }),
+            };
+            if (id === './components/TranslateWindowHost.svelte') return {
+                default: class {
+                    constructor(options) { mounted.push(options); }
+                    $destroy() { disposed++; }
+                },
+            };
+            return {};
+        },
+    };
+    vm.runInNewContext(compile(read('src/index.ts')), sandbox);
+    const plugin = new sandbox.exports.default();
+    void plugin.onload();
+    // 模拟思源立即用独立窗口布局里的 customModelType 恢复页签。
+    const restore = plugin.models[name + 'copilot-translate'];
+    assert.equal(typeof restore, 'function', '翻译页签必须在第一个 await 前注册');
+    let closed = 0;
+    const model = restore({ data: { provider: 'test', modelId: 'model' }, tab: { close: () => closed++ } });
+    assert.equal(mounted.length, 1);
+    assert.equal(mounted[0].props.plugin, plugin);
+    assert.equal(mounted[0].props.defaultProvider, 'test');
+    mounted[0].props.close();
+    assert.equal(closed, 1);
+    registered.get('copilot-translate').destroy.call(model);
+    assert.equal(disposed, 1);
+});
+
 function helperFixture(windows = []) {
     const sandbox = {
         exports: {}, URL,
