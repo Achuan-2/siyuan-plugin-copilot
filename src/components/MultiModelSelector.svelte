@@ -115,31 +115,27 @@
         return list;
     }
 
-    // 响应式过滤后的提供商列表（支持空格分隔的 AND 搜索）
+    // 先按聊天模式筛选模型，再执行空格分隔的 AND 搜索。
     $: filteredProviders = (() => {
         // 显式依赖 providers，确保其更新时重新计算
         const _deps = providers;
+        const isDrawMode = chatMode === 'draw';
         const query = modelSearchQuery.trim().toLowerCase();
-        if (!query) {
-            return getProviderList();
-        } else {
-            // 支持空格分隔的 AND 搜索
-            const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
-            return getProviderList()
-                .map(provider => ({
-                    ...provider,
-                    config: {
-                        ...provider.config,
-                        models: provider.config.models.filter(model => {
-                            const modelText =
-                                `${model.name} ${model.id} ${provider.name}`.toLowerCase();
-                            // 所有搜索词都必须匹配（AND逻辑）
-                            return searchTerms.every(term => modelText.includes(term));
-                        }),
-                    },
-                }))
-                .filter(provider => provider.config.models.length > 0);
-        }
+        const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+        return getProviderList()
+            .map(provider => ({
+                ...provider,
+                config: {
+                    ...provider.config,
+                    models: provider.config.models.filter(model => {
+                        if (!!model.capabilities?.imageGeneration !== isDrawMode) return false;
+                        const modelText =
+                            `${model.name} ${model.id} ${provider.name}`.toLowerCase();
+                        return searchTerms.every(term => modelText.includes(term));
+                    }),
+                },
+            }))
+            .filter(provider => provider.config.models.length > 0);
     })();
 
     // 展开逻辑：

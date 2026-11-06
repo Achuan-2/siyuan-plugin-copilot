@@ -347,6 +347,8 @@
     "modelsAddModel": "Add Model",
     "modelsAddSuccess": "Model added",
     "modelsAdded": "Added Models",
+    "modelsRegularGroup": "Regular Models",
+    "modelsImageGenerationGroup": "Image Generation Models",
     "modelsDragToSort": "Drag to reorder",
     "modelsAlreadyAdded": "Added",
     "modelsCapabilities": "Model Capabilities",

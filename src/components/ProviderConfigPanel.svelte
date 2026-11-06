@@ -546,6 +546,20 @@
         return text.includes(query);
     });
 
+    // 仅对展示列表分组，保留配置中的模型顺序及现有拖拽排序逻辑。
+    $: addedModelGroups = [
+        {
+            id: 'regular',
+            title: i18n('modelsRegularGroup'),
+            models: filteredAddedModels.filter(model => !model.capabilities?.imageGeneration),
+        },
+        {
+            id: 'image',
+            title: i18n('modelsImageGenerationGroup'),
+            models: filteredAddedModels.filter(model => !!model.capabilities?.imageGeneration),
+        },
+    ].filter(group => group.models.length > 0);
+
     // 开始编辑名称
     function startEditName() {
         editingName = providerName;
@@ -949,262 +963,265 @@
             {#if filteredAddedModels.length === 0}
                 <div class="model-search-empty">{i18n('modelsNoMatch')}</div>
             {/if}
-            {#each filteredAddedModels as model (model.id)}
-                <div
-                    class="model-item"
-                    data-model-id={model.id}
-                    class:model-item--dragging={draggedModelId === model.id}
-                    class:model-item--drop-before={dragOverModelId === model.id &&
-                        modelDropPosition === 'before'}
-                    class:model-item--drop-after={dragOverModelId === model.id &&
-                        modelDropPosition === 'after'}
-                    on:dragover={e => handleModelDragOver(e, model.id)}
-                    on:drop={e => handleModelDrop(e, model.id)}
-                >
+            {#each addedModelGroups as group (group.id)}
+                <h6 class="model-group-header">{group.title}</h6>
+                {#each group.models as model (model.id)}
                     <div
-                        class="model-item__header"
-                        class:model-item__header--expanded={showConfigForModel[model.id]}
+                        class="model-item"
+                        data-model-id={model.id}
+                        class:model-item--dragging={draggedModelId === model.id}
+                        class:model-item--drop-before={dragOverModelId === model.id &&
+                            modelDropPosition === 'before'}
+                        class:model-item--drop-after={dragOverModelId === model.id &&
+                            modelDropPosition === 'after'}
+                        on:dragover={e => handleModelDragOver(e, model.id)}
+                        on:drop={e => handleModelDrop(e, model.id)}
                     >
-                        <div class="model-item__header-main">
-                            <div
-                                class="model-item__drag-handle"
-                                draggable="true"
-                                role="button"
-                                tabindex="0"
-                                title={i18n('modelsDragToSort')}
-                                aria-label={i18n('modelsDragToSort')}
-                                on:dragstart|stopPropagation={e =>
-                                    handleModelDragStart(e, model.id)}
-                                on:dragend={resetModelDragState}
-                                on:pointerdown={e => handleModelPointerDown(e, model.id)}
-                                on:pointermove={handleModelPointerMove}
-                                on:pointerup={finishModelTouchDrag}
-                                on:pointercancel={cancelModelTouchDrag}
-                            >
-                                <svg><use xlink:href="#iconDrag"></use></svg>
+                        <div
+                            class="model-item__header"
+                            class:model-item__header--expanded={showConfigForModel[model.id]}
+                        >
+                            <div class="model-item__header-main">
+                                <div
+                                    class="model-item__drag-handle"
+                                    draggable="true"
+                                    role="button"
+                                    tabindex="0"
+                                    title={i18n('modelsDragToSort')}
+                                    aria-label={i18n('modelsDragToSort')}
+                                    on:dragstart|stopPropagation={e =>
+                                        handleModelDragStart(e, model.id)}
+                                    on:dragend={resetModelDragState}
+                                    on:pointerdown={e => handleModelPointerDown(e, model.id)}
+                                    on:pointermove={handleModelPointerMove}
+                                    on:pointerup={finishModelTouchDrag}
+                                    on:pointercancel={cancelModelTouchDrag}
+                                >
+                                    <svg><use xlink:href="#iconDrag"></use></svg>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="model-item__toggle"
+                                    aria-expanded={showConfigForModel[model.id] || false}
+                                    on:click={() => toggleModelConfig(model.id)}
+                                >
+                                    <svg class="b3-button__icon">
+                                        <use
+                                            xlink:href={showConfigForModel[model.id]
+                                                ? '#iconDown'
+                                                : '#iconRight'}
+                                        ></use>
+                                    </svg>
+                                    <span class="model-item__name">{model.name}</span>
+                                </button>
                             </div>
                             <button
-                                type="button"
-                                class="model-item__toggle"
-                                aria-expanded={showConfigForModel[model.id] || false}
-                                on:click={() => toggleModelConfig(model.id)}
+                                class="b3-button b3-button--text b3-button--error"
+                                on:click={() => removeModel(model.id)}
+                                title={i18n('commonDelete')}
                             >
                                 <svg class="b3-button__icon">
-                                    <use
-                                        xlink:href={showConfigForModel[model.id]
-                                            ? '#iconDown'
-                                            : '#iconRight'}
-                                    ></use>
+                                    <use xlink:href="#iconTrashcan"></use>
                                 </svg>
-                                <span class="model-item__name">{model.name}</span>
                             </button>
                         </div>
-                        <button
-                            class="b3-button b3-button--text b3-button--error"
-                            on:click={() => removeModel(model.id)}
-                            title={i18n('commonDelete')}
-                        >
-                            <svg class="b3-button__icon">
-                                <use xlink:href="#iconTrashcan"></use>
-                            </svg>
-                        </button>
-                    </div>
-                    {#if showConfigForModel[model.id]}
-                        <div class="model-item__config">
-                        {#if providerId !== 'codex'}
-                        <div class="model-config-item">
-                            <span>{i18n('modelsTemperature')}: {model.temperature}</span>
-                            <input
-                                type="range"
-                                min="0"
-                                max="2"
-                                step="0.1"
-                                bind:value={model.temperature}
-                                on:change={() =>
-                                    updateModel(model.id, 'temperature', model.temperature)}
-                            />
-                        </div>
-                        <div class="model-config-item">
-                            <span>{i18n('modelsMaxTokens')}</span>
-                            <input
-                                class="b3-text-field"
-                                type="number"
-                                min="-1"
-                                max="128000"
-                                bind:value={model.maxTokens}
-                                on:change={() =>
-                                    updateModel(model.id, 'maxTokens', model.maxTokens)}
-                            />
-                        </div>
-                        {/if}
-                        <div class="model-config-item">
-                            <span>{i18n('modelsCapabilities')}</span>
-                                <div class="model-capabilities">
-                                <label class="">
-                                    <input
-                                        type="checkbox"
-                                        class="b3-switch"
-                                        checked={model.capabilities?.thinking || false}
-                                        on:change={e => {
-                                            if (!model.capabilities) model.capabilities = {};
-                                            model.capabilities.thinking = e.currentTarget.checked;
-                                            updateModel(
-                                                model.id,
-                                                'capabilities',
-                                                model.capabilities
-                                            );
-                                        }}
-                                    />
-                                    <span class="capability-label">
-                                        💡 {i18n('modelsThinking')}
-                                    </span>
-                                </label>
-                                <label class="">
-                                    <input
-                                        type="checkbox"
-                                        class="b3-switch"
-                                        checked={model.capabilities?.vision || false}
-                                        on:change={e => {
-                                            if (!model.capabilities) model.capabilities = {};
-                                            model.capabilities.vision = e.currentTarget.checked;
-                                            updateModel(
-                                                model.id,
-                                                'capabilities',
-                                                model.capabilities
-                                            );
-                                        }}
-                                    />
-                                    <span class="capability-label">👀 {i18n('modelsVision')}</span>
-                                </label>
-                                <label class="">
-                                    <input
-                                        type="checkbox"
-                                        class="b3-switch"
-                                        checked={model.capabilities?.imageGeneration || false}
-                                        disabled={providerId === 'codex'}
-                                        on:change={e => {
-                                            if (!model.capabilities) model.capabilities = {};
-                                            model.capabilities.imageGeneration =
-                                                e.currentTarget.checked;
-                                            updateModel(
-                                                model.id,
-                                                'capabilities',
-                                                model.capabilities
-                                            );
-                                        }}
-                                    />
-                                    <span class="capability-label">
-                                        🖼️ {i18n('modelsImageGeneration')}
-                                    </span>
-                                </label>
-                                <label class="">
-                                    <input
-                                        type="checkbox"
-                                        class="b3-switch"
-                                        checked={model.capabilities?.toolCalling || false}
-                                        on:change={e => {
-                                            if (!model.capabilities) model.capabilities = {};
-                                            model.capabilities.toolCalling =
-                                                e.currentTarget.checked;
-                                            updateModel(
-                                                model.id,
-                                                'capabilities',
-                                                model.capabilities
-                                            );
-                                        }}
-                                    />
-                                    <span class="capability-label">
-                                        🛠️ {i18n('modelsToolCalling')}
-                                    </span>
-                                </label>
-                                <label class="">
-                                    <input
-                                        type="checkbox"
-                                        class="b3-switch"
-                                        checked={model.capabilities?.webSearch || false}
-                                        disabled={providerId === 'codex'}
-                                        on:change={e => {
-                                            if (!model.capabilities) model.capabilities = {};
-                                            model.capabilities.webSearch = e.currentTarget.checked;
-                                            updateModel(
-                                                model.id,
-                                                'capabilities',
-                                                model.capabilities
-                                            );
-                                        }}
-                                    />
-                                    <span class="capability-label">
-                                        🌐 {i18n('modelsWebSearch')}
-                                    </span>
-                                </label>
-                                </div>
-                        </div>
-                        {#if providerId !== 'codex'}
-                        <!-- 自定义参数设置，默认折叠 -->
-                        <div class="model-config-item">
-                            <button
-                                class="custom-body-toggle"
-                                on:click={() =>
-                                    (showCustomBodyForModel[model.id] =
-                                        !showCustomBodyForModel[model.id])}
-                            >
-                                <svg class="b3-button__icon">
-                                    <use
-                                        xlink:href={showCustomBodyForModel[model.id]
-                                            ? '#iconDown'
-                                            : '#iconRight'}
-                                    ></use>
-                                </svg>
-                                <span>{i18n('modelsCustomBody')}</span>
-                            </button>
+                        {#if showConfigForModel[model.id]}
+                            <div class="model-item__config">
+                            {#if providerId !== 'codex'}
+                            <div class="model-config-item">
+                                <span>{i18n('modelsTemperature')}: {model.temperature}</span>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="2"
+                                    step="0.1"
+                                    bind:value={model.temperature}
+                                    on:change={() =>
+                                        updateModel(model.id, 'temperature', model.temperature)}
+                                />
+                            </div>
+                            <div class="model-config-item">
+                                <span>{i18n('modelsMaxTokens')}</span>
+                                <input
+                                    class="b3-text-field"
+                                    type="number"
+                                    min="-1"
+                                    max="128000"
+                                    bind:value={model.maxTokens}
+                                    on:change={() =>
+                                        updateModel(model.id, 'maxTokens', model.maxTokens)}
+                                />
+                            </div>
+                            {/if}
+                            <div class="model-config-item">
+                                <span>{i18n('modelsCapabilities')}</span>
+                                    <div class="model-capabilities">
+                                    <label class="">
+                                        <input
+                                            type="checkbox"
+                                            class="b3-switch"
+                                            checked={model.capabilities?.thinking || false}
+                                            on:change={e => {
+                                                if (!model.capabilities) model.capabilities = {};
+                                                model.capabilities.thinking = e.currentTarget.checked;
+                                                updateModel(
+                                                    model.id,
+                                                    'capabilities',
+                                                    model.capabilities
+                                                );
+                                            }}
+                                        />
+                                        <span class="capability-label">
+                                            💡 {i18n('modelsThinking')}
+                                        </span>
+                                    </label>
+                                    <label class="">
+                                        <input
+                                            type="checkbox"
+                                            class="b3-switch"
+                                            checked={model.capabilities?.vision || false}
+                                            on:change={e => {
+                                                if (!model.capabilities) model.capabilities = {};
+                                                model.capabilities.vision = e.currentTarget.checked;
+                                                updateModel(
+                                                    model.id,
+                                                    'capabilities',
+                                                    model.capabilities
+                                                );
+                                            }}
+                                        />
+                                        <span class="capability-label">👀 {i18n('modelsVision')}</span>
+                                    </label>
+                                    <label class="">
+                                        <input
+                                            type="checkbox"
+                                            class="b3-switch"
+                                            checked={model.capabilities?.imageGeneration || false}
+                                            disabled={providerId === 'codex'}
+                                            on:change={e => {
+                                                if (!model.capabilities) model.capabilities = {};
+                                                model.capabilities.imageGeneration =
+                                                    e.currentTarget.checked;
+                                                updateModel(
+                                                    model.id,
+                                                    'capabilities',
+                                                    model.capabilities
+                                                );
+                                            }}
+                                        />
+                                        <span class="capability-label">
+                                            🖼️ {i18n('modelsImageGeneration')}
+                                        </span>
+                                    </label>
+                                    <label class="">
+                                        <input
+                                            type="checkbox"
+                                            class="b3-switch"
+                                            checked={model.capabilities?.toolCalling || false}
+                                            on:change={e => {
+                                                if (!model.capabilities) model.capabilities = {};
+                                                model.capabilities.toolCalling =
+                                                    e.currentTarget.checked;
+                                                updateModel(
+                                                    model.id,
+                                                    'capabilities',
+                                                    model.capabilities
+                                                );
+                                            }}
+                                        />
+                                        <span class="capability-label">
+                                            🛠️ {i18n('modelsToolCalling')}
+                                        </span>
+                                    </label>
+                                    <label class="">
+                                        <input
+                                            type="checkbox"
+                                            class="b3-switch"
+                                            checked={model.capabilities?.webSearch || false}
+                                            disabled={providerId === 'codex'}
+                                            on:change={e => {
+                                                if (!model.capabilities) model.capabilities = {};
+                                                model.capabilities.webSearch = e.currentTarget.checked;
+                                                updateModel(
+                                                    model.id,
+                                                    'capabilities',
+                                                    model.capabilities
+                                                );
+                                            }}
+                                        />
+                                        <span class="capability-label">
+                                            🌐 {i18n('modelsWebSearch')}
+                                        </span>
+                                    </label>
+                                    </div>
+                            </div>
+                            {#if providerId !== 'codex'}
+                            <!-- 自定义参数设置，默认折叠 -->
+                            <div class="model-config-item">
+                                <button
+                                    class="custom-body-toggle"
+                                    on:click={() =>
+                                        (showCustomBodyForModel[model.id] =
+                                            !showCustomBodyForModel[model.id])}
+                                >
+                                    <svg class="b3-button__icon">
+                                        <use
+                                            xlink:href={showCustomBodyForModel[model.id]
+                                                ? '#iconDown'
+                                                : '#iconRight'}
+                                        ></use>
+                                    </svg>
+                                    <span>{i18n('modelsCustomBody')}</span>
+                                </button>
 
-                            {#if showCustomBodyForModel[model.id]}
-                                <div class="custom-body-content">
-                                    <div class="custom-body-header">
-                                        {#if model.customBody && validateJsonString(model.customBody).valid}
-                                            <button
-                                                class="format-json-btn"
-                                                title={i18n('providerJsonFormat')}
-                                                on:click={() =>
-                                                    formatCustomBodyJson(
-                                                        model.id,
-                                                        model.customBody || ''
-                                                    )}
-                                            >
-                                                <svg
-                                                    class="b3-button__icon"
-                                                    style="width: 12px; height: 12px; color: var(--b3-theme-on-surface);"
+                                {#if showCustomBodyForModel[model.id]}
+                                    <div class="custom-body-content">
+                                        <div class="custom-body-header">
+                                            {#if model.customBody && validateJsonString(model.customBody).valid}
+                                                <button
+                                                    class="format-json-btn"
+                                                    title={i18n('providerJsonFormat')}
+                                                    on:click={() =>
+                                                        formatCustomBodyJson(
+                                                            model.id,
+                                                            model.customBody || ''
+                                                        )}
                                                 >
-                                                    <use xlink:href="#iconFormat"></use>
-                                                </svg>
-                                            </button>
+                                                    <svg
+                                                        class="b3-button__icon"
+                                                        style="width: 12px; height: 12px; color: var(--b3-theme-on-surface);"
+                                                    >
+                                                        <use xlink:href="#iconFormat"></use>
+                                                    </svg>
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        <textarea
+                                            class="b3-text-field custom-body-textarea"
+                                            class:json-error={customBodyErrors[model.id]}
+                                            class:json-valid={model.customBody &&
+                                                !customBodyErrors[model.id] &&
+                                                validateJsonString(model.customBody).valid}
+                                            style="width: 100%; height: 80px; resize: vertical; font-family: monospace; font-size: 12px;"
+                                            value={model.customBody || ''}
+                                            placeholder={i18n('providerJsonPlaceholder')}
+                                            spellcheck={false}
+                                            on:input={e =>
+                                                handleCustomBodyChange(model.id, e.currentTarget.value)}
+                                        />
+                                        {#if customBodyErrors[model.id]}
+                                            <div class="json-error-hint">
+                                                {customBodyErrors[model.id]}
+                                            </div>
                                         {/if}
                                     </div>
-                                    <textarea
-                                        class="b3-text-field custom-body-textarea"
-                                        class:json-error={customBodyErrors[model.id]}
-                                        class:json-valid={model.customBody &&
-                                            !customBodyErrors[model.id] &&
-                                            validateJsonString(model.customBody).valid}
-                                        style="width: 100%; height: 80px; resize: vertical; font-family: monospace; font-size: 12px;"
-                                        value={model.customBody || ''}
-                                        placeholder={i18n('providerJsonPlaceholder')}
-                                        spellcheck={false}
-                                        on:input={e =>
-                                            handleCustomBodyChange(model.id, e.currentTarget.value)}
-                                    />
-                                    {#if customBodyErrors[model.id]}
-                                        <div class="json-error-hint">
-                                            {customBodyErrors[model.id]}
-                                        </div>
-                                    {/if}
-                                </div>
+                                {/if}
+                            </div>
                             {/if}
-                        </div>
+                            </div>
                         {/if}
-                        </div>
-                    {/if}
-                </div>
+                    </div>
+                {/each}
             {/each}
         </div>
     {/if}
@@ -1482,6 +1499,13 @@
 
     .added-models-search {
         margin-bottom: 10px;
+    }
+
+    .model-group-header {
+        margin: 16px 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--b3-theme-on-surface);
     }
 
     .model-item {
