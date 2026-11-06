@@ -1,6 +1,6 @@
 <script lang="ts">
     import { floatingLayer } from '../utils/floatingLayer';
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, onDestroy } from 'svelte';
     import { platformUtils } from 'siyuan';
     import { chat, type Message } from '../ai-chat';
     import { pushMsg, pushErrMsg } from '../api';
@@ -11,6 +11,9 @@
     export let plugin: any;
     export let providers: Record<string, any> = {};
     export let settings: any = {};
+    export let standalone = false;
+    export let defaultProvider = '';
+    export let defaultModelId = '';
 
     const dispatch = createEventDispatcher();
     const BIDIRECTIONAL_CHINESE_ENGLISH = 'zh-en';
@@ -26,6 +29,16 @@
     let translateAbortController: AbortController | null = null;
     let currentTranslateId: string | null = null;
     let showTranslateHistory = false;
+    let destroyed = false;
+
+    onDestroy(() => {
+        destroyed = true;
+        cancelTranslate();
+    });
+
+    function dialogLayer(node: HTMLElement) {
+        if (!standalone) return floatingLayer(node);
+    }
 
     interface TranslateHistoryItem {
         id: string;
@@ -62,6 +75,10 @@
         }
         if (settings.translateModelId) {
             translateModelId = settings.translateModelId;
+        }
+        if (!translateProvider || !translateModelId) {
+            translateProvider = defaultProvider;
+            translateModelId = defaultModelId;
         }
     }
 
@@ -350,9 +367,11 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                 signal: translateAbortController.signal,
                 enableThinking: false,
                 onChunk: (chunk: string) => {
+                    if (destroyed) return;
                     translateOutputText += chunk;
                 },
                 onComplete: async (fullText: string) => {
+                    if (destroyed) return;
                     translateOutputText = fullText;
                     isTranslating = false;
 
@@ -384,6 +403,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
                     }
                 },
                 onError: (error: Error) => {
+                    if (destroyed) return;
                     console.error('翻译API错误:', error);
                     isTranslating = false;
                     pushErrMsg(
@@ -395,6 +415,7 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
             providerConfig.advancedConfig
             );
         } catch (error: any) {
+            if (destroyed) return;
             console.error('翻译失败:', error);
             if (error.name !== 'AbortError') {
                 pushErrMsg(
@@ -416,8 +437,10 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
 </script>
 
 {#if isOpen}
-    <div use:floatingLayer class="translate-dialog__overlay" on:click={close}></div>
-    <div use:floatingLayer class="translate-dialog">
+    {#if !standalone}
+        <div use:floatingLayer class="translate-dialog__overlay" on:click={close}></div>
+    {/if}
+    <div use:dialogLayer class="translate-dialog" class:translate-dialog--standalone={standalone}>
         <div class="translate-dialog__header">
             <h3>{i18n('aiSidebarTranslateTitle')}</h3>
             <div class="translate-dialog__header-actions">
@@ -648,6 +671,30 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
             font-size: 16px;
             font-weight: 600;
             color: var(--b3-theme-on-background);
+        }
+    }
+
+    .translate-dialog--standalone {
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
+        box-shadow: none;
+        z-index: auto;
+
+        .translate-dialog__content {
+            min-height: 0;
+        }
+
+        .translate-dialog__textareas,
+        .translate-dialog__textarea-container {
+            min-width: 0;
         }
     }
 

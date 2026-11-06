@@ -29,6 +29,8 @@ import { configureChatGPTStorage } from "./chatgpt/storage";
 import { setPluginInstance, i18n, tf } from './utils/i18n';
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
+import TranslateWindowHost from "./components/TranslateWindowHost.svelte";
+import { TRANSLATE_TAB_TYPE, findTranslateWindow, focusTranslateWindow } from "./utils/translateWindow";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
 import { updateSettings, getSettings, PLUGIN_DATA_CHANGED_EVENT } from "./stores/settings";
 import { SettingsStorage, SettingsConflictError, cloneSettings, type SettingsSaveOptions } from "./utils/settingsStorage";
@@ -70,6 +72,8 @@ export default class PluginSample extends Plugin {
     private domainIconMap: Map<string, string> = new Map(); // 缓存域名与图标文件名的映射
     private registeredDocks: Set<string> = new Set();
     private settingsStorage?: SettingsStorage;
+    private translateWindowOpening: Promise<void> | null = null;
+    private translateWindowDisposed = false;
 
     private getSettingsStorage(): SettingsStorage {
         return this.settingsStorage ||= new SettingsStorage(this);
@@ -2031,8 +2035,30 @@ export default class PluginSample extends Plugin {
 <path d="M878.159424 565.40635l-327.396585 0c-11.307533 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.15859 20.466124 20.466124 20.466124l327.396585 0c11.2973 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C898.625548 574.575174 889.456724 565.40635 878.159424 565.40635zM857.6933 892.802936l-286.464337 0 0-286.464337 286.464337 0L857.6933 892.802936z" p-id="7151"></path><path d="M430.606225 565.40635l-327.396585 0c-11.2973 0-20.466124 9.168824-20.466124 20.466124l0 327.396585c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.396585C451.072349 574.575174 441.913758 565.40635 430.606225 565.40635zM410.140101 892.802936l-286.464337 0 0-286.464337 286.464337 0L410.140101 892.802936z" p-id="7152"></path><path d="M430.606225 115.601878l-327.396585 0c-11.2973 0-20.466124 9.15859-20.466124 20.466124l0 327.386352c0 11.307533 9.168824 20.466124 20.466124 20.466124l327.396585 0c11.307533 0 20.466124-9.15859 20.466124-20.466124l0-327.386352C451.072349 124.760468 441.913758 115.601878 430.606225 115.601878zM410.140101 442.98823l-286.464337 0 0-286.454104 286.464337 0L410.140101 442.98823z" p-id="7153"></path><path d="M965.529307 277.744745l-214.433814-214.433814c-3.837398-3.837398-9.046027-5.996574-14.46955-5.996574-5.433756 0-10.632151 2.159176-14.479783 5.996574l-214.433814 214.433814c-7.992021 7.992021-7.992021 20.957311 0 28.949332l214.433814 214.433814c4.001127 3.990894 9.240455 5.996574 14.479783 5.996574 5.229095 0 10.468422-2.00568 14.46955-5.996574l214.433814-214.433814c3.837398-3.837398 5.996574-9.046027 5.996574-14.46955C971.525881 286.790772 969.366705 281.582143 965.529307 277.744745zM736.625944 477.709009l-185.494715-185.484482 185.494715-185.494715 185.484482 185.494715L736.625944 477.709009z" p-id="7154"></path>
     </symbol>
     `);
-        // 注册AI标签页类型
+        // 注册翻译和 AI 标签页类型，原生独立窗口通过这些类型还原界面。
         const pluginInstance = this;
+        this.addTab({
+            type: TRANSLATE_TAB_TYPE,
+            init() {
+                const model = this;
+                const element = this.element as HTMLElement;
+                element.style.height = '100%';
+                element.style.minHeight = '0';
+                this.translateApp = new TranslateWindowHost({
+                    target: element,
+                    props: {
+                        plugin: pluginInstance,
+                        defaultProvider: this.data?.provider || '',
+                        defaultModelId: this.data?.modelId || '',
+                        close: () => model.tab?.close(),
+                    },
+                });
+            },
+            destroy() {
+                this.translateApp?.$destroy();
+                this.translateApp = null;
+            },
+        });
         this.addTab({
             type: AI_TAB_TYPE,
             init() {
@@ -2393,6 +2419,7 @@ export default class PluginSample extends Plugin {
     }
 
     onunload() {
+        this.translateWindowDisposed = true;
         for (const element of this.webViewDevToolsCleanups.keys()) this.disposeWebAppView(element);
         disposeWebviewDevTools();
         this.settingsStorage?.dispose();
@@ -2900,6 +2927,49 @@ export default class PluginSample extends Plugin {
                 })
             );
         }
+    }
+
+    /**
+     * 复用思源原生独立窗口，翻译任务不依赖主窗口中的侧栏组件。
+     */
+    openTranslateWindow(provider = '', modelId = ''): Promise<void> {
+        if (this.translateWindowDisposed) return Promise.resolve();
+        if (this.translateWindowOpening) return this.translateWindowOpening;
+        const opening = async () => {
+            const existing = findTranslateWindow(this.name, window.location.origin);
+            if (existing) {
+                focusTranslateWindow(existing);
+                return;
+            }
+            const tab = await openTab({
+                app: this.app,
+                custom: {
+                    title: i18n('aiSidebarTranslateTitle'),
+                    icon: 'iconTranslate',
+                    id: this.name + TRANSLATE_TAB_TYPE,
+                    data: { provider, modelId },
+                },
+            });
+            if (!tab) return;
+            if (this.translateWindowDisposed) {
+                tab.close();
+                return;
+            }
+            openWindow({ tab, width: 1000, height: 720 });
+            // openWindow 通过 IPC 创建窗口；窗口出现前合并连续的打开请求。
+            const deadline = Date.now() + 3000;
+            while (!this.translateWindowDisposed && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                if (findTranslateWindow(this.name, window.location.origin)) break;
+            }
+        };
+        this.translateWindowOpening = opening().catch(error => {
+            console.error('Failed to open translation window:', error);
+            pushErrMsg(error instanceof Error ? error.message : String(error));
+        }).finally(() => {
+            this.translateWindowOpening = null;
+        });
+        return this.translateWindowOpening;
     }
 
     /**
