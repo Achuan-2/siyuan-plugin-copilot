@@ -74,7 +74,6 @@
     import ToolSelector, { type ToolConfig } from './components/ToolSelector.svelte';
     import ModelPresetButton from './components/ModelPreset.svelte';
     import TranslateDialog from './components/TranslateDialog.svelte';
-    import { usesTranslateWindow } from './utils/translateWindow';
     import WebAppManager from './components/WebAppManager.svelte';
     import TodoCardList from './components/TodoCardList.svelte';
     import type { ProviderConfig } from './defaultSettings';
@@ -1137,10 +1136,6 @@
     // 翻译功能相关函数
     // 打开翻译对话框
     function openTranslateDialog() {
-        if (usesTranslateWindow(getFrontend())) {
-            void plugin.openTranslateWindow(currentProvider, currentModelId);
-            return;
-        }
         isTranslateDialogOpen = true;
         showTranslateHistory = false;
 

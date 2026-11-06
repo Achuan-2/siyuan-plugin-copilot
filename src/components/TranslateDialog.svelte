@@ -1,11 +1,12 @@
 <script lang="ts">
     import { floatingLayer } from '../utils/floatingLayer';
     import { createEventDispatcher, onDestroy } from 'svelte';
-    import { platformUtils } from 'siyuan';
+    import { getFrontend, platformUtils } from 'siyuan';
     import { chat, type Message } from '../ai-chat';
     import { pushMsg, pushErrMsg } from '../api';
     import { i18n, tf } from '../utils/i18n';
     import MultiModelSelector from './MultiModelSelector.svelte';
+    import { supportsTranslateWindow, type TranslateWindowDraft } from '../utils/translateWindow';
 
     export let isOpen = false;
     export let plugin: any;
@@ -14,6 +15,7 @@
     export let standalone = false;
     export let defaultProvider = '';
     export let defaultModelId = '';
+    export let initialDraft: TranslateWindowDraft | null = null;
 
     const dispatch = createEventDispatcher();
     const BIDIRECTIONAL_CHINESE_ENGLISH = 'zh-en';
@@ -30,6 +32,9 @@
     let currentTranslateId: string | null = null;
     let showTranslateHistory = false;
     let destroyed = false;
+    let isOpeningWindow = false;
+    let appliedDraft: TranslateWindowDraft | null = null;
+    const canOpenWindow = !standalone && supportsTranslateWindow(getFrontend());
 
     onDestroy(() => {
         destroyed = true;
@@ -55,6 +60,40 @@
     // 初始化
     $: if (isOpen) {
         initTranslateDialog();
+    }
+
+    $: if (isOpen && initialDraft && initialDraft !== appliedDraft) {
+        translateInputLanguage = initialDraft.inputLanguage;
+        translateOutputLanguage = initialDraft.outputLanguage;
+        translateInputText = initialDraft.inputText;
+        translateOutputText = initialDraft.outputText;
+        translateProvider = initialDraft.provider;
+        translateModelId = initialDraft.modelId;
+        currentTranslateId = initialDraft.historyId;
+        showTranslateHistory = false;
+        appliedDraft = initialDraft;
+    }
+
+    async function openInWindow() {
+        if (!canOpenWindow || isTranslating || isOpeningWindow) return;
+        isOpeningWindow = true;
+        try {
+            const opened = await plugin.openTranslateWindow(translateProvider, translateModelId, {
+                inputLanguage: translateInputLanguage,
+                outputLanguage: translateOutputLanguage,
+                inputText: translateInputText,
+                outputText: translateOutputText,
+                provider: translateProvider,
+                modelId: translateModelId,
+                historyId: currentTranslateId,
+            } satisfies TranslateWindowDraft);
+            if (opened && !destroyed) close();
+        } catch (error) {
+            console.error('Failed to detach translation dialog:', error);
+            pushErrMsg(error instanceof Error ? error.message : String(error));
+        } finally {
+            isOpeningWindow = false;
+        }
     }
 
     function initTranslateDialog() {
@@ -444,6 +483,17 @@ Translate the above text enclosed with <translate_input> into {outputLanguage} w
         <div class="translate-dialog__header">
             <h3>{i18n('aiSidebarTranslateTitle')}</h3>
             <div class="translate-dialog__header-actions">
+                {#if canOpenWindow}
+                    <button
+                        class="b3-button b3-button--text"
+                        on:click={openInWindow}
+                        title={i18n('aiSidebarActionsOpenWindow')}
+                        aria-label={i18n('aiSidebarActionsOpenWindow')}
+                        disabled={isTranslating || isOpeningWindow}
+                    >
+                        <svg class="b3-button__icon"><use xlink:href="#iconOpenWindow"></use></svg>
+                    </button>
+                {/if}
                 <button
                     class="b3-button b3-button--text"
                     on:click={() => (showTranslateHistory = !showTranslateHistory)}

@@ -93,7 +93,7 @@ function nativeWindow({ kernelOrigin = origin, pluginName = name, type = 'copilo
     };
 }
 
-test('只有桌面客户端打开独立窗口，浏览器与手机保留内置翻译', () => {
+test('所有平台默认打开内置翻译，只有桌面客户端允许手动切换独立窗口', () => {
     const helpers = helperFixture();
     for (const frontend of ['desktop', 'desktop-window', 'browser-desktop', 'browser-mobile', 'mobile']) {
         const calls = [];
@@ -106,13 +106,11 @@ test('只有桌面客户端打开独立窗口，浏览器与手机保留内置�
         vm.runInNewContext(compile(openDialog.getText(sidebarAst)), state);
         state.openTranslateDialog();
         const desktop = frontend === 'desktop' || frontend === 'desktop-window';
-        assert.equal(calls.length, desktop ? 1 : 0);
-        assert.equal(state.isTranslateDialogOpen, !desktop);
-        if (desktop) assert.deepEqual(calls[0], ['custom_test', 'test-model']);
-        else {
-            assert.equal(state.showTranslateHistory, false);
-            assert.equal(state.translateProvider, 'custom_test');
-        }
+        assert.equal(calls.length, 0);
+        assert.equal(state.isTranslateDialogOpen, true);
+        assert.equal(state.showTranslateHistory, false);
+        assert.equal(state.translateProvider, 'custom_test');
+        assert.equal(helpers.supportsTranslateWindow(frontend), desktop);
     }
 });
 
@@ -125,6 +123,10 @@ test('只复用同一内核、同一插件的翻译窗口，忽略其他窗口�
     ];
     const helpers = helperFixture([...otherWindows, target]);
     assert.equal(helpers.findTranslateWindow(name, origin), target);
+    assert.equal(helpers.isTranslateWindowURL(target.webContents.getURL(), name, origin), true);
+    for (const win of otherWindows.slice(0, 3)) {
+        assert.equal(helpers.isTranslateWindowURL(win.webContents.getURL(), name, origin), false);
+    }
     helpers.focusTranslateWindow(target);
     assert.deepEqual(target.calls, ['restore', 'show', 'focus']);
     helpers.sandbox.window.require = undefined;
@@ -137,6 +139,9 @@ function openerFixture({ existing = null, deferTab = false, fail = false } = {})
     const tab = { close: () => calls.push('close-tab') };
     const state = {
         exports: {}, window: { location: { origin } }, Date,
+        TranslateDraftTransfer: class {
+            offer(draft) { calls.push(['draft', draft]); return 'draft-1'; }
+        },
         console: { error() {} }, setTimeout: callback => { existing ||= nativeWindow(); callback(); },
         findTranslateWindow: () => existing,
         focusTranslateWindow: win => calls.push(['focus', win]),
@@ -171,6 +176,22 @@ test('原生窗口携带当前模型；连续点击仅创建一次，已有窗�
     assert.equal(f.calls.filter(call => call[0] === 'focus').length, 1);
 });
 
+test('新建和复用窗口都会传递草稿，新窗口布局只包含草稿 ID', async () => {
+    const draft = { inputText: 'source', outputText: 'translation' };
+    for (const existing of [null, nativeWindow()]) {
+        const f = openerFixture({ existing });
+        assert.equal(await f.plugin.openTranslateWindow('test', 'model', draft), true);
+        assert.equal(f.calls.find(call => call[0] === 'draft')[1], draft);
+        const tab = f.calls.find(call => call[0] === 'tab');
+        if (tab) {
+            assert.equal(tab[1].custom.data.draftId, 'draft-1');
+            assert.equal(JSON.stringify(tab[1]).includes('translation'), false);
+        } else {
+            assert.equal(f.calls.some(call => call[0] === 'focus'), true);
+        }
+    }
+});
+
 test('打开失败后可重试；卸载期间不再创建窗口并关闭临时标签页', async () => {
     const failing = openerFixture({ fail: true });
     await failing.plugin.openTranslateWindow();
@@ -202,6 +223,7 @@ test('销毁翻译组件会取消请求，迟到的流式回调不再写历史�
     const notices = [];
     const state = {
         exports: {}, AbortController, console, createEventDispatcher: () => () => {},
+        getFrontend: () => 'desktop', supportsTranslateWindow: () => true,
         onDestroy: callback => { onDestroy = callback; },
         i18n: key => key, tf: key => key,
         pushMsg: message => notices.push(message), pushErrMsg: message => notices.push(message),
@@ -222,4 +244,87 @@ test('销毁翻译组件会取消请求，迟到的流式回调不再写历史�
     request.onError(new Error('迟到的错误'));
     assert.deepEqual(writes, []);
     assert.deepEqual(notices, []);
+});
+
+test('草稿在窗口稍后加载时仍可接收，复用窗口可接收新内容，关闭后释放通道', async () => {
+    const channels = new Set();
+    const queue = [];
+    let nextId = 0;
+    class Channel {
+        listeners = new Set();
+        constructor(name) { this.name = name; channels.add(this); }
+        addEventListener(_type, listener) { this.listeners.add(listener); }
+        removeEventListener(_type, listener) { this.listeners.delete(listener); }
+        postMessage(data) {
+            for (const channel of channels) {
+                if (channel !== this && channel.name === this.name) {
+                    queue.push(() => channel.listeners.forEach(listener => listener({ data: structuredClone(data) })));
+                }
+            }
+        }
+        close() { channels.delete(this); this.listeners.clear(); }
+    }
+    const flush = () => { while (queue.length) queue.shift()(); };
+    const state = { exports: {}, BroadcastChannel: Channel, crypto: { randomUUID: () => String(++nextId) } };
+    vm.runInNewContext(compile(helperSource), state);
+    const Transfer = state.exports.TranslateDraftTransfer;
+    const sender = new Transfer(name);
+    const draft = { inputLanguage: 'en', outputLanguage: 'zh-CN', inputText: 'hello', outputText: '你好',
+        provider: 'custom_test', modelId: 'model', historyId: 'history-1' };
+    const id = sender.offer(draft);
+    flush(); // 此时窗口尚未加载，available 消息没有接收者。
+    const receiver = new Transfer(name);
+    const received = [];
+    const stop = receiver.receive(id, value => received.push(value));
+    flush();
+    assert.deepEqual(received, [draft]);
+    assert.equal(sender.pending, null);
+    const second = { ...draft, inputText: 'world', outputText: '世界' };
+    sender.offer(second);
+    flush();
+    assert.deepEqual(received, [draft, second]);
+    stop();
+    receiver.dispose();
+    sender.dispose();
+    assert.equal(channels.size, 0);
+});
+
+test('点击切换按钮携带原文译文和模型，成功才关闭内置弹窗；翻译中不切换', async () => {
+    const script = read('src/components/TranslateDialog.svelte').match(/<script lang="ts">([\s\S]*?)<\/script>/)[1];
+    const ast = ts.createSourceFile('translator.ts', script, ts.ScriptTarget.Latest, true);
+    const body = ast.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isLabeledStatement(node))
+        .map(node => node.getText(ast).replace(/^export /, '')).join('\n');
+    for (const frontend of ['desktop', 'desktop-window', 'browser-desktop', 'browser-mobile', 'mobile']) {
+        let opened = true;
+        const calls = [];
+        const events = [];
+        const state = {
+            exports: {}, console, getFrontend: () => frontend, ...helperFixture(), onDestroy() {},
+            createEventDispatcher: () => event => events.push(event),
+            pushErrMsg: error => { throw new Error(error); },
+            hostPlugin: { openTranslateWindow: async (...args) => { calls.push(args); return opened; } },
+        };
+        vm.runInNewContext(compile(body + `
+            plugin = hostPlugin; translateInputText = 'hello'; translateOutputText = '你好';
+            translateInputLanguage = 'en'; translateOutputLanguage = 'zh-CN';
+            translateProvider = 'custom_test'; translateModelId = 'model'; currentTranslateId = 'history-1';
+            exports.open = openInWindow;
+            exports.setTranslating = value => { isTranslating = value; };
+        `), state);
+        const desktop = frontend === 'desktop' || frontend === 'desktop-window';
+        await state.exports.open();
+        assert.equal(calls.length, desktop ? 1 : 0);
+        assert.equal(events.length, desktop ? 1 : 0);
+        if (!desktop) continue;
+        assert.equal(calls[0][0], 'custom_test');
+        assert.equal(calls[0][2].inputText, 'hello');
+        assert.equal(calls[0][2].outputText, '你好');
+        assert.equal(calls[0][2].historyId, 'history-1');
+        opened = false;
+        await state.exports.open();
+        assert.equal(events.length, 1, '打开失败保留内置弹窗');
+        state.exports.setTranslating(true);
+        await state.exports.open();
+        assert.equal(calls.length, 2, '翻译中不打开独立窗口');
+    }
 });

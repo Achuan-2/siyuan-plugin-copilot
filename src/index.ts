@@ -30,7 +30,7 @@ import { setPluginInstance, i18n, tf } from './utils/i18n';
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
 import ChatDialog from "./components/ChatDialog.svelte";
 import TranslateWindowHost from "./components/TranslateWindowHost.svelte";
-import { TRANSLATE_TAB_TYPE, findTranslateWindow, focusTranslateWindow } from "./utils/translateWindow";
+import { TRANSLATE_TAB_TYPE, TranslateDraftTransfer, findTranslateWindow, focusTranslateWindow, type TranslateWindowDraft } from "./utils/translateWindow";
 import WebAppCollectionDock from "./components/WebAppCollectionDock.svelte";
 import { updateSettings, getSettings, PLUGIN_DATA_CHANGED_EVENT } from "./stores/settings";
 import { SettingsStorage, SettingsConflictError, cloneSettings, type SettingsSaveOptions } from "./utils/settingsStorage";
@@ -72,8 +72,9 @@ export default class PluginSample extends Plugin {
     private domainIconMap: Map<string, string> = new Map(); // 缓存域名与图标文件名的映射
     private registeredDocks: Set<string> = new Set();
     private settingsStorage?: SettingsStorage;
-    private translateWindowOpening: Promise<void> | null = null;
+    private translateWindowOpening: Promise<boolean> | null = null;
     private translateWindowDisposed = false;
+    private translateDraftTransfer?: TranslateDraftTransfer;
 
     private getSettingsStorage(): SettingsStorage {
         return this.settingsStorage ||= new SettingsStorage(this);
@@ -1998,6 +1999,7 @@ export default class PluginSample extends Plugin {
                         plugin: pluginInstance,
                         defaultProvider: this.data?.provider || '',
                         defaultModelId: this.data?.modelId || '',
+                        initialDraftId: this.data?.draftId || '',
                         close: () => model.tab?.close(),
                     },
                 });
@@ -2427,6 +2429,7 @@ export default class PluginSample extends Plugin {
 
     onunload() {
         this.translateWindowDisposed = true;
+        this.translateDraftTransfer?.dispose();
         for (const element of this.webViewDevToolsCleanups.keys()) this.disposeWebAppView(element);
         disposeWebviewDevTools();
         this.settingsStorage?.dispose();
@@ -2939,14 +2942,19 @@ export default class PluginSample extends Plugin {
     /**
      * 复用思源原生独立窗口，翻译任务不依赖主窗口中的侧栏组件。
      */
-    openTranslateWindow(provider = '', modelId = ''): Promise<void> {
-        if (this.translateWindowDisposed) return Promise.resolve();
+    openTranslateWindow(provider = '', modelId = '', draft?: TranslateWindowDraft): Promise<boolean> {
+        if (this.translateWindowDisposed) return Promise.resolve(false);
         if (this.translateWindowOpening) return this.translateWindowOpening;
         const opening = async () => {
+            let draftId = '';
+            if (draft) {
+                this.translateDraftTransfer ||= new TranslateDraftTransfer(this.name);
+                draftId = this.translateDraftTransfer.offer(draft);
+            }
             const existing = findTranslateWindow(this.name, window.location.origin);
             if (existing) {
                 focusTranslateWindow(existing);
-                return;
+                return true;
             }
             const tab = await openTab({
                 app: this.app,
@@ -2954,13 +2962,13 @@ export default class PluginSample extends Plugin {
                     title: i18n('aiSidebarTranslateTitle'),
                     icon: 'iconTranslate',
                     id: this.name + TRANSLATE_TAB_TYPE,
-                    data: { provider, modelId },
+                    data: { provider, modelId, draftId },
                 },
             });
-            if (!tab) return;
+            if (!tab) return false;
             if (this.translateWindowDisposed) {
                 tab.close();
-                return;
+                return false;
             }
             openWindow({ tab, width: 1000, height: 720 });
             // openWindow 通过 IPC 创建窗口；窗口出现前合并连续的打开请求。
@@ -2969,10 +2977,12 @@ export default class PluginSample extends Plugin {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 if (findTranslateWindow(this.name, window.location.origin)) break;
             }
+            return true;
         };
         this.translateWindowOpening = opening().catch(error => {
             console.error('Failed to open translation window:', error);
             pushErrMsg(error instanceof Error ? error.message : String(error));
+            return false;
         }).finally(() => {
             this.translateWindowOpening = null;
         });

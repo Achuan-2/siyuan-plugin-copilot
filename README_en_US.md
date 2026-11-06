@@ -13,7 +13,7 @@ See [CHANGELOG.md](https://github.com/Achuan-2/siyuan-plugin-copilot/blob/main/C
 
 ## ✨ Main Features
 
-- Quick Translation: A separate window on desktop clients, usable while the main SiYuan window is minimized. Browser and mobile clients use the built-in dialog. Translation models, language settings, and history are shared with the existing translation feature.
+- Quick Translation: Opens in a built-in dialog by default. On desktop clients, use the title bar's "Open in New Window" button to move the current source text and translation into a separate window. Browser and mobile clients keep the built-in dialog.
 - Multi-platform AI Support:
   - Built-in support for common platforms (OpenAI, Google Gemini, DeepSeek, Volcano Engine)
   - Also supports adding any platform compatible with the OpenAI API, allowing flexible switching of chat models
