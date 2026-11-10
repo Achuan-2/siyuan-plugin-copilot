@@ -41,6 +41,7 @@ test('独立窗口在异步初始化未完成时即可恢复翻译页签，关�
             if (id === './utils/translateWindow') return { TRANSLATE_TAB_TYPE: 'copilot-translate' };
             if (id === './utils/i18n') return { setPluginInstance() {} };
             if (id === './chatgpt/storage') return { configureChatGPTStorage() {} };
+            if (id === './chatgpt/http') return { configureChatGPTNetwork() {} };
             if (id === './chatgpt/client') return {
                 getChatGPTClient: () => ({ accounts: () => new Promise(() => {}) }),
             };
