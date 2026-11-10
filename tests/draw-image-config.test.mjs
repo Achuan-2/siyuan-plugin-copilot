@@ -162,3 +162,38 @@ test('图片快照请求不受当前面板的模型平台、数量和质量影�
     assert.equal(requests[0].body.n, 1);
     assert.equal(requests[0].body.generationConfig, undefined);
 });
+
+test('ChatGPT 绘图使用账号通道并携带原始参考图、比例、质量与取消信号', async () => {
+    const { sandbox, requests } = fixture('gpt-image-2.6-flare', false);
+    const imageRequests = [];
+    sandbox.currentProvider = 'codex';
+    sandbox.blobToBase64String = async () => 'AQIDBA==';
+    sandbox.getChatGPTImageClient = () => ({ generate: async options => {
+        imageRequests.push(options);
+        return [{ b64_json: 'result' }];
+    } });
+    const controller = new AbortController();
+    const results = [];
+    await sandbox.requestDrawImages({}, { id: 'gpt-image-2.6-flare' }, 'cat', [{ path: 'assets/original.png' }],
+        controller.signal, { count: 2, aspectRatio: '9:16', quality: 'max', resolution: '1K' }, 'codex',
+        image => results.push(image), () => {});
+    assert.equal(requests.length, 0);
+    assert.equal(imageRequests.length, 2);
+    assert.equal(results.length, 2);
+    for (const request of imageRequests) {
+        assert.equal(request.prompt, 'cat');
+        assert.equal(request.size, '864x1536');
+        assert.equal(request.quality, 'max');
+        assert.equal(request.signal, controller.signal);
+        assert.deepEqual(plain(request.images), ['data:image/png;base64,AQIDBA==']);
+    }
+});
+
+test('ChatGPT 绘图控件仅展示订阅通道支持的比例和质量', () => {
+    const caps = plain(config.getDrawImageCapabilities('gpt-image-2.6-flare', false, 'codex'));
+    assert.deepEqual(caps.aspectRatios, ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16']);
+    assert.deepEqual(caps.qualities, ['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
+    assert.deepEqual(caps.resolutions, []);
+    assert.equal(config.getOpenAIDrawImageSize('gpt-image-2.6-flare', '21:9', 'codex'), 'auto');
+    assert.equal(config.getOpenAIDrawImageSize('gpt-image-2.6-flare', '9:16', 'codex'), '864x1536');
+});

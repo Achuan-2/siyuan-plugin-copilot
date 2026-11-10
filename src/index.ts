@@ -25,6 +25,7 @@ import "@/index.scss";
 import SettingPanel from "./SettingsPannel.svelte";
 import { getDefaultSettings } from "./defaultSettings";
 import { disposeChatGPTClient, getChatGPTClient } from "./chatgpt/client";
+import { disposeChatGPTImageClient } from "./chatgpt/images";
 import { configureChatGPTStorage } from "./chatgpt/storage";
 import { setPluginInstance, i18n, tf } from './utils/i18n';
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
@@ -2434,6 +2435,7 @@ export default class PluginSample extends Plugin {
         disposeWebviewDevTools();
         this.settingsStorage?.dispose();
         disposeChatGPTClient();
+        disposeChatGPTImageClient();
         configureChatGPTStorage(null);
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);

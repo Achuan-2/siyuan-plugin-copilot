@@ -8,6 +8,7 @@ import { i18n } from './utils/i18n';
 import { forwardProxyFetch } from './api';
 import { chatChatGPT } from './chatgpt/chat';
 import { getChatGPTClient } from './chatgpt/client';
+import { CHATGPT_IMAGE_MODEL, getChatGPTImageClient } from './chatgpt/images';
 import {
     type ThinkingEffort,
     isSupportedThinkingGeminiModel,
@@ -684,7 +685,14 @@ export async function fetchModels(
     chatInterface?: ChatInterfaceType // 根据不同的平台接口，走不同的 API Key 认证方式
 ): Promise<ModelInfo[]> {
     if (provider === 'codex') {
-        return getChatGPTClient().models();
+        const client = getChatGPTClient();
+        const imageAccount = await getChatGPTImageClient().account();
+        const account = await client.account();
+        const models = imageAccount.connected && !account?.sharing ? [] : await client.models();
+        if (imageAccount.connected && !models.some(model => model.id === CHATGPT_IMAGE_MODEL)) {
+            models.push({ id: CHATGPT_IMAGE_MODEL, name: CHATGPT_IMAGE_MODEL, provider: 'ChatGPT' });
+        }
+        return models;
     }
     const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;

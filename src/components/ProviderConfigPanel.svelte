@@ -6,6 +6,7 @@
     import { i18n, tf } from '../utils/i18n';
     import { getModelCapabilities } from '../utils/modelCapabilities';
     import ChatGPTAccountPanel from './ChatGPTAccountPanel.svelte';
+    import { CHATGPT_IMAGE_MODEL } from '../chatgpt/images';
 
     export let providerId: string;
     export let providerName: string;
@@ -285,7 +286,7 @@
         }
 
         // 自动检测模型能力
-        const capabilities = providerId === 'codex'
+        const capabilities = providerId === 'codex' && modelId !== CHATGPT_IMAGE_MODEL
             ? { thinking: true, vision: true, toolCalling: true, imageGeneration: false, webSearch: false }
             : getModelCapabilities(modelId);
 
@@ -688,6 +689,9 @@
             <ChatGPTAccountPanel on:accountChange={event => {
                 availableModels = [];
                 showModelSearchModal = false;
+                if (event.detail.imageConnected && !config.models.some(model => model.id === CHATGPT_IMAGE_MODEL)) {
+                    addModel(CHATGPT_IMAGE_MODEL, CHATGPT_IMAGE_MODEL);
+                }
                 if (event.detail.connected) loadModels(false);
             }} />
         {:else}

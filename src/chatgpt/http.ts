@@ -17,11 +17,13 @@ export class ChatGPTHttpError extends Error {
 
 /** Desktop uses Node HTTPS; mobile uses its SiYuan kernel to avoid WebView CORS. */
 export function request(url: string, options: {
-    method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal;
+    method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; timeoutMs?: number;
 } = {}): Promise<any> {
     if (options.signal?.aborted) return Promise.reject(new Error('Request aborted'));
     const target = new URL(url);
-    if (target.protocol !== 'https:' || !['auth.openai.com', 'api.openai.com'].includes(target.hostname)) {
+    const imageEndpoint = target.hostname === 'chatgpt.com'
+        && /^\/backend-api\/codex\/images\/(generations|edits)$/.test(target.pathname);
+    if (target.protocol !== 'https:' || (!['auth.openai.com', 'api.openai.com'].includes(target.hostname) && !imageEndpoint)) {
         return Promise.reject(new Error(i18n('chatgptInvalidEndpoint')));
     }
     if (!isChatGPTDesktop()) return requestThroughKernel(target.href, options);
@@ -38,7 +40,7 @@ export function request(url: string, options: {
             cleanup();
             reject(options.signal?.aborted ? new Error('Request aborted') : error);
         });
-        req.setTimeout(60000, () => req.destroy(new Error(i18n('chatgptTimeout'))));
+        req.setTimeout(options.timeoutMs || 60000, () => req.destroy(new Error(i18n('chatgptTimeout'))));
         options.signal?.addEventListener('abort', abort, { once: true });
         if (options.signal?.aborted) abort();
         else req.end(options.body);
@@ -84,7 +86,7 @@ async function requestThroughKernel(url: string, options: Parameters<typeof requ
     const abort = () => controller.abort();
     options.signal?.addEventListener('abort', abort, { once: true });
     if (options.signal?.aborted) controller.abort();
-    const timeout = new URL(url).pathname === '/v1/responses' ? 300000 : 60000;
+    const timeout = options.timeoutMs || (new URL(url).pathname === '/v1/responses' ? 300000 : 60000);
     const timer = setTimeout(abort, timeout);
     try {
         // Credentials travel in the POST body, never in proxy URLs or browser storage.
@@ -117,14 +119,14 @@ async function requestThroughKernel(url: string, options: Parameters<typeof requ
     }
 }
 
-export async function readJson(response: any): Promise<any> {
+export async function readJson(response: any, maxBytes = 8 * 1024 * 1024): Promise<any> {
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
     let text = '';
     let size = 0;
     for await (const chunk of response) {
         size += typeof chunk === 'string' ? encoder.encode(chunk).length : chunk.length;
-        if (size > 8 * 1024 * 1024) {
+        if (size > maxBytes) {
             response.destroy();
             throw new Error(i18n('chatgptInvalidResponse'));
         }

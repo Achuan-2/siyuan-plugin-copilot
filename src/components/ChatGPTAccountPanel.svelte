@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, createEventDispatcher } from 'svelte';
     import { getChatGPTClient, type ChatGPTAccount } from '../chatgpt/client';
+    import { getChatGPTImageClient, type ChatGPTImageAccount } from '../chatgpt/images';
     import { isChatGPTDesktop } from '../chatgpt/http';
     import { i18n } from '../utils/i18n';
     import { PLUGIN_DATA_CHANGED_EVENT } from '../stores/settings';
@@ -9,6 +10,7 @@
     const dispatch = createEventDispatcher();
     let profiles: ChatGPTAccount[] = [];
     let activeId = '';
+    let imageAccount: ChatGPTImageAccount = { connected: false };
     let busy = false;
     let error = '';
     let loginController: AbortController | undefined;
@@ -19,18 +21,25 @@
     async function refresh() {
         const version = ++refreshVersion;
         const saved = await getChatGPTClient().accounts();
+        const image = await getChatGPTImageClient().account();
         if (destroyed || version !== refreshVersion) return;
         profiles = saved.profiles;
         activeId = saved.activeId || '';
+        imageAccount = image;
     }
 
-    async function perform(action: 'login' | 'add' | 'logout' | 'select' | 'usage', id?: string) {
-        if (busy || (!desktop && (action === 'login' || action === 'add'))) return;
+    async function perform(action: 'login' | 'add' | 'logout' | 'select' | 'usage' | 'imageLogin' | 'imageLogout', id?: string) {
+        if (busy || (!desktop && (action === 'login' || action === 'add' || action === 'imageLogin'))) return;
         busy = true;
         error = '';
         try {
             const client = getChatGPTClient();
-            if (action === 'login' || action === 'add') {
+            if (action === 'imageLogin') {
+                loginController = new AbortController();
+                await getChatGPTImageClient().login(loginController.signal);
+            } else if (action === 'imageLogout') {
+                await getChatGPTImageClient().logout();
+            } else if (action === 'login' || action === 'add') {
                 loginController = new AbortController();
                 await client.login(loginController.signal, action === 'login' ? activeId || undefined : undefined);
             } else if (action === 'logout') {
@@ -46,6 +55,7 @@
                 await refresh();
                 if (action !== 'usage') dispatch('accountChange', {
                     connected: !!profiles.find(profile => profile.id === activeId)?.sharing,
+                    imageConnected: imageAccount.connected,
                 });
             } catch (failure) { error = failure.message; }
         }
@@ -96,6 +106,22 @@
             <button class="b3-button b3-button--outline" disabled={busy} on:click={() => perform('logout')}>{i18n('chatgptLogout')}</button>
         {/if}
     </div>
+    <div class="account-actions image-account">
+        <span class="b3-label__text">{imageAccount.connected
+            ? `${i18n('chatgptImageConnected')}${imageAccount.email ? ` · ${imageAccount.email}` : ''}`
+            : i18n('chatgptImageNotConnected')}</span>
+        {#if desktop}
+            <button class="b3-button b3-button--outline" disabled={busy}
+                title={i18n('chatgptImageLoginHint')} on:click={() => perform('imageLogin')}>
+                {imageAccount.connected ? i18n('chatgptImageSwitchAccount') : i18n('chatgptImageLogin')}
+            </button>
+        {/if}
+        {#if imageAccount.connected}
+            <button class="b3-button b3-button--outline" disabled={busy} on:click={() => perform('imageLogout')}>
+                {i18n('chatgptImageLogout')}
+            </button>
+        {/if}
+    </div>
     {#if error}<p class="error">{error}</p>{/if}
 </div>
 
@@ -103,5 +129,6 @@
     .chatgpt-account { display: flex; flex-direction: column; gap: 10px; }
     .chatgpt-account p { margin: 0; }
     .account-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .image-account { align-items: center; }
     .error { color: var(--b3-theme-error); overflow-wrap: anywhere; }
 </style>

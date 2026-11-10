@@ -64,6 +64,7 @@
     import { getDrawGalleryCards, deleteDrawGalleryImage, dismissDrawGalleryFailure, getDrawEditReferences, buildDrawBranchPrompt, createDrawGenerationContext, type DrawGalleryItem, type DrawGalleryRequest, type DrawPendingTask } from './utils/drawGallery';
     import type { DrawGenerationContext } from './ai-chat';
     import DrawImageSettings from './components/DrawImageSettings.svelte';
+    import { getChatGPTImageClient } from './chatgpt/images';
     import {
         buildGeminiDrawImageConfig, getClosestDrawAspectRatio, getDrawImageCapabilities,
         getOpenAIDrawImageSize, inferDrawImageResolution,
@@ -1943,7 +1944,7 @@
         getProviderAndModelConfig(currentProvider, currentModelId, providers)?.providerConfig,
         { id: currentModelId }
     );
-    $: drawCapabilities = getDrawImageCapabilities(currentModelId, drawIsGemini);
+    $: drawCapabilities = getDrawImageCapabilities(currentModelId, drawIsGemini, currentProvider);
     $: if (drawSettingsModelKey !== currentProvider + ':' + currentModelId) {
         drawSettingsModelKey = currentProvider + ':' + currentModelId;
         drawImageResolution = drawCapabilities.defaultResolution;
@@ -4009,6 +4010,7 @@
     }
 
     function isGeminiImageApi(providerConfig: any, modelConfig?: any, providerId = currentProvider): boolean {
+        if (providerId === 'codex') return false;
         const customUrls = [
             providerConfig?.customApiUrl,
             providerConfig?.advancedConfig?.customChatUrl,
@@ -5940,6 +5942,17 @@
         requestSettings = getCurrentDrawImageSettings(),
         providerId = currentProvider
     ) {
+        if (providerId === 'codex') {
+            const images = await Promise.all(editImageSources.map(async image => {
+                const blob = await imageAttachmentToBlob(image);
+                return `data:${blob.type || image.mimeType || 'image/png'};base64,${await blobToBase64String(blob)}`;
+            }));
+            return getChatGPTImageClient().generate({
+                prompt, images, signal,
+                size: getOpenAIDrawImageSize(modelConfig.id, requestSettings.aspectRatio, providerId),
+                quality: requestSettings.quality,
+            });
+        }
         if (isGeminiImageApi(providerConfig, modelConfig, providerId)) {
             return await requestGeminiDrawImages(
                 providerConfig,
@@ -16303,6 +16316,7 @@
                     {#if chatMode === 'draw'}
                         <DrawImageSettings
                             modelId={currentModelId}
+                            providerId={currentProvider}
                             isGemini={drawIsGemini}
                             bind:aspectRatio={drawImageAspectRatio}
                             bind:resolution={drawImageResolution}

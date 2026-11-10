@@ -7,6 +7,9 @@ export const ISSUER = 'https://auth.openai.com';
 export const RESOURCE = 'https://api.openai.com/v1';
 export const TOKEN_ENDPOINT = `${ISSUER}/api/accounts/oauth/token`;
 const SCOPES = 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
+export const IMAGE_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+export const IMAGE_TOKEN_ENDPOINT = `${ISSUER}/oauth/token`;
+const IMAGE_SCOPES = 'openid profile email offline_access api.connectors.read api.connectors.invoke';
 
 export async function verifyIdentity(token: string, clientId: string, nonce?: string, signal?: AbortSignal) {
     const discovery = await requestJson(`${ISSUER}/.well-known/openid-configuration`, { signal });
@@ -27,8 +30,9 @@ export async function exchangeTokens(form: URLSearchParams, signal?: AbortSignal
     });
 }
 
-/** Public-client PKCE with a temporary loopback callback, as documented by OpenAI. */
-export async function authorize(hostId: string, profile: ChatGPTProfile | undefined, signal: AbortSignal) {
+/** Browser PKCE with separate clients/callbacks for SIWC chat and Codex images. */
+export async function authorize(hostId: string, profile: ChatGPTProfile | undefined, signal: AbortSignal, mode: 'chat' | 'images' = 'chat') {
+    const images = mode === 'images';
     if (signal.aborted) throw new Error('Request aborted');
     const crypto = nativeModule('crypto');
     const Buffer = nativeModule('buffer').Buffer;
@@ -48,6 +52,9 @@ export async function authorize(hostId: string, profile: ChatGPTProfile | undefi
     callback.catch(() => {});
     const abort = () => rejectCallback(new Error('Request aborted'));
     const server = nativeModule('http').createServer((req: any, res: any) => {
+        if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) {
+            res.writeHead(403).end(); return;
+        }
         const url = new URL(req.url, 'http://127.0.0.1');
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');
@@ -66,8 +73,9 @@ export async function authorize(hostId: string, profile: ChatGPTProfile | undefi
         }
         const code = url.searchParams.get('code');
         const returnedId = url.searchParams.get('client_id');
-        const clientId = returnedId || profile?.clientId;
+        const clientId = returnedId || (images ? IMAGE_CLIENT_ID : profile?.clientId);
         if (!code || !clientId || clientId === 'dynamic_agent_client'
+            || (images && clientId !== IMAGE_CLIENT_ID)
             || (profile && returnedId && returnedId !== profile.clientId)) {
             res.writeHead(400).end('Invalid registration. Return to SiYuan.');
             rejectCallback(new Error(i18n('chatgptInvalidRegistration')));
@@ -81,17 +89,27 @@ export async function authorize(hostId: string, profile: ChatGPTProfile | undefi
     try {
         await new Promise<void>((resolve, reject) => {
             server.once('error', reject);
-            server.listen(0, '127.0.0.1', () => { server.off('error', reject); resolve(); });
+            const listening = () => { server.off('error', reject); resolve(); };
+            if (images) server.listen(1455, listening);
+            else server.listen(0, '127.0.0.1', listening);
         });
         if (signal.aborted) throw new Error('Request aborted');
-        redirectUri = `http://127.0.0.1:${server.address().port}/auth/callback`;
-        const url = new URL(`${ISSUER}/api/accounts/authorize`);
+        redirectUri = images ? 'http://localhost:1455/auth/callback'
+            : `http://127.0.0.1:${server.address().port}/auth/callback`;
+        const url = new URL(`${ISSUER}${images ? '/oauth/authorize' : '/api/accounts/authorize'}`);
         const parameters: Record<string, string> = {
             client_id: profile?.clientId || 'dynamic_agent_client', ext_agent_host_id: hostId,
             response_type: 'code', redirect_uri: redirectUri, scope: SCOPES, resource: RESOURCE,
             state, nonce, code_challenge_method: 'S256', code_challenge: challenge,
         };
-        if (!profile) parameters.agent_name_hint = 'SiYuan Copilot';
+        if (images) {
+            delete parameters.ext_agent_host_id;
+            delete parameters.resource;
+            Object.assign(parameters, {
+                client_id: IMAGE_CLIENT_ID, scope: IMAGE_SCOPES,
+                id_token_add_organizations: 'true', codex_cli_simplified_flow: 'true', originator: 'codex_cli_rs',
+            });
+        } else if (!profile) parameters.agent_name_hint = 'SiYuan Copilot';
         else {
             if (profile.idToken) parameters.id_token_hint = profile.idToken;
             if (profile.email) parameters.login_hint = profile.email;

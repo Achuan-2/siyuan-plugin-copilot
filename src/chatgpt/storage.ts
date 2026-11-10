@@ -16,7 +16,21 @@ export interface ChatGPTProfile {
     signingOut?: boolean;
 }
 
-interface StoredAccounts { activeId?: string; profiles: ChatGPTProfile[] }
+export interface ChatGPTImageSession {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt: number;
+    accountId: string;
+    subject: string;
+    email?: string;
+}
+
+interface StoredAccounts {
+    activeId?: string;
+    profiles: ChatGPTProfile[];
+    /** Codex image authorization has a different client and audience from chat. */
+    imageSession?: ChatGPTImageSession;
+}
 
 interface AccountStoragePlugin {
     name: string;

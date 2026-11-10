@@ -14,7 +14,13 @@ export function geminiModelSupportsImageSize(modelId: string): boolean {
     return /gemini-(?:3(?:\.\d+)?-(?:flash|pro)-image|nano-banana)/i.test(modelId);
 }
 
-export function getDrawImageCapabilities(modelId: string, isGemini: boolean): DrawImageCapabilities {
+export function getDrawImageCapabilities(modelId: string, isGemini: boolean, providerId?: string): DrawImageCapabilities {
+    if (providerId === 'codex') {
+        return {
+            aspectRatios: ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'],
+            resolutions: [], qualities: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], defaultResolution: '1K',
+        };
+    }
     if (isGemini) {
         const supportsResolution = geminiModelSupportsImageSize(modelId);
         const supportsSmall = /gemini-(?:3\.1-(?:flash|pro)-image|nano-banana-2(?:\.\d+)?)(?:$|[-_])/i.test(modelId);
@@ -83,9 +89,9 @@ export function buildGeminiDrawImageConfig(modelId: string, aspectRatio: string,
 }
 
 /** GPT 的比例控件转换成 Images API 的 size，质量独立传入 quality。 */
-export function getOpenAIDrawImageSize(modelId: string, aspectRatio: string): string {
+export function getOpenAIDrawImageSize(modelId: string, aspectRatio: string, providerId?: string): string {
     if (aspectRatio === 'auto') return /dall-e/i.test(modelId) ? '1024x1024' : 'auto';
-    if (!getDrawImageCapabilities(modelId, false).aspectRatios.includes(aspectRatio)) return 'auto';
+    if (!getDrawImageCapabilities(modelId, false, providerId).aspectRatios.includes(aspectRatio)) return 'auto';
     if (/dall-e-3/i.test(modelId)) {
         return aspectRatio === '16:9' ? '1792x1024' : aspectRatio === '9:16' ? '1024x1792' : '1024x1024';
     }

@@ -135,6 +135,7 @@ function fixture(t, { mobile = false } = {}) {
     const storage = new storageModule.ChatGPTStorage();
     const clients = [];
     const client = () => { const value = new (load('src/chatgpt/client.ts').ChatGPTClient)(); clients.push(value); return value; };
+    const imageClient = () => { const value = new (load('src/chatgpt/images.ts').ChatGPTImageClient)(); clients.push(value); return value; };
     t.after(() => {
         clients.forEach(value => value.dispose());
         assert.equal(path.dirname(directory), path.resolve(tmpdir()));
@@ -142,7 +143,7 @@ function fixture(t, { mobile = false } = {}) {
         rmSync(directory, { recursive: true, force: true });
     });
     const defaultRoute = route;
-    return { load, storage, requests, client, writes, directory, get workspace() { return workspace; },
+    return { load, storage, requests, client, imageClient, writes, directory, get workspace() { return workspace; },
         newStorage() { return new storageModule.ChatGPTStorage(); },
         setSaveCode(code) { saveCode = code; },
         switchWorkspace(target) { workspace = target; context.window.siyuan.config.system.workspaceDir = target; },
@@ -162,6 +163,235 @@ async function saved(f, expiresAt = Date.now() + 3600000) {
         subject: 'test-subject', email: 'test@example.com', accessToken: 'fake-access', refreshToken: 'fake-refresh',
         scopes: scope.split(' '), expiresAt }] });
 }
+
+async function savedImages(f, expiresAt = Date.now() + 3600000) {
+    const data = await f.storage.read();
+    data.imageSession = { accessToken: 'image-access', refreshToken: 'image-refresh',
+        accountId: 'image-account', subject: 'test-subject', email: 'image@example.com', expiresAt };
+    await f.storage.write(data);
+}
+
+test('绘图 OAuth 使用 Codex PKCE、固定回调与独立凭据，不覆盖聊天账号', async t => {
+    const f = fixture(t);
+    await saved(f);
+    const { IMAGE_CLIENT_ID } = f.load('src/chatgpt/oauth.ts');
+    f.browser(async url => {
+        assert.equal(url.pathname, '/oauth/authorize');
+        assert.equal(url.searchParams.get('client_id'), IMAGE_CLIENT_ID);
+        assert.equal(url.searchParams.get('resource'), null);
+        assert.equal(url.searchParams.get('redirect_uri'), 'http://localhost:1455/auth/callback');
+        const callback = new URL(url.searchParams.get('redirect_uri'));
+        callback.search = new URLSearchParams({ code: 'image-code', state: 'wrong' });
+        assert.equal((await fetch(callback)).status, 400);
+        callback.searchParams.set('state', url.searchParams.get('state'));
+        assert.equal((await fetch(callback)).status, 200);
+    });
+    f.route(async (url, options, body) => {
+        if (url.pathname !== '/oauth/token') return;
+        const form = new URLSearchParams(body);
+        assert.equal(form.get('client_id'), IMAGE_CLIENT_ID);
+        assert.equal(form.get('code'), 'image-code');
+        assert.equal(form.get('resource'), null);
+        assert.equal(require('crypto').createHash('sha256').update(form.get('code_verifier')).digest('base64url'),
+            f.opened.searchParams.get('code_challenge'));
+        return response({ access_token: 'image-access', refresh_token: 'image-refresh', token_type: 'Bearer', expires_in: 3600,
+            id_token: await identity(IMAGE_CLIENT_ID, f.opened.searchParams.get('nonce'), {
+                'https://api.openai.com/auth': { chatgpt_account_id: 'image-account' },
+            }) });
+    });
+    const client = f.imageClient();
+    await client.login(new AbortController().signal);
+    assert.equal((await client.account()).connected, true);
+    assert.equal('accessToken' in await client.account(), false);
+    const data = await f.storage.read();
+    assert.equal(data.profiles[0].accessToken, 'fake-access');
+    assert.equal(data.activeId, 'issued-client');
+    assert.equal(data.imageSession.accountId, 'image-account');
+    assert.ok(data.imageSession.expiresAt > Date.now());
+});
+
+test('取消绘图授权关闭回调端口并保留原有绘图会话', async t => {
+    const f = fixture(t);
+    await savedImages(f);
+    const controller = new AbortController();
+    f.browser(async () => controller.abort());
+    await assert.rejects(f.imageClient().login(controller.signal), /Request aborted/);
+    await assert.rejects(fetch(f.opened.searchParams.get('redirect_uri')));
+    assert.equal(f.requests.length, 0);
+    assert.equal((await f.storage.read()).imageSession.accessToken, 'image-access');
+});
+
+for (const mobile of [false, true]) {
+    test(`${mobile ? '手机' : '桌面'}通过独立绘图令牌请求 Codex，编辑以 JSON 发送所有原图`, async t => {
+        const f = fixture(t, { mobile });
+        await saved(f);
+        await savedImages(f);
+        const reference = 'data:image/png;base64,AQIDBA==';
+        f.route(async (url, options, body) => {
+            assert.equal(url.hostname, 'chatgpt.com');
+            assert.equal(options.headers.Authorization, 'Bearer image-access');
+            assert.equal(options.headers['chatgpt-account-id'], 'image-account');
+            assert.equal(options.headers.originator, 'codex_cli_rs');
+            const payload = JSON.parse(body);
+            assert.equal(payload.model, 'gpt-image-2.6-flare');
+            assert.equal(payload.size, '864x1536');
+            assert.equal(payload.quality, 'max');
+            assert.match(payload.prompt, /9:16/);
+            if (url.pathname.endsWith('/edits')) assert.deepEqual(payload.images, [{ image_url: reference }, { image_url: reference }]);
+            else assert.equal(payload.images, undefined);
+            return response({ data: [{ b64_json: 'iVBORw0KGgo=', revised_prompt: 'revised' }] });
+        });
+        const client = f.imageClient();
+        for (const images of [[], [reference, reference]]) {
+            const result = await client.generate({ prompt: '画一只猫', size: '864x1536', quality: 'max', images });
+            assert.equal(result[0].mime_type, 'image/png');
+            assert.equal(result[0].revised_prompt, 'revised');
+        }
+        assert.equal(f.requests[0].url.pathname, '/backend-api/codex/images/generations');
+        assert.equal(f.requests[1].url.pathname, '/backend-api/codex/images/edits');
+        assert.equal((await f.storage.read()).profiles[0].accessToken, 'fake-access');
+        assert.equal(client.controllers.size, 0);
+    });
+}
+
+test('普通聊天凭据不能误用于绘图，空提示词和超量参考图在请求前拒绝', async t => {
+    const f = fixture(t);
+    await saved(f);
+    const client = f.imageClient();
+    await assert.rejects(client.generate({ prompt: 'cat' }), /chatgptImageSignInRequired/);
+    await assert.rejects(client.generate({ prompt: ' ' }));
+    await assert.rejects(client.generate({ prompt: 'cat', images: Array(17).fill('data:image/png;base64,AQID') }), /chatgptImageTooManyReferences/);
+    await assert.rejects(client.generate({ prompt: 'cat', images: ['https://untrusted.example/image.png'] }));
+    assert.equal(f.requests.length, 0);
+});
+
+test('并发绘图共享过期令牌刷新，保存轮换令牌且不改动聊天凭据', async t => {
+    const f = fixture(t, { mobile: true });
+    await saved(f);
+    await savedImages(f, Date.now() - 1000);
+    f.route(async (url, options, body) => {
+        if (url.pathname === '/oauth/token') {
+            assert.equal(new URLSearchParams(body).get('refresh_token'), 'image-refresh');
+            return response({ access_token: 'image-renewed', refresh_token: 'image-rotated', token_type: 'Bearer', expires_in: 3600 });
+        }
+        assert.equal(options.headers.Authorization, 'Bearer image-renewed');
+        return response({ data: [{ b64_json: '/9j/AAAA' }] });
+    });
+    const client = f.imageClient();
+    const results = await Promise.all([client.generate({ prompt: 'a' }), client.generate({ prompt: 'b' })]);
+    assert.equal(results[0][0].mime_type, 'image/jpeg');
+    assert.equal(f.requests.filter(item => item.url.pathname === '/oauth/token').length, 1);
+    const data = await f.storage.read();
+    assert.equal(data.imageSession.refreshToken, 'image-rotated');
+    assert.equal(data.profiles[0].refreshToken, 'fake-refresh');
+});
+
+test('绘图 401 只刷新重试一次，拒绝的刷新仅清除绘图会话', async t => {
+    const f = fixture(t);
+    await saved(f);
+    await savedImages(f);
+    let imageRequests = 0;
+    f.route(async url => {
+        if (url.pathname === '/oauth/token') return response({ access_token: 'image-renewed', token_type: 'Bearer', expires_in: 3600 });
+        imageRequests++;
+        return imageRequests === 1 ? response({ error: { code: 'unauthorized' } }, 401)
+            : response({ data: [{ b64_json: 'UklGRg==' }] });
+    });
+    const client = f.imageClient();
+    assert.equal((await client.generate({ prompt: 'cat' }))[0].mime_type, 'image/webp');
+    assert.equal(imageRequests, 2);
+    assert.equal((await f.storage.read()).imageSession.refreshToken, 'image-refresh');
+    await savedImages(f, 0);
+    f.route(async () => response({ error: 'invalid_grant' }, 400));
+    await assert.rejects(client.generate({ prompt: 'cat' }), /chatgptImageSignInRequired/);
+    assert.equal((await f.storage.read()).imageSession, undefined);
+    assert.equal((await f.storage.read()).profiles[0].accessToken, 'fake-access');
+});
+
+test('绘图拒绝身份变化的刷新且保留原会话，上游错误中的凭据脱敏', async t => {
+    const f = fixture(t);
+    await savedImages(f, 0);
+    const { IMAGE_CLIENT_ID } = f.load('src/chatgpt/oauth.ts');
+    f.route(async url => url.pathname === '/oauth/token' ? response({ access_token: 'unexpected', token_type: 'Bearer', expires_in: 3600,
+        id_token: await identity(IMAGE_CLIENT_ID, undefined, { sub: 'someone-else',
+            'https://api.openai.com/auth': { chatgpt_account_id: 'different-account' } }) }) : undefined);
+    const client = f.imageClient();
+    await assert.rejects(client.generate({ prompt: 'cat' }), /chatgptAccountMismatch/);
+    assert.equal((await f.storage.read()).imageSession.accessToken, 'image-access');
+    await savedImages(f);
+    f.route(async () => response({ error: { message: 'image-access image-refresh image-account image@example.com' } }, 403));
+    await assert.rejects(client.generate({ prompt: 'cat' }), error => {
+        assert.match(error.message, /redacted/);
+        assert.doesNotMatch(error.message, /image-access|image-refresh|image-account|image@example.com/);
+        return true;
+    });
+});
+
+test('绘图接受大于聊天 JSON 上限的图片，空图片响应仍报告失败', async t => {
+    const f = fixture(t);
+    await savedImages(f);
+    const image = 'A'.repeat(9 * 1024 * 1024);
+    f.route(async () => response({ data: [{ b64_json: image }] }));
+    const client = f.imageClient();
+    assert.equal((await client.generate({ prompt: 'cat' }))[0].b64_json.length, image.length);
+    f.route(async () => response({ data: [] }));
+    await assert.rejects(client.generate({ prompt: 'cat' }), /aiSidebarDrawNoImages/);
+});
+
+test('绘图退出取消进行中的请求，保留聊天登录与模型映射', async t => {
+    const f = fixture(t);
+    await saved(f);
+    await savedImages(f);
+    let resolveRequest;
+    f.route(() => new Promise(resolve => { resolveRequest = resolve; }));
+    const client = f.imageClient();
+    const pending = assert.rejects(client.generate({ prompt: 'cat' }), /Request aborted/);
+    while (!resolveRequest) await new Promise(resolve => setImmediate(resolve));
+    await client.logout();
+    resolveRequest(response({ data: [{ b64_json: 'AQID' }] }));
+    await pending;
+    const data = await f.storage.read();
+    assert.equal(data.imageSession, undefined);
+    assert.equal(data.activeId, 'issued-client');
+    assert.equal(data.profiles[0].accessToken, 'fake-access');
+    assert.equal(client.controllers.size, 0);
+});
+
+test('图片传输只开放两个 Codex 图片路径，不允许将凭据发往其他 ChatGPT 路径', async t => {
+    const f = fixture(t);
+    const { request } = f.load('src/chatgpt/http.ts');
+    for (const url of ['https://chatgpt.com/backend-api/codex/responses', 'https://chatgpt.com/',
+        'https://example.com/backend-api/codex/images/generations']) {
+        await assert.rejects(request(url), /chatgptInvalidEndpoint/);
+    }
+    assert.equal(f.requests.length, 0);
+});
+
+test('仅登录绘图也能发现图片模型，同时登录聊天时合并目录且不重复', async t => {
+    const f = fixture(t);
+    await savedImages(f);
+    const source = readFileSync(path.join(root, 'src/ai-chat.ts'), 'utf8');
+    const ast = ts.createSourceFile('ai-chat.ts', source, ts.ScriptTarget.Latest, true);
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'fetchModels').getText(ast);
+    const context = { exports: {}, getChatGPTClient: () => f.client(), getChatGPTImageClient: () => f.imageClient(),
+        CHATGPT_IMAGE_MODEL: 'gpt-image-2.6-flare' };
+    vm.runInNewContext(ts.transpileModule(declaration, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, context);
+    const { fetchModels } = context.exports;
+    let models = await fetchModels('codex', '');
+    assert.equal(models.length, 1);
+    assert.equal(models[0].id, context.CHATGPT_IMAGE_MODEL);
+    assert.equal(f.requests.length, 0);
+    await saved(f);
+    await savedImages(f);
+    f.route(async url => url.pathname === '/v1/models' ? response({ models: [
+        { slug: 'chat-model', visibility: 'list' }, { slug: context.CHATGPT_IMAGE_MODEL, visibility: 'list' },
+    ] }) : undefined);
+    models = await fetchModels('codex', '');
+    assert.deepEqual(Array.from(models, model => model.id), ['chat-model', context.CHATGPT_IMAGE_MODEL]);
+    assert.equal(f.requests[0].headers.Authorization, 'Bearer fake-access');
+});
 
 function events(...values) {
     return values.map(value => Buffer.from(`data: ${JSON.stringify(value)}\r\n\r\n`));

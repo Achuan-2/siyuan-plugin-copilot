@@ -9,6 +9,7 @@
     } from '../utils/drawImageConfig';
 
     export let modelId = '';
+    export let providerId = '';
     export let isGemini = false;
     export let aspectRatio = 'auto';
     export let resolution: DrawImageResolution = '1K';
@@ -23,7 +24,7 @@
         xhigh: i18n('aiSidebarDrawQualityXhigh'), max: i18n('aiSidebarDrawQualityMax'),
         standard: i18n('aiSidebarDrawQualityStandard'), hd: i18n('aiSidebarDrawQualityHd'),
     };
-    $: capabilities = getDrawImageCapabilities(modelId, isGemini);
+    $: capabilities = getDrawImageCapabilities(modelId, isGemini, providerId);
 </script>
 
 <div class="draw-settings">
