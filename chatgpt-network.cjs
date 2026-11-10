@@ -10,6 +10,9 @@ exports.startRequest = function startRequest(options, onEvent) {
     }
     const owner = options.owner;
     if (!owner || owner.isDestroyed()) throw new Error('ChatGPT request owner is unavailable');
+    if (imageEndpoint && typeof owner.session.fetch === 'function') {
+        return startImageRequest(options, onEvent);
+    }
     const request = net.request({
         url: url.href, method: options.method || 'GET', session: owner.session,
         redirect: 'error', credentials: 'omit', useSessionCookies: false,
@@ -60,3 +63,43 @@ exports.startRequest = function startRequest(options, onEvent) {
     } catch (error) { fail(error); }
     return { abort };
 };
+
+/** Send image JSON uploads through Chromium Fetch while keeping the response streaming. */
+function startImageRequest(options, onEvent) {
+    const owner = options.owner;
+    const controller = new AbortController();
+    const cleanup = () => owner.removeListener('destroyed', abort);
+    const abort = () => { controller.abort(); cleanup(); };
+    const send = (type, value) => {
+        if (controller.signal.aborted) return;
+        if (owner.isDestroyed()) { abort(); return; }
+        try { onEvent(type, value); } catch { abort(); }
+    };
+    owner.once('destroyed', abort);
+    void (async () => {
+        try {
+            const response = await owner.session.fetch(options.url, {
+                method: options.method || 'GET', headers: options.headers || {}, body: options.body,
+                signal: controller.signal, credentials: 'omit', redirect: 'error',
+            });
+            send('response', { statusCode: response.status, headers: Object.fromEntries(response.headers) });
+            if (response.body) {
+                const reader = response.body.getReader();
+                try {
+                    while (!controller.signal.aborted) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        send('data', Buffer.from(value));
+                    }
+                } finally {
+                    if (controller.signal.aborted) await reader.cancel().catch(() => {});
+                    reader.releaseLock();
+                }
+            }
+            send('end');
+        } catch (error) {
+            if (!controller.signal.aborted) send('error', { message: error?.message || String(error) });
+        } finally { cleanup(); }
+    })();
+    return { abort };
+}

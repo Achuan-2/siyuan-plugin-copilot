@@ -38,7 +38,8 @@ class TestFileReader {
     abort() { this.aborted = true; this.onabort?.(); }
 }
 
-function fixture(t, { mobile = false, electronNet = false } = {}) {
+function fixture(t, { mobile = false, electronNet = false, electronFetch = false } = {}) {
+    if (electronFetch) electronNet = true;
     const directory = mkdtempSync(path.join(tmpdir(), 'siyuan-chatgpt-test-'));
     let workspace = path.join(directory, 'workspace');
     let saveCode = 0;
@@ -64,6 +65,18 @@ function fixture(t, { mobile = false, electronNet = false } = {}) {
             jwks_uri: `${issuer}/.well-known/jwks.json`, revocation_endpoint: `${issuer}/api/accounts/oauth/revoke` });
         if (url.pathname === '/.well-known/jwks.json') return response({ keys: [jwk] });
         throw new Error('Unexpected fixture endpoint');
+    };
+    if (electronFetch) electronSession.fetch = async (target, options) => {
+        assert.equal(options.credentials, 'omit');
+        assert.equal(options.redirect, 'error');
+        const url = new URL(target);
+        requests.push({ url, ...options, transport: 'electron-fetch' });
+        const incoming = await route(url, options, options.body);
+        const abort = () => incoming.destroy(new Error('Request aborted'));
+        options.signal.addEventListener('abort', abort, { once: true });
+        incoming.once('close', () => options.signal.removeEventListener('abort', abort));
+        if (options.signal.aborted) abort();
+        return new Response(Readable.toWeb(incoming), { status: incoming.statusCode, headers: incoming.headers });
     };
     const native = name => {
         if (name === '@electron/remote' && electronNet) {
@@ -93,7 +106,7 @@ function fixture(t, { mobile = false, electronNet = false } = {}) {
             } };
             const module = { exports: {} };
             vm.runInNewContext(readFileSync(path.join(root, 'chatgpt-network.cjs'), 'utf8'), {
-                URL, Error, module, exports: module.exports,
+                URL, Error, AbortController, Buffer, module, exports: module.exports,
                 require: name => { assert.equal(name, 'electron'); return { net }; },
             });
             return { getCurrentWebContents: () => electronOwner, require: filename => {
@@ -509,6 +522,63 @@ test('Chromium 返回 401 时仍仅刷新一次绘图令牌并在相同网络通
     assert.equal(attempts, 2);
     assert.equal(f.requests.length, 3);
     assert.ok(f.requests.every(item => item.transport === 'electron'));
+});
+
+test('参考图编辑通过 Chromium Fetch 上传完整多兆字节 JSON，保留 Unicode 提示词与授权', async t => {
+    const f = fixture(t, { electronFetch: true });
+    await savedImages(f);
+    const reference = 'data:image/png;base64,' + 'A'.repeat(2 * 1024 * 1024);
+    f.route(async (url, options, body) => {
+        assert.equal(url.pathname, '/backend-api/codex/images/edits');
+        assert.equal(options.headers.Authorization, 'Bearer image-access');
+        assert.equal(options.headers['chatgpt-account-id'], 'image-account');
+        assert.equal(typeof body, 'string');
+        const payload = JSON.parse(body);
+        assert.equal(payload.prompt, '要符合cell风格');
+        assert.equal(payload.images[0].image_url, reference);
+        return response({ data: [{ b64_json: 'iVBORw0KGgo=' }] });
+    });
+    assert.equal((await f.imageClient().generate({ prompt: '要符合cell风格', images: [reference] })).length, 1);
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].transport, 'electron-fetch');
+});
+
+test('图片 Fetch 401 保留刷新重试，聊天和 OAuth 继续使用原有流式网络通道', async t => {
+    const f = fixture(t, { electronFetch: true });
+    await savedImages(f);
+    let images = 0;
+    f.route(async url => {
+        if (url.pathname === '/oauth/token') return response({ access_token: 'renewed-fetch-token', token_type: 'Bearer', expires_in: 3600 });
+        return ++images === 1 ? response({}, 401) : response({ data: [{ b64_json: 'AQIDBA==' }] });
+    });
+    assert.equal((await f.imageClient().generate({ prompt: 'cat' })).length, 1);
+    assert.deepEqual(f.requests.map(item => item.transport), ['electron-fetch', 'electron', 'electron-fetch']);
+});
+
+test('图片 Fetch 连接中断后不上交其他通道重复生图，取消可停止响应读取', async t => {
+    const f = fixture(t, { electronFetch: true });
+    await savedImages(f);
+    f.route(async () => { throw new Error('net::ERR_CONNECTION_CLOSED'); });
+    const client = f.imageClient();
+    await assert.rejects(client.generate({ prompt: 'cat' }), /ERR_CONNECTION_CLOSED/);
+    assert.equal(f.requests.length, 1);
+    let incoming;
+    f.route(async () => {
+        incoming = new Readable({ read() {} });
+        incoming.statusCode = 200;
+        incoming.headers = {};
+        incoming.push(Buffer.from('{"data":['));
+        return incoming;
+    });
+    const controller = new AbortController();
+    const pending = assert.rejects(client.generate({ prompt: 'cat', signal: controller.signal }), /Request aborted/);
+    while (!incoming) await new Promise(resolve => setImmediate(resolve));
+    controller.abort();
+    await pending;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(incoming.destroyed, true);
+    assert.equal(client.controllers.size, 0);
+    assert.equal(f.requests.length, 2);
 });
 
 function events(...values) {
