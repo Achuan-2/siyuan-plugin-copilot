@@ -61,6 +61,7 @@
     "chatgptImageLoginHint": "Image generation uses separate ChatGPT authorization for text-to-image and reference-image editing. Credentials sync with the workspace.",
     "chatgptImageSignInRequired": "Use Sign in for images under Settings → Providers & Models → ChatGPT first.",
     "chatgptImageTooManyReferences": "ChatGPT image generation supports up to 16 reference images.",
+    "chatgptNetworkError": "Could not connect to ChatGPT. Check SiYuan's network proxy and your proxy connection",
     "aiSidebarActionsAddCurrentDoc": "Add Current Document to Context",
     "aiSidebarActionsAddWebLink": "Add Web Link",
     "aiSidebarActionsApplied": "Applied",

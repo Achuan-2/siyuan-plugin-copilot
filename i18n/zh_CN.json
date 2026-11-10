@@ -61,6 +61,7 @@
     "chatgptImageLoginHint": "绘图使用独立的 ChatGPT 授权，支持文生图与参考图编辑，凭据随工作空间同步。",
     "chatgptImageSignInRequired": "请先在插件设置 → 平台管理 → ChatGPT（账号登录）中点击“登录绘图”。",
     "chatgptImageTooManyReferences": "ChatGPT 绘图最多支持 16 张参考图。",
+    "chatgptNetworkError": "连接 ChatGPT 失败，请检查思源的网络代理及代理软件是否正常",
     "aiSidebarActionsAddCurrentDoc": "添加当前文档到上下文",
     "aiSidebarActionsAddWebLink": "添加网页链接",
     "aiSidebarActionsApplied": "已应用",

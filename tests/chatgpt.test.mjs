@@ -38,7 +38,7 @@ class TestFileReader {
     abort() { this.aborted = true; this.onabort?.(); }
 }
 
-function fixture(t, { mobile = false } = {}) {
+function fixture(t, { mobile = false, electronNet = false } = {}) {
     const directory = mkdtempSync(path.join(tmpdir(), 'siyuan-chatgpt-test-'));
     let workspace = path.join(directory, 'workspace');
     let saveCode = 0;
@@ -55,6 +55,8 @@ function fixture(t, { mobile = false } = {}) {
         },
     };
     const requests = [];
+    const electronSession = { marker: 'current-window-session' };
+    const electronOwner = Object.assign(new EventEmitter(), { session: electronSession, isDestroyed: () => false });
     let opened;
     let browser = async () => {};
     let route = async url => {
@@ -64,6 +66,41 @@ function fixture(t, { mobile = false } = {}) {
         throw new Error('Unexpected fixture endpoint');
     };
     const native = name => {
+        if (name === '@electron/remote' && electronNet) {
+            const net = { request(options) {
+                assert.equal(options.session, electronSession);
+                assert.equal(options.credentials, 'omit');
+                assert.equal(options.useSessionCookies, false);
+                assert.equal(options.redirect, 'error');
+                const req = new EventEmitter();
+                const headers = {};
+                let incoming, destroyed = false;
+                req.setHeader = (key, value) => { headers[key] = value; };
+                req.end = body => {
+                    const url = new URL(options.url);
+                    requests.push({ url, method: options.method, headers, body, transport: 'electron' });
+                    // Chromium can close the upload side before delivering the response.
+                    req.emit('close');
+                    Promise.resolve().then(() => route(url, { method: options.method, headers }, body)).then(value => {
+                        if (destroyed) { value.destroy(); return; }
+                        incoming = value;
+                        value.once('close', () => req.emit('close'));
+                        req.emit('response', value);
+                    }).catch(error => req.emit('error', error));
+                };
+                req.abort = () => { destroyed = true; incoming?.destroy?.(); req.emit('abort'); };
+                return req;
+            } };
+            const module = { exports: {} };
+            vm.runInNewContext(readFileSync(path.join(root, 'chatgpt-network.cjs'), 'utf8'), {
+                URL, Error, module, exports: module.exports,
+                require: name => { assert.equal(name, 'electron'); return { net }; },
+            });
+            return { getCurrentWebContents: () => electronOwner, require: filename => {
+                assert.ok(filename.endsWith('chatgpt-network.cjs'));
+                return module.exports;
+            } };
+        }
         if (name === 'process') return { env: { LOCALAPPDATA: directory } };
         if (name === 'electron') return { shell: { openExternal: async value => { opened = new URL(value); await browser(opened); } } };
         if (name === 'https') return { request(url, options, callback) {
@@ -132,6 +169,7 @@ function fixture(t, { mobile = false } = {}) {
     }
     const storageModule = load('src/chatgpt/storage.ts');
     storageModule.configureChatGPTStorage(plugin);
+    load('src/chatgpt/http.ts').configureChatGPTNetwork(plugin.name);
     const storage = new storageModule.ChatGPTStorage();
     const clients = [];
     const client = () => { const value = new (load('src/chatgpt/client.ts').ChatGPTClient)(); clients.push(value); return value; };
@@ -391,6 +429,86 @@ test('仅登录绘图也能发现图片模型，同时登录聊天时合并目�
     models = await fetchModels('codex', '');
     assert.deepEqual(Array.from(models, model => model.id), ['chat-model', context.CHATGPT_IMAGE_MODEL]);
     assert.equal(f.requests[0].headers.Authorization, 'Bearer fake-access');
+});
+
+test('桌面绘图使用 Chromium 当前会话网络，保留授权、原图和大图片响应', async t => {
+    const f = fixture(t, { electronNet: true });
+    await savedImages(f);
+    const b64 = 'A'.repeat(9 * 1024 * 1024);
+    f.route(async (url, options, body) => {
+        assert.equal(url.pathname, '/backend-api/codex/images/edits');
+        assert.equal(options.headers.Authorization, 'Bearer image-access');
+        assert.equal(options.headers['chatgpt-account-id'], 'image-account');
+        assert.equal(JSON.parse(body).images[0].image_url, 'data:image/png;base64,AQIDBA==');
+        return response({ data: [{ b64_json: b64 }] });
+    });
+    assert.equal((await f.imageClient().generate({ prompt: 'cat', images: ['data:image/png;base64,AQIDBA=='] }))[0].b64_json.length, b64.length);
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].transport, 'electron');
+});
+
+test('Chromium 网络继续支持聊天 JSON 与分块 Unicode SSE', async t => {
+    const f = fixture(t, { electronNet: true });
+    const { request, readJson } = f.load('src/chatgpt/http.ts');
+    f.route(async url => url.pathname === '/v1/models' ? response({ models: ['中文模型'] })
+        : response([Buffer.from('data: {"text":"中文回复"}\n\n').subarray(0, 19),
+            Buffer.from('data: {"text":"中文回复"}\n\n').subarray(19)], 200, { 'content-type': 'text/event-stream' }));
+    assert.equal((await readJson(await request('https://api.openai.com/v1/models'))).models[0], '中文模型');
+    const incoming = await request('https://api.openai.com/v1/responses', { method: 'POST', body: '{}' });
+    incoming.setEncoding('utf8');
+    let text = '';
+    for await (const chunk of incoming) text += chunk;
+    assert.equal(text, 'data: {"text":"中文回复"}\n\n');
+    assert.ok(f.requests.every(item => item.transport === 'electron'));
+});
+
+test('Chromium 请求取消和超时会终止底层请求，不改走直连重复提交', async t => {
+    const f = fixture(t, { electronNet: true });
+    const { request } = f.load('src/chatgpt/http.ts');
+    let complete;
+    f.route(() => new Promise(resolve => { complete = resolve; }));
+    const controller = new AbortController();
+    const pending = assert.rejects(request('https://chatgpt.com/backend-api/codex/images/generations', {
+        method: 'POST', body: '{}', signal: controller.signal,
+    }), /Request aborted/);
+    while (!complete) await new Promise(resolve => setImmediate(resolve));
+    controller.abort();
+    complete(response({}));
+    await pending;
+    await assert.rejects(request('https://api.openai.com/v1/models', { timeoutMs: 10 }), /chatgptTimeout/);
+    complete(response({}));
+    assert.equal(f.requests.length, 2);
+    assert.ok(f.requests.every(item => item.transport === 'electron'));
+});
+
+test('Chromium 连接错误原样上报，响应中途断开不能误判为成功', async t => {
+    const f = fixture(t, { electronNet: true });
+    const { request, readJson } = f.load('src/chatgpt/http.ts');
+    f.route(() => { throw new Error('net::ERR_PROXY_CONNECTION_FAILED'); });
+    await assert.rejects(request('https://api.openai.com/v1/models'), /ERR_PROXY_CONNECTION_FAILED/);
+    assert.equal(f.requests.length, 1);
+    f.route(() => {
+        const incoming = new EventEmitter();
+        incoming.statusCode = 200;
+        incoming.headers = {};
+        setImmediate(() => { incoming.emit('data', Buffer.from('{"partial":')); incoming.emit('close'); });
+        return incoming;
+    });
+    await assert.rejects(readJson(await request('https://api.openai.com/v1/models')), /connection closed/);
+});
+
+test('Chromium 返回 401 时仍仅刷新一次绘图令牌并在相同网络通道重试', async t => {
+    const f = fixture(t, { electronNet: true });
+    await savedImages(f);
+    let attempts = 0;
+    f.route(async url => {
+        if (url.pathname === '/oauth/token') return response({ access_token: 'renewed', token_type: 'Bearer', expires_in: 3600 });
+        return ++attempts === 1 ? response({}, 401) : response({ data: [{ b64_json: 'AQIDBA==' }] });
+    });
+    assert.equal((await f.imageClient().generate({ prompt: 'cat' })).length, 1);
+    assert.equal(attempts, 2);
+    assert.equal(f.requests.length, 3);
+    assert.ok(f.requests.every(item => item.transport === 'electron'));
 });
 
 function events(...values) {

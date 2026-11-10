@@ -1,5 +1,8 @@
 import { i18n } from '../utils/i18n';
 
+let networkPluginName: string | null = null;
+export function configureChatGPTNetwork(pluginName: string | null): void { networkPluginName = pluginName; }
+
 export function isChatGPTDesktop(): boolean {
     return typeof window !== 'undefined' && typeof (window as any).require === 'function';
 }
@@ -15,7 +18,7 @@ export class ChatGPTHttpError extends Error {
     }
 }
 
-/** Desktop uses Node HTTPS; mobile uses its SiYuan kernel to avoid WebView CORS. */
+/** Desktop prefers Chromium's session proxy; mobile uses the SiYuan kernel. */
 export function request(url: string, options: {
     method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; timeoutMs?: number;
 } = {}): Promise<any> {
@@ -27,6 +30,9 @@ export function request(url: string, options: {
         return Promise.reject(new Error(i18n('chatgptInvalidEndpoint')));
     }
     if (!isChatGPTDesktop()) return requestThroughKernel(target.href, options);
+    const electron = electronTransport();
+    if (electron) return requestThroughElectron(electron, target.href, options);
+    // Older desktop hosts without remote retain the existing Node transport.
     return new Promise((resolve, reject) => {
         const req = nativeModule('https').request(target, {
             method: options.method || 'GET', headers: options.headers,
@@ -44,6 +50,84 @@ export function request(url: string, options: {
         options.signal?.addEventListener('abort', abort, { once: true });
         if (options.signal?.aborted) abort();
         else req.end(options.body);
+    });
+}
+
+function electronTransport(): { bridge: any; owner: any } | undefined {
+    if (!networkPluginName) return;
+    try {
+        const remote = nativeModule('@electron/remote');
+        const owner = remote.getCurrentWebContents?.();
+        const system = (window as any).siyuan?.config?.system;
+        const path = nativeModule('path');
+        const dataDir = system?.dataDir || (system?.workspaceDir && path.join(system.workspaceDir, 'data'));
+        if (!owner || !dataDir || !remote.require) return;
+        const bridge = remote.require(path.join(dataDir, 'plugins', networkPluginName, 'chatgpt-network.cjs'));
+        if (typeof bridge.startRequest === 'function') return { bridge, owner };
+    } catch { /* Hosts without Electron remote use the legacy transport. */ }
+}
+
+/** Bridge Electron's event-based response to the Node readable used by JSON/SSE. */
+function requestThroughElectron(electron: { bridge: any; owner: any }, url: string,
+    options: Parameters<typeof request>[1]): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const stream = new (nativeModule('stream').PassThrough)();
+        let handle: { abort(): void } | undefined;
+        let ended = false;
+        let failed = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const cleanup = () => {
+            clearTimeout(timer);
+            options.signal?.removeEventListener('abort', abort);
+        };
+        const fail = (error: Error) => {
+            if (failed || ended) return;
+            failed = true;
+            cleanup();
+            reject(error);
+            stream.destroy(error);
+            handle?.abort();
+        };
+        const abort = () => fail(new Error('Request aborted'));
+        const resetTimeout = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => fail(new Error(i18n('chatgptTimeout'))), options.timeoutMs || 60000);
+        };
+        // An error may precede the response, before its consumer can attach a listener.
+        stream.on('error', () => {});
+        stream.once('close', () => {
+            cleanup();
+            if (!ended && !failed) { failed = true; handle?.abort(); }
+        });
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) { abort(); return; }
+        resetTimeout();
+        // A main-process bridge registers listeners synchronously. Subscribing directly
+        // to remote IncomingMessage loses fast response events across the IPC boundary.
+        try {
+            handle = electron.bridge.startRequest({
+                url, method: options.method || 'GET', headers: options.headers || {},
+                body: options.body, owner: electron.owner,
+            }, (type: string, value: any) => {
+                if (failed) return;
+                if (type === 'response') {
+                    stream.statusCode = value.statusCode;
+                    stream.headers = value.headers;
+                    resetTimeout();
+                    resolve(stream);
+                } else if (type === 'data') {
+                    resetTimeout();
+                    stream.write(nativeModule('buffer').Buffer.from(value));
+                } else if (type === 'end') {
+                    ended = true;
+                    cleanup();
+                    stream.end();
+                } else if (type === 'error') {
+                    fail(new Error(options.signal?.aborted ? 'Request aborted'
+                        : `${i18n('chatgptNetworkError')}: ${value.message}`));
+                }
+            });
+        } catch (error) { fail(error); }
     });
 }
 

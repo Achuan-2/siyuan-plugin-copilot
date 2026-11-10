@@ -35,6 +35,7 @@ export default defineConfig({
                 { src: "./CHANGELOG.md", dest: "./" },
                 { src: "./plugin.json", dest: "./" },
                 { src: "./devtools-hook.cjs", dest: "./" },
+                { src: "./chatgpt-network.cjs", dest: "./" },
                 { src: "./preview.png", dest: "./" },
                 { src: "./icon.png", dest: "./" },
                 { src: "./assets/*", dest: "./assets/" },

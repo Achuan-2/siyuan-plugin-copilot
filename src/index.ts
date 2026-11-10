@@ -26,6 +26,7 @@ import SettingPanel from "./SettingsPannel.svelte";
 import { getDefaultSettings } from "./defaultSettings";
 import { disposeChatGPTClient, getChatGPTClient } from "./chatgpt/client";
 import { disposeChatGPTImageClient } from "./chatgpt/images";
+import { configureChatGPTNetwork } from "./chatgpt/http";
 import { configureChatGPTStorage } from "./chatgpt/storage";
 import { setPluginInstance, i18n, tf } from './utils/i18n';
 import AIChatSessionHost from "./components/AIChatSessionHost.svelte";
@@ -2019,6 +2020,7 @@ export default class PluginSample extends Plugin {
         // 自定义页签必须在第一个 await 前同步注册，避免停在宿主加载动画。
         this.registerTranslateTab();
         configureChatGPTStorage(this);
+        configureChatGPTNetwork(this.name);
         // 桌面迁移已有登录；手机读取工作空间同步过来的账号。
         try { await getChatGPTClient().accounts(); }
         catch { console.error('Failed to initialize ChatGPT workspace accounts'); }
@@ -2436,6 +2438,7 @@ export default class PluginSample extends Plugin {
         this.settingsStorage?.dispose();
         disposeChatGPTClient();
         disposeChatGPTImageClient();
+        configureChatGPTNetwork(null);
         configureChatGPTStorage(null);
         //当插件被禁用的时候，会自动调用这个函数
         this.eventBus.off("open-menu-doctree", this.openMenuDoctreeBindThis);
