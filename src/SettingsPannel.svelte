@@ -17,8 +17,9 @@
         exportMdContent,
         openBlock,
     } from './api';
-    import { confirm, Constants, getActiveEditor } from 'siyuan';
+    import { confirm, Constants, Dialog, getActiveEditor } from 'siyuan';
     import ProviderConfigPanel from './components/ProviderConfigPanel.svelte';
+    import AddProviderDialog from './components/AddProviderDialog.svelte';
     import type { CustomProviderConfig } from './defaultSettings';
     import {
         buildSiyuanSkillBlocksMarker,
@@ -483,8 +484,8 @@
     }
 
     const builtInProviderNames: Record<string, string> = {
-        apimart: i18n('platformBuiltInApimart'),
         Achuan: i18n('platformBuiltInAchuan'),
+        apimart: i18n('platformBuiltInApimart'),
         gemini: i18n('platformBuiltInGemini'),
         openai: i18n('platformBuiltInOpenai'),
         codex: i18n('platformBuiltInCodex'),
@@ -521,9 +522,7 @@
     // 当前选中的平台ID
     let selectedProviderId = '';
 
-    // 新增自定义平台相关状态
-    let showAddPlatform = false;
-    let newPlatformName = '';
+    let addPlatformDialog: Dialog | null = null;
     let platformSearchQuery = '';
 
     // 拖拽排序相关状态
@@ -818,18 +817,79 @@
         return `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    // 添加自定义平台
-    function addCustomPlatform() {
-        if (!newPlatformName.trim()) {
+    // 使用宿主弹窗，复用桌面和移动端的层级、关闭和键盘行为。
+    function openAddPlatformDialog() {
+        if (addPlatformDialog) return;
+        let component: AddProviderDialog | undefined;
+        const dialog = new Dialog({
+            title: i18n('platformAddTitle'),
+            content: '<div class="copilot-add-provider-root"></div>',
+            width: '520px',
+            destroyCallback: () => {
+                component?.$destroy();
+                addPlatformDialog = null;
+            },
+        });
+        addPlatformDialog = dialog;
+        component = new AddProviderDialog({
+            target: dialog.element.querySelector('.copilot-add-provider-root'),
+            props: {
+                providers: Object.entries(builtInProviderNames).map(([id, name]) => ({
+                    id,
+                    name,
+                    added: allProviderOptions.some(provider => provider.id === id),
+                })),
+            },
+        });
+        component.$on('cancel', () => dialog.destroy());
+        component.$on('add', ({ detail }) => {
+            if ('providerId' in detail) {
+                addBuiltInPlatform(detail.providerId);
+            } else {
+                addCustomPlatform(detail.name, detail.apiUrl);
+            }
+            dialog.destroy();
+        });
+    }
+
+    function addBuiltInPlatform(providerId: string) {
+        if (!builtInProviderNames[providerId]) return;
+        const providers = settings.aiProviders;
+        // 恢复已删除的平台时保留密钥、模型及接口配置。
+        const providerConfig =
+            providers[providerId] || getDefaultSettings().aiProviders[providerId];
+        const providerOrder = allProviderOptions
+            .map(provider => provider.id)
+            .filter(id => id !== providerId);
+        settings = {
+            ...settings,
+            aiProviders: {
+                ...providers,
+                [providerId]: { ...providerConfig, enabled: true },
+                disabledBuiltInProviders: (providers.disabledBuiltInProviders || []).filter(
+                    id => id !== providerId
+                ),
+                providerOrder: [...providerOrder, providerId],
+            },
+            selectedProviderId: providerId,
+        };
+        selectedProviderId = providerId;
+        platformSearchQuery = '';
+        openMobileModelPanel();
+        saveSettings();
+    }
+
+    function addCustomPlatform(name: string, apiUrl: string) {
+        if (!name.trim()) {
             pushErrMsg(i18n('platformNameRequired'));
             return;
         }
 
         const newPlatform: CustomProviderConfig = {
             id: generateCustomPlatformId(),
-            name: newPlatformName.trim(),
+            name: name.trim(),
             apiKey: '',
-            customApiUrl: '',
+            customApiUrl: apiUrl.trim(),
             models: [],
             enabled: true,
         };
@@ -840,6 +900,7 @@
             aiProviders: {
                 ...settings.aiProviders,
                 customProviders: [...settings.aiProviders.customProviders, newPlatform],
+                providerOrder: [...allProviderOptions.map(provider => provider.id), newPlatform.id],
             },
             // 自动选中新创建的平台（仅设置面板，不影响对话）
             selectedProviderId: newPlatform.id,
@@ -848,10 +909,10 @@
         // 更新本地选中状态
         selectedProviderId = newPlatform.id;
 
-        newPlatformName = '';
-        showAddPlatform = false;
+        platformSearchQuery = '';
+        openMobileModelPanel();
         saveSettings();
-        pushMsg(i18n('aiSidebarSuccessAddPromptSuccess') + `: ${newPlatform.name}`);
+        pushMsg(tf('platformAdded', newPlatform.name));
     }
 
     function updateProviderEnabled(providerId: string, enabled: boolean) {
@@ -974,20 +1035,8 @@
     $: allProviderOptions = (() => {
         const deletedBuiltIn = settings.aiProviders?.disabledBuiltInProviders || [];
 
-        // Achuan 平台已下架：只有已配置的旧用户才显示
-        const achuanConfig = settings.aiProviders?.Achuan;
-        const showAchuan =
-            !!achuanConfig?.apiKey ||
-            achuanConfig?.models?.length > 0 ||
-            !!achuanConfig?.customApiUrl;
-
         const builtIn = Object.keys(builtInProviderNames)
-            .filter(id => {
-                if (id === 'Achuan' && !showAchuan) {
-                    return false;
-                }
-                return !deletedBuiltIn.includes(id);
-            })
+            .filter(id => !deletedBuiltIn.includes(id))
             .map(id => ({
                 id,
                 name: settings.aiProviders?.[id]?.name || builtInProviderNames[id],
@@ -1011,15 +1060,13 @@
         if (savedOrder.length > 0) {
             // 创建ID到位置的映射
             const orderMap = new Map(savedOrder.map((id, index) => [id, index]));
-            // 按顺序排序，未在顺序中的放到最后（apimart 默认优先排在第一位）
+            // 尊重用户排序，未排序的平台追加到最后。
             allProviders.sort((a, b) => {
                 const orderA = orderMap.get(a.id);
                 const orderB = orderMap.get(b.id);
                 if (orderA !== undefined && orderB !== undefined) {
                     return orderA - orderB;
                 }
-                if (a.id === 'apimart') return -1;
-                if (b.id === 'apimart') return 1;
                 if (orderA !== undefined) return -1;
                 if (orderB !== undefined) return 1;
                 return 0;
@@ -1391,6 +1438,7 @@
 
     onDestroy(() => {
         isDestroyed = true;
+        addPlatformDialog?.destroy();
         unsubscribeSettings?.();
         document.removeEventListener('click', closePlatformContextMenu);
         window.removeEventListener('blur', closePlatformContextMenu);
@@ -1419,19 +1467,7 @@
     function normalizeProviderSettings() {
         // 确保 aiProviders 存在
         if (!settings.aiProviders) {
-            settings.aiProviders = {
-                apimart: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                gemini: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                deepseek: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                openai: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                moonshot: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                volcano: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                Achuan: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                minimax: { apiKey: '', customApiUrl: '', models: [], enabled: true },
-                customProviders: [],
-                disabledBuiltInProviders: [],
-                providerOrder: [],
-            };
+            settings.aiProviders = getDefaultSettings().aiProviders;
         }
 
         // 确保每个内置平台都存在（支持旧配置升级）
@@ -1486,16 +1522,15 @@
         // 确保 providerOrder 数组存在
         if (!settings.aiProviders.providerOrder) {
             settings.aiProviders.providerOrder = [];
-        } else if (
-            settings.aiProviders.providerOrder.length > 0 &&
-            !settings.aiProviders.providerOrder.includes('apimart')
-        ) {
-            settings.aiProviders.providerOrder.unshift('apimart');
         }
 
         // 恢复选中的平台ID（仅用于设置面板显示）
         // 优先使用 selectedProviderId，如果不存在则使用 currentProvider 作为初始值
-        selectedProviderId = settings.selectedProviderId || settings.currentProvider || 'apimart';
+        const providerId = settings.selectedProviderId || settings.currentProvider || 'Achuan';
+        const isVisible = builtInPlatformIds.includes(providerId)
+            ? !disabledBuiltIn.includes(providerId)
+            : settings.aiProviders.customProviders.some(provider => provider.id === providerId);
+        selectedProviderId = isVisible ? providerId : '';
 
         // 补全设置面板显示所需字段，用户实际修改时再保存。
         if (!settings.selectedProviderId) {
@@ -1643,33 +1678,11 @@
                             <h5>{i18n('platformManagement')}</h5>
                             <button
                                 class="b3-button b3-button--outline"
-                                on:click={() => (showAddPlatform = !showAddPlatform)}
+                                on:click={openAddPlatformDialog}
                             >
-                                {showAddPlatform ? i18n('platformCancel') : i18n('platformAdd')}
+                                {i18n('platformAdd')}
                             </button>
                         </div>
-
-                        {#if showAddPlatform}
-                            <div class="add-platform-form">
-                                <div>
-                                    <div>{i18n('platformName')}</div>
-                                    <input
-                                        class="b3-text-field fn__flex-1"
-                                        type="text"
-                                        bind:value={newPlatformName}
-                                        placeholder={i18n('platformNamePlaceholder')}
-                                        on:keydown={e => e.key === 'Enter' && addCustomPlatform()}
-                                    />
-                                </div>
-                                <button
-                                    class="b3-button b3-button--outline"
-                                    on:click={addCustomPlatform}
-                                    disabled={!newPlatformName.trim()}
-                                >
-                                    {i18n('platformConfirmAdd')}
-                                </button>
-                            </div>
-                        {/if}
 
                         <div class="platform-search">
                             <svg class="platform-search__icon">
@@ -2487,16 +2500,6 @@
             font-weight: 600;
             color: var(--b3-theme-on-surface);
         }
-    }
-
-    .add-platform-form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        padding: 12px;
-        background: var(--b3-theme-background);
-        border-radius: 4px;
-        margin-bottom: 16px;
     }
 
     .platform-list {

@@ -414,6 +414,8 @@
     "multiModelWaitingSelection": "Please select a satisfactory answer before continuing the conversation",
     "noUpdateNotes": "No update notes",
     "platformAdd": "+ Add Platform",
+    "platformAddTitle": "Add platform",
+    "platformAlreadyAdded": "Added",
     "platformAdvanced": "Advanced Settings",
     "platformAdvancedConfigChatUrl": "Chat Endpoint URL",
     "platformAdvancedConfigChatUrlPlaceholder": "Leave empty to use default, e.g.: https://api.example.com/v1/chat/completions",

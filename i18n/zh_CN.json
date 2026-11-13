@@ -414,6 +414,8 @@
     "multiModelWaitingSelection": "请选择一个满意的答案后再继续对话",
     "noUpdateNotes": "无更新内容",
     "platformAdd": "+ 添加平台",
+    "platformAddTitle": "添加平台",
+    "platformAlreadyAdded": "已添加",
     "platformAdvanced": "高级设置",
     "platformAdvancedConfigChatUrl": "对话接口 URL",
     "platformAdvancedConfigChatUrlPlaceholder": "留空使用默认接口，例如: https://api.example.com/v1/chat/completions",

@@ -52,7 +52,7 @@ export const getDefaultSettings = () => ({
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         Achuan: {
             apiKey: '',
@@ -64,50 +64,53 @@ export const getDefaultSettings = () => ({
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         deepseek: {
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         openai: {
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         codex: { // 保留早期接入的平台 ID，当前使用 ChatGPT OAuth 直连。
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         moonshot: {
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         volcano: {
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         minimax: {
             apiKey: '',
             customApiUrl: '',
             models: [],
-            enabled: true,
+            enabled: false,
         },
         customProviders: [] as CustomProviderConfig[],
-        disabledBuiltInProviders: [] as string[],
-        providerOrder: [] as string[]
+        // 未添加的内置平台保留预设配置，通过添加弹窗加入平台列表。
+        disabledBuiltInProviders: [
+            'apimart', 'gemini', 'deepseek', 'openai', 'codex', 'moonshot', 'volcano', 'minimax'
+        ] as string[],
+        providerOrder: ['Achuan'] as string[]
     } as Record<string, any>,
-    selectedProviderId: 'apimart' as string,  // 设置面板中选中的平台
-    currentProvider: 'apimart' as string,      // 对话中当前使用的平台
+    selectedProviderId: 'Achuan' as string,  // 设置面板中选中的平台
+    currentProvider: 'Achuan' as string,      // 对话中当前使用的平台
     currentModelId: '' as string,
     drawProvider: '' as string,               // 画图模式单独记忆的当前平台
     drawModelId: '' as string,                // 画图模式单独记忆的当前模型
