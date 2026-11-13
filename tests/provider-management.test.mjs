@@ -145,11 +145,40 @@ test('自定义平台保存名称和地址，追加到列表并拒绝空白名�
     const provider = sandbox.settings.aiProviders.customProviders[0];
     assert.equal(provider.name, 'Local API');
     assert.equal(provider.customApiUrl, 'http://localhost:11434/v1');
+    assert.equal(provider.advancedConfig.chatInterface, 'openai-completion');
+    assert.equal(provider.apiKey, '');
     assert.equal(sandbox.selectedProviderId, provider.id);
     assert.equal(sandbox.settings.currentProvider, 'Achuan');
     assert.deepEqual(plain(sandbox.settings.aiProviders.providerOrder), ['Achuan', provider.id]);
     assert.equal(sandbox.allProviderOptions.at(-1).id, provider.id);
     assert.equal(panel.saves, 1);
+});
+
+test('自定义平台弹窗将三种接口和密钥传给设置并在重新加载后保留', () => {
+    const dialogSource = read('../src/components/AddProviderDialog.svelte')
+        .match(/<script lang="ts">([\s\S]*?)<\/script>/)[1];
+    const ast = ts.createSourceFile('dialog.ts', dialogSource, ts.ScriptTarget.Latest, true);
+    const submit = ast.statements.find(node => ts.isFunctionDeclaration(node) &&
+        node.name?.text === 'addCustomProvider');
+    for (const chatInterface of ['openai-completion', 'gemini', 'anthropic']) {
+        const panel = createPanel();
+        const dialog = {
+            name: '  Custom API  ', apiUrl: '  https://example.invalid  ',
+            apiKey: '  fixture-key  ', chatInterface,
+            dispatch(type, detail) {
+                assert.equal(type, 'add');
+                panel.sandbox.addCustomPlatform(detail.name, detail.apiUrl, detail.chatInterface, detail.apiKey);
+            },
+        };
+        vm.runInNewContext(transpile(`${submit.getText(ast)}\naddCustomProvider();`), dialog);
+        const reloaded = createPanel(plain(panel.sandbox.settings));
+        const provider = reloaded.sandbox.settings.aiProviders.customProviders[0];
+        assert.equal(provider.name, 'Custom API');
+        assert.equal(provider.customApiUrl, 'https://example.invalid');
+        assert.equal(provider.apiKey, 'fixture-key');
+        assert.equal(provider.advancedConfig.chatInterface, chatInterface);
+        assert.equal(reloaded.sandbox.selectedProviderId, provider.id);
+    }
 });
 
 test('添加弹窗列出内置平台，并禁用已经添加的平台按钮', async () => {

@@ -1,23 +1,38 @@
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
     import { i18n } from '../utils/i18n';
+    import type { ChatInterfaceType } from '../ai-chat';
 
     export let providers: Array<{ id: string; name: string; added: boolean }> = [];
 
     const dispatch = createEventDispatcher<{
-        add: { providerId: string } | { name: string; apiUrl: string };
+        add: { providerId: string } | {
+            name: string;
+            apiUrl: string;
+            chatInterface: ChatInterfaceType;
+            apiKey: string;
+        };
         cancel: void;
     }>();
     let tab: 'builtin' | 'custom' = 'builtin';
     let name = '';
     let apiUrl = '';
+    let chatInterface: ChatInterfaceType = 'openai-completion';
+    let apiKey = '';
 
     function focusInput(node: HTMLInputElement) {
         node.focus();
     }
 
     function addCustomProvider() {
-        if (name.trim()) dispatch('add', { name: name.trim(), apiUrl: apiUrl.trim() });
+        if (name.trim()) {
+            dispatch('add', {
+                name: name.trim(),
+                apiUrl: apiUrl.trim(),
+                chatInterface,
+                apiKey: apiKey.trim(),
+            });
+        }
     }
 </script>
 
@@ -79,6 +94,24 @@
                     class="b3-text-field"
                     bind:value={apiUrl}
                     placeholder={i18n('platformApiUrlPlaceholder')}
+                />
+            </label>
+            <label>
+                <span>{i18n('platformChatInterface')}</span>
+                <select class="b3-select" bind:value={chatInterface}>
+                    <option value="openai-completion">OpenAI Completion</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </label>
+            <label>
+                <span>{i18n('settingsAiApiKeyTitle')}</span>
+                <input
+                    class="b3-text-field"
+                    type="password"
+                    bind:value={apiKey}
+                    placeholder={i18n('settingsAiApiKeyDescription')}
+                    autocomplete="off"
                 />
             </label>
             <div class="provider-actions">

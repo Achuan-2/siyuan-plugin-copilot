@@ -21,6 +21,7 @@
     import ProviderConfigPanel from './components/ProviderConfigPanel.svelte';
     import AddProviderDialog from './components/AddProviderDialog.svelte';
     import type { CustomProviderConfig } from './defaultSettings';
+    import type { ChatInterfaceType } from './ai-chat';
     import {
         buildSiyuanSkillBlocksMarker,
         extractSiyuanSkillBlockIds,
@@ -846,7 +847,7 @@
             if ('providerId' in detail) {
                 addBuiltInPlatform(detail.providerId);
             } else {
-                addCustomPlatform(detail.name, detail.apiUrl);
+                addCustomPlatform(detail.name, detail.apiUrl, detail.chatInterface, detail.apiKey);
             }
             dialog.destroy();
         });
@@ -879,7 +880,12 @@
         saveSettings();
     }
 
-    function addCustomPlatform(name: string, apiUrl: string) {
+    function addCustomPlatform(
+        name: string,
+        apiUrl: string,
+        chatInterface: ChatInterfaceType = 'openai-completion',
+        apiKey: string = ''
+    ) {
         if (!name.trim()) {
             pushErrMsg(i18n('platformNameRequired'));
             return;
@@ -888,8 +894,9 @@
         const newPlatform: CustomProviderConfig = {
             id: generateCustomPlatformId(),
             name: name.trim(),
-            apiKey: '',
+            apiKey: apiKey.trim(),
             customApiUrl: apiUrl.trim(),
+            advancedConfig: { chatInterface },
             models: [],
             enabled: true,
         };
