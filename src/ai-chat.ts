@@ -226,10 +226,11 @@ export interface ModelInfo {
     provider: string;
 }
 
-export type AIProvider = 'apimart' | 'openai' | 'gemini' | 'deepseek'  | 'moonshot' | 'volcano' | 'Achuan' | 'minimax' | 'custom';
+export type AIProvider = 'apimart' | 'openai' | 'anthropic' | 'gemini' | 'deepseek'  | 'moonshot' | 'volcano' | 'Achuan' | 'minimax' | 'custom';
 export type ChatInterfaceType = 'openai-completion' | 'gemini' | 'anthropic';
 
 export function getDefaultChatInterface(provider: string): ChatInterfaceType {
+    if (provider === 'anthropic') return 'anthropic';
     return provider === 'gemini' ? 'gemini' : 'openai-completion';
 }
 
@@ -303,6 +304,14 @@ const PROVIDER_CONFIGS: Record<AIProvider, ProviderConfig> = {
         chatEndpoint: '/v1/chat/completions',
         apiKeyHeader: 'Authorization',
         websiteUrl: 'https://platform.openai.com/'
+    },
+    anthropic: {
+        name: 'Anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        modelsEndpoint: '/v1/models',
+        chatEndpoint: '/v1/messages',
+        apiKeyHeader: 'x-api-key',
+        websiteUrl: 'https://platform.claude.com/settings/keys'
     },
     moonshot: {
         name: 'Moonshot',
@@ -682,7 +691,7 @@ export async function fetchModels(
     customApiUrl?: string,
     advancedConfig?: AdvancedProviderConfig,
     useForwardProxy?: boolean,
-    chatInterface?: ChatInterfaceType // 根据不同的平台接口，走不同的 API Key 认证方式
+    chatInterface: ChatInterfaceType = advancedConfig?.chatInterface || getDefaultChatInterface(provider)
 ): Promise<ModelInfo[]> {
     if (provider === 'codex') {
         const client = getChatGPTClient();
@@ -694,7 +703,7 @@ export async function fetchModels(
         }
         return models;
     }
-    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'anthropic', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const fallbackProviderName = isBuiltIn ? config.name : provider;
 
@@ -816,7 +825,7 @@ export async function fetchModels(
                 } else {
                     return {
                         id: model.id || model.name || model,
-                        name: model.name || model.id || model,
+                        name: model.display_name || model.name || model.id || model,
                         provider: config.name
                     };
                 }
@@ -2350,7 +2359,7 @@ export async function chat(
         await chatChatGPT(options);
         return;
     }
-    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'anthropic', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
     const chatInterface = advancedConfig?.chatInterface || getDefaultChatInterface(provider);
 
@@ -2532,7 +2541,7 @@ export async function generateImage(
     customApiUrl?: string,
     useForwardProxy?: boolean
 ): Promise<ImageGenerationResult> {
-    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
+    const isBuiltIn = ['apimart', 'gemini', 'deepseek', 'openai', 'anthropic', 'moonshot', 'volcano', 'Achuan', 'minimax'].includes(provider);
     const config = isBuiltIn ? PROVIDER_CONFIGS[provider as AIProvider] : PROVIDER_CONFIGS.custom;
 
     const isGeminiPreview = provider === 'gemini' && (options.model.includes('image-preview') || options.model.includes('image'));

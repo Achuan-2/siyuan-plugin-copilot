@@ -135,6 +135,33 @@ test('平台开关不会移出列表，删除后可重新添加并保留模型�
     assert.equal(sandbox.settings.aiProviders.Achuan.enabled, true);
 });
 
+test('旧配置升级后 Anthropic 保持未添加，主动添加及恢复后保留配置', () => {
+    const settings = getDefaultSettings();
+    delete settings.aiProviders.anthropic;
+    settings.aiProviders.disabledBuiltInProviders = settings.aiProviders.disabledBuiltInProviders
+        .filter(id => id !== 'anthropic');
+    const panel = createPanel(settings);
+    const { sandbox } = panel;
+    assert.deepEqual(plain(sandbox.allProviderOptions).map(provider => provider.id), ['Achuan']);
+    assert.equal(sandbox.settings.aiProviders.anthropic.enabled, false);
+    assert.equal(panel.saves, 0);
+
+    sandbox.addBuiltInPlatform('anthropic');
+    panel.refresh();
+    assert.equal(sandbox.allProviderOptions.at(-1).name, 'Anthropic');
+    assert.equal(sandbox.selectedProviderId, 'anthropic');
+    assert.equal(sandbox.settings.aiProviders.anthropic.enabled, true);
+    sandbox.settings.aiProviders.anthropic.apiKey = 'saved-key';
+    sandbox.settings.aiProviders.anthropic.models = [{ id: 'claude-fixture' }];
+    sandbox.removePlatform('anthropic');
+    panel.refresh();
+    sandbox.addBuiltInPlatform('anthropic');
+    const reloaded = createPanel(plain(sandbox.settings));
+    assert.equal(reloaded.sandbox.settings.aiProviders.anthropic.apiKey, 'saved-key');
+    assert.equal(reloaded.sandbox.settings.aiProviders.anthropic.models[0].id, 'claude-fixture');
+    assert.equal(reloaded.sandbox.selectedProviderId, 'anthropic');
+});
+
 test('自定义平台保存名称和地址，追加到列表并拒绝空白名称', () => {
     const panel = createPanel();
     const { sandbox } = panel;
@@ -200,16 +227,18 @@ test('添加弹窗按官方和模型聚合平台分组，并禁用已经添加�
         { id: 'Achuan', name: 'A API', added: true },
         { id: 'apimart', name: 'APIMart', added: false },
         { id: 'openai', name: 'OpenAI', added: false },
+        { id: 'anthropic', name: 'Anthropic', added: false },
         { id: 'codex', name: 'Codex', added: false },
     ] });
     const groups = [...html.matchAll(/<section\b[^>]*aria-label="([^"]+)"[^>]*>([\s\S]*?)<\/section>/g)];
     assert.deepEqual(groups.map(group => group[1]), ['官方平台', '模型聚合平台']);
     assert.match(groups[0][2], /<span>OpenAI<\/span>/);
+    assert.match(groups[0][2], /<span>Anthropic<\/span>/);
     assert.match(groups[0][2], /<span>Codex<\/span>/);
     assert.doesNotMatch(groups[0][2], /<span>(A API|APIMart)<\/span>/);
     assert.match(groups[1][2], /<span>A API<\/span>/);
     assert.match(groups[1][2], /<span>APIMart<\/span>/);
-    assert.doesNotMatch(groups[1][2], /<span>(OpenAI|Codex)<\/span>/);
+    assert.doesNotMatch(groups[1][2], /<span>(OpenAI|Anthropic|Codex)<\/span>/);
     assert.match(html, /disabled[^>]*>\s*<span>A API<\/span>/);
     assert.match(html, /已添加/);
     assert.match(html, /<span>OpenAI<\/span>/);

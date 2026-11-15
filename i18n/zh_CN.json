@@ -440,6 +440,7 @@
     "platformBuiltInMinimax": "MiniMax",
     "platformBuiltInMoonshot": "月之暗面 (Kimi)",
     "platformBuiltInOpenai": "OpenAI",
+    "platformBuiltInAnthropic": "Anthropic",
     "platformBuiltInVolcano": "火山引擎",
     "platformBuiltin": "内置",
     "platformCancel": "取消",

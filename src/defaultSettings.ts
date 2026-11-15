@@ -78,6 +78,12 @@ export const getDefaultSettings = () => ({
             models: [],
             enabled: false,
         },
+        anthropic: {
+            apiKey: '',
+            customApiUrl: '',
+            models: [],
+            enabled: false,
+        },
         codex: { // 保留早期接入的平台 ID，当前使用 ChatGPT OAuth 直连。
             apiKey: '',
             customApiUrl: '',
@@ -105,7 +111,7 @@ export const getDefaultSettings = () => ({
         customProviders: [] as CustomProviderConfig[],
         // 未添加的内置平台保留预设配置，通过添加弹窗加入平台列表。
         disabledBuiltInProviders: [
-            'apimart', 'gemini', 'deepseek', 'openai', 'codex', 'moonshot', 'volcano', 'minimax'
+            'apimart', 'gemini', 'deepseek', 'openai', 'anthropic', 'codex', 'moonshot', 'volcano', 'minimax'
         ] as string[],
         providerOrder: ['Achuan'] as string[]
     } as Record<string, any>,

@@ -489,6 +489,7 @@
         apimart: i18n('platformBuiltInApimart'),
         gemini: i18n('platformBuiltInGemini'),
         openai: i18n('platformBuiltInOpenai'),
+        anthropic: i18n('platformBuiltInAnthropic'),
         codex: i18n('platformBuiltInCodex'),
         deepseek: i18n('platformBuiltInDeepseek'),
         moonshot: i18n('platformBuiltInMoonshot'),
@@ -504,6 +505,7 @@
         deepseek: 'https://api.deepseek.com',
         moonshot: 'https://api.moonshot.cn',
         openai: 'https://api.openai.com',
+        anthropic: 'https://api.anthropic.com',
         volcano: 'https://ark.cn-beijing.volces.com',
         minimax: 'https://api.minimaxi.com',
     };
@@ -516,6 +518,7 @@
         deepseek: 'https://platform.deepseek.com/',
         moonshot: 'https://platform.moonshot.cn/',
         openai: 'https://platform.openai.com/',
+        anthropic: 'https://platform.claude.com/settings/keys',
         volcano: 'https://console.volcengine.com/ark',
         minimax: 'https://platform.minimaxi.com/',
     };
@@ -1484,6 +1487,7 @@
             'gemini',
             'deepseek',
             'openai',
+            'anthropic',
             'codex',
             'moonshot',
             'volcano',
@@ -1495,8 +1499,14 @@
                     apiKey: '',
                     customApiUrl: '',
                     models: [],
-                    enabled: true,
+                    enabled: platformId !== 'anthropic',
                 };
+                // 新增的 Anthropic 预设由用户主动添加，旧配置升级不自动显示。
+                if (platformId === 'anthropic') {
+                    settings.aiProviders.disabledBuiltInProviders = [
+                        ...new Set([...(settings.aiProviders.disabledBuiltInProviders || []), platformId]),
+                    ];
+                }
             }
             if (typeof settings.aiProviders[platformId].enabled !== 'boolean') {
                 settings.aiProviders[platformId].enabled = true;

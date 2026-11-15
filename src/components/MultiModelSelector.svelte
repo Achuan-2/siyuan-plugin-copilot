@@ -32,6 +32,7 @@
         gemini: i18n('platformBuiltInGemini'),
         deepseek: i18n('platformBuiltInDeepseek'),
         openai: i18n('platformBuiltInOpenai'),
+        anthropic: i18n('platformBuiltInAnthropic'),
         codex: i18n('platformBuiltInCodex'),
         volcano: i18n('platformBuiltInVolcano'),
         moonshot: i18n('platformBuiltInMoonshot'),
