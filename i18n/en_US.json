@@ -416,6 +416,8 @@
     "platformAdd": "+ Add Platform",
     "platformAddTitle": "Add platform",
     "platformAlreadyAdded": "Added",
+    "platformCategoryOfficial": "Official platforms",
+    "platformCategoryAggregate": "Model aggregation platforms",
     "platformAdvanced": "Advanced Settings",
     "platformAdvancedConfigChatUrl": "Chat Endpoint URL",
     "platformAdvancedConfigChatUrlPlaceholder": "Leave empty to use default, e.g.: https://api.example.com/v1/chat/completions",

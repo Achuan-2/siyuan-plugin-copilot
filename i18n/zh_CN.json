@@ -416,6 +416,8 @@
     "platformAdd": "+ 添加平台",
     "platformAddTitle": "添加平台",
     "platformAlreadyAdded": "已添加",
+    "platformCategoryOfficial": "官方平台",
+    "platformCategoryAggregate": "模型聚合平台",
     "platformAdvanced": "高级设置",
     "platformAdvancedConfigChatUrl": "对话接口 URL",
     "platformAdvancedConfigChatUrlPlaceholder": "留空使用默认接口，例如: https://api.example.com/v1/chat/completions",

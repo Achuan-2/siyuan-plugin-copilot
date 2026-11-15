@@ -5,6 +5,18 @@
 
     export let providers: Array<{ id: string; name: string; added: boolean }> = [];
 
+    const aggregateProviderIds = new Set(['Achuan', 'apimart']);
+    $: providerGroups = [
+        {
+            title: i18n('platformCategoryOfficial'),
+            providers: providers.filter(provider => !aggregateProviderIds.has(provider.id)),
+        },
+        {
+            title: i18n('platformCategoryAggregate'),
+            providers: providers.filter(provider => aggregateProviderIds.has(provider.id)),
+        },
+    ];
+
     const dispatch = createEventDispatcher<{
         add: { providerId: string } | {
             name: string;
@@ -55,20 +67,29 @@
     </div>
 
     {#if tab === 'builtin'}
-        <div class="provider-grid">
-            {#each providers as provider (provider.id)}
-                <button
-                    class="provider-option"
-                    disabled={provider.added}
-                    on:click={() => dispatch('add', { providerId: provider.id })}
-                >
-                    <span>{provider.name}</span>
-                    {#if provider.added}
-                        <span class="provider-added">{i18n('platformAlreadyAdded')}</span>
-                    {:else}
-                        <svg aria-hidden="true"><use xlink:href="#iconAdd"></use></svg>
-                    {/if}
-                </button>
+        <div class="provider-groups">
+            {#each providerGroups as group (group.title)}
+                {#if group.providers.length > 0}
+                    <section class="provider-group" aria-label={group.title}>
+                        <h3>{group.title}</h3>
+                        <div class="provider-grid">
+                            {#each group.providers as provider (provider.id)}
+                                <button
+                                    class="provider-option"
+                                    disabled={provider.added}
+                                    on:click={() => dispatch('add', { providerId: provider.id })}
+                                >
+                                    <span>{provider.name}</span>
+                                    {#if provider.added}
+                                        <span class="provider-added">{i18n('platformAlreadyAdded')}</span>
+                                    {:else}
+                                        <svg aria-hidden="true"><use xlink:href="#iconAdd"></use></svg>
+                                    {/if}
+                                </button>
+                            {/each}
+                        </div>
+                    </section>
+                {/if}
             {/each}
         </div>
         <div class="provider-actions">
@@ -142,6 +163,18 @@
             background: var(--b3-theme-primary-lightest);
             color: var(--b3-theme-primary);
         }
+    }
+
+    .provider-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .provider-group h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 600;
     }
 
     .provider-grid {

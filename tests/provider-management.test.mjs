@@ -181,7 +181,7 @@ test('自定义平台弹窗将三种接口和密钥传给设置并在重新加�
     }
 });
 
-test('添加弹窗列出内置平台，并禁用已经添加的平台按钮', async () => {
+test('添加弹窗按官方和模型聚合平台分组，并禁用已经添加的平台按钮', async () => {
     const filename = 'AddProviderDialog.svelte';
     const source = await preprocess(read('../src/components/AddProviderDialog.svelte'), {
         script: ({ content }) => ({ code: ts.transpileModule(content, {
@@ -198,8 +198,18 @@ test('添加弹窗列出内置平台，并禁用已经添加的平台按钮', as
     vm.runInNewContext(transpile(component.js.code), sandbox);
     const { html } = sandbox.exports.default.render({ providers: [
         { id: 'Achuan', name: 'A API', added: true },
+        { id: 'apimart', name: 'APIMart', added: false },
         { id: 'openai', name: 'OpenAI', added: false },
+        { id: 'codex', name: 'Codex', added: false },
     ] });
+    const groups = [...html.matchAll(/<section\b[^>]*aria-label="([^"]+)"[^>]*>([\s\S]*?)<\/section>/g)];
+    assert.deepEqual(groups.map(group => group[1]), ['官方平台', '模型聚合平台']);
+    assert.match(groups[0][2], /<span>OpenAI<\/span>/);
+    assert.match(groups[0][2], /<span>Codex<\/span>/);
+    assert.doesNotMatch(groups[0][2], /<span>(A API|APIMart)<\/span>/);
+    assert.match(groups[1][2], /<span>A API<\/span>/);
+    assert.match(groups[1][2], /<span>APIMart<\/span>/);
+    assert.doesNotMatch(groups[1][2], /<span>(OpenAI|Codex)<\/span>/);
     assert.match(html, /disabled[^>]*>\s*<span>A API<\/span>/);
     assert.match(html, /已添加/);
     assert.match(html, /<span>OpenAI<\/span>/);
