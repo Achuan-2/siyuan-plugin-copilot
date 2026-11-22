@@ -197,6 +197,12 @@
             aria-label={i18n('aiSidebarDrawDetails')} tabindex="-1">
             <div class="draw-detail__toolbar">
                 {#if 'image' in selected}
+                    {#if isFullscreen && preview}
+                        <button type="button" on:click={() => dispatch('copy', preview)}
+                            aria-label={i18n('aiSidebarImageCopy')} title={i18n('aiSidebarImageCopy')}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+                        </button>
+                    {/if}
                     <button type="button" class="draw-gallery__delete" {disabled} on:click={() => deleteImage(selected)}
                         aria-label={i18n('aiSidebarDrawDeleteImage')} title={i18n('aiSidebarDrawDeleteImage')}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
@@ -282,6 +288,7 @@
                         <button type="button" class="draw-detail__edit" {disabled} on:click={() => action('edit', selected)}>{i18n('aiSidebarDrawEditImage')}</button>
                         <button type="button" {disabled} on:click={() => action('regenerate', selected)}>{i18n('aiSidebarDrawRegenerateImage')}</button>
                         <button type="button" on:click={() => dispatch('download', selected.image)}>{i18n('aiSidebarDrawDownloadImage')}</button>
+                        <button type="button" disabled={!preview} on:click={() => dispatch('copy', preview)}>{i18n('aiSidebarImageCopy')}</button>
                     </div>
                 {/if}
             </div>

@@ -13394,6 +13394,7 @@
                 on:delete={event => handleDeleteDrawGalleryImage(event.detail)}
                 on:edit={event => editDrawGalleryImage(event.detail)}
                 on:regenerate={event => regenerateDrawGalleryImage(event.detail)}
+                on:copy={event => copyImageAsPng(event.detail)}
                 on:download={event => downloadImage(event.detail.data, event.detail.name)} />
         {:else}
         {#each messageGroups as group, groupIndex (groupIndex)}
