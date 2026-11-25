@@ -16329,79 +16329,128 @@
                 </div>
             {/if}
         </div>
-        <div class="ai-sidebar__input-row">
-            <div class="ai-sidebar__input-wrapper">
-                <div bind:this={editorElement} class="ai-sidebar__editor-wrapper"></div>
-                
-                <!-- 上下文用量圆环进度条 -->
-                {#if activeModelsContextInfo.length > 0}
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <div 
-                        class="ai-sidebar__context-indicator"
-                        on:click={handleContextIndicatorClick}
-                        on:mouseenter={handleContextIndicatorMouseEnter}
-                        on:mouseleave={handleContextIndicatorMouseLeave}
-                    >
-                        <svg width="20" height="20" viewBox="0 0 20 20">
-                            <!-- Track -->
-                            <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary-light)" stroke-width="2" opacity="0.2" />
-                            <!-- Progress -->
-                            <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary)" stroke-width="2"
-                                    stroke-dasharray="50.265" stroke-dashoffset={50.265 * (1 - Math.min(contextProgress, 1))}
-                                    transform="rotate(-90 10 10)" stroke-linecap="round" />
-                            <!-- Dot indicator -->
-                            {#if contextProgress > 0}
-                                {@const angle = -Math.PI / 2 + 2 * Math.PI * Math.min(contextProgress, 1)}
-                                <circle cx={10 + 8 * Math.cos(angle)} cy={10 + 8 * Math.sin(angle)} r="1.8" fill="var(--b3-theme-primary)" />
-                            {/if}
-                        </svg>
-                    </div>
-                {/if}
+        <div class="ai-sidebar__input-wrapper">
+            <div bind:this={editorElement} class="ai-sidebar__editor-wrapper"></div>
 
-                <!-- 上下文用量详情弹窗 -->
-                {#if showContextPopover && activeModelsContextInfo.length > 0}
-                    <div class="ai-sidebar__context-popover" on:click|stopPropagation>
-                        <div class="ai-sidebar__context-popover-title">
-                            {(enableMultiModel && chatMode === 'ask') ? i18n('aiSidebarContextMultiUsage') : i18n('aiSidebarContextUsage')}
-                        </div>
-                        <div class="ai-sidebar__context-popover-list">
-                            {#each activeModelsContextInfo as info}
-                                <div class="ai-sidebar__context-popover-item">
-                                    <div class="ai-sidebar__context-popover-model-name">
-                                        {info.modelName} <span class="ai-sidebar__context-popover-provider-name">({info.providerName})</span>
-                                    </div>
-                                    <div class="ai-sidebar__context-popover-progress-bar-wrapper">
-                                        <div class="ai-sidebar__context-popover-progress-bar" style="width: {Math.min(info.ratio * 100, 100)}%;"></div>
-                                    </div>
-                                    <div class="ai-sidebar__context-popover-stats">
-                                        {info.used.toLocaleString()} / {info.limit.toLocaleString()} tokens ({Math.round(info.ratio * 100)}%)
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                        <div class="ai-sidebar__context-popover-hint">
-                            {i18n('aiSidebarContextUsageHint')}
-                        </div>
-                    </div>
-                {/if}
-
+            <div class="ai-sidebar__bottom-row">
                 <button
-                    class="b3-button ai-sidebar__send-btn"
-                    class:b3-button--primary={!isLoading || chatMode === 'draw'}
-                    class:ai-sidebar__send-btn--abort={isLoading && chatMode !== 'draw'}
-                    on:click={isLoading && chatMode !== 'draw' ? abortMessage : sendMessage}
-                    disabled={chatMode === 'draw' ? drawIsSubmitting || !!drawAnnotationTarget || (!currentInput.trim() && !hasDrawAnnotationComments(currentAttachments)) : !isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
-                    title={isLoading && chatMode !== 'draw' ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
+                    class="b3-button b3-button--text ai-sidebar__upload-btn"
+                    on:click={triggerFileUpload}
+                    disabled={isUploadingFile || (chatMode === 'draw' ? drawIsSubmitting : isLoading)}
+                    title={i18n('aiSidebarActionsUpload')}
                 >
-                    {#if isLoading && chatMode !== 'draw'}
-                        <svg class="b3-button__icon">
-                            <use xlink:href="#iconPause"></use>
+                    {#if isUploadingFile}
+                        <svg class="b3-button__icon ai-sidebar__loading-icon">
+                            <use xlink:href="#iconRefresh"></use>
                         </svg>
                     {:else}
-                        <svg class="b3-button__icon"><use xlink:href="#iconUp"></use></svg>
+                        <svg class="b3-button__icon"><use xlink:href="#iconUpload"></use></svg>
                     {/if}
                 </button>
+                <button
+                    class="b3-button b3-button--text ai-sidebar__search-btn"
+                    on:click={() => {
+                        isSearchDialogOpen = !isSearchDialogOpen;
+                        // 打开对话框时，如果搜索关键词为空，自动加载当前文档
+                        if (isSearchDialogOpen && !searchKeyword.trim()) {
+                            searchDocuments();
+                        }
+                    }}
+                    title={i18n('aiSidebarActionsSearch')}
+                >
+                    <svg class="b3-button__icon"><use xlink:href="#iconSearch"></use></svg>
+                </button>
+                <div class="ai-sidebar__prompt-actions">
+                    <button
+                        class="b3-button b3-button--text"
+                        on:click={togglePromptSelector}
+                        title={i18n('aiSidebarPromptTitle')}
+                    >
+                        <svg class="b3-button__icon"><use xlink:href="#iconQuote"></use></svg>
+                    </button>
+                </div>
+                <!-- 模型设置按钮 -->
+                <ModelPresetButton
+                    {providers}
+                    {currentProvider}
+                    {currentModelId}
+                    appliedSettings={tempModelSettings}
+                    globalToolAutoApproveSettings={toolAutoApproveSettings}
+                    globalToolAutoApproveSettingsAsk={toolAutoApproveSettingsAsk}
+                    on:apply={handleApplyModelSettings}
+                    {plugin}
+                />
+                <div class="ai-sidebar__input-actions">
+                    <!-- 上下文用量圆环进度条 -->
+                    {#if activeModelsContextInfo.length > 0}
+                        <!-- svelte-ignore a11y-click-events-have-key-events -->
+                        <div
+                            class="ai-sidebar__context-indicator"
+                            on:click={handleContextIndicatorClick}
+                            on:mouseenter={handleContextIndicatorMouseEnter}
+                            on:mouseleave={handleContextIndicatorMouseLeave}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 20 20">
+                                <!-- Track -->
+                                <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary-light)" stroke-width="2" opacity="0.2" />
+                                <!-- Progress -->
+                                <circle cx="10" cy="10" r="8" fill="none" stroke="var(--b3-theme-primary)" stroke-width="2"
+                                        stroke-dasharray="50.265" stroke-dashoffset={50.265 * (1 - Math.min(contextProgress, 1))}
+                                        transform="rotate(-90 10 10)" stroke-linecap="round" />
+                                <!-- Dot indicator -->
+                                {#if contextProgress > 0}
+                                    {@const angle = -Math.PI / 2 + 2 * Math.PI * Math.min(contextProgress, 1)}
+                                    <circle cx={10 + 8 * Math.cos(angle)} cy={10 + 8 * Math.sin(angle)} r="1.8" fill="var(--b3-theme-primary)" />
+                                {/if}
+                            </svg>
+                        </div>
+                    {/if}
+
+                    <button
+                        class="b3-button ai-sidebar__send-btn"
+                        class:b3-button--primary={!isLoading || chatMode === 'draw'}
+                        class:ai-sidebar__send-btn--abort={isLoading && chatMode !== 'draw'}
+                        on:click={isLoading && chatMode !== 'draw' ? abortMessage : sendMessage}
+                        disabled={chatMode === 'draw' ? drawIsSubmitting || !!drawAnnotationTarget || (!currentInput.trim() && !hasDrawAnnotationComments(currentAttachments)) : !isLoading && !currentInput.trim() && currentAttachments.length === 0 && contextDocuments.length === 0}
+                        title={isLoading && chatMode !== 'draw' ? i18n('aiSidebarStopGeneration') : i18n('aiSidebarSendMessage')}
+                    >
+                        {#if isLoading && chatMode !== 'draw'}
+                            <svg class="b3-button__icon">
+                                <use xlink:href="#iconPause"></use>
+                            </svg>
+                        {:else}
+                            <svg class="b3-button__icon"><use xlink:href="#iconUp"></use></svg>
+                        {/if}
+                    </button>
+                </div>
             </div>
+
+            <!-- 上下文用量详情弹窗 -->
+            {#if showContextPopover && activeModelsContextInfo.length > 0}
+                <div class="ai-sidebar__context-popover" on:click|stopPropagation>
+                    <div class="ai-sidebar__context-popover-title">
+                        {(enableMultiModel && chatMode === 'ask') ? i18n('aiSidebarContextMultiUsage') : i18n('aiSidebarContextUsage')}
+                    </div>
+                    <div class="ai-sidebar__context-popover-list">
+                        {#each activeModelsContextInfo as info}
+                            <div class="ai-sidebar__context-popover-item">
+                                <div class="ai-sidebar__context-popover-model-name">
+                                    {info.modelName} <span class="ai-sidebar__context-popover-provider-name">({info.providerName})</span>
+                                </div>
+                                <div class="ai-sidebar__context-popover-progress-bar-wrapper">
+                                    <div class="ai-sidebar__context-popover-progress-bar" style="width: {Math.min(info.ratio * 100, 100)}%;"></div>
+                                </div>
+                                <div class="ai-sidebar__context-popover-stats">
+                                    {info.used.toLocaleString()} / {info.limit.toLocaleString()} tokens ({Math.round(info.ratio * 100)}%)
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                    <div class="ai-sidebar__context-popover-hint">
+                        {i18n('aiSidebarContextUsageHint')}
+                    </div>
+                </div>
+            {/if}
         </div>
 
         <!-- 隐藏的文件上传 input -->
@@ -16413,55 +16462,6 @@
             multiple
             style="display: none;"
         />
-        <div class="ai-sidebar__bottom-row">
-            <button
-                class="b3-button b3-button--text ai-sidebar__upload-btn"
-                on:click={triggerFileUpload}
-                disabled={isUploadingFile || (chatMode === 'draw' ? drawIsSubmitting : isLoading)}
-                title={i18n('aiSidebarActionsUpload')}
-            >
-                {#if isUploadingFile}
-                    <svg class="b3-button__icon ai-sidebar__loading-icon">
-                        <use xlink:href="#iconRefresh"></use>
-                    </svg>
-                {:else}
-                    <svg class="b3-button__icon"><use xlink:href="#iconUpload"></use></svg>
-                {/if}
-            </button>
-            <button
-                class="b3-button b3-button--text ai-sidebar__search-btn"
-                on:click={() => {
-                    isSearchDialogOpen = !isSearchDialogOpen;
-                    // 打开对话框时，如果搜索关键词为空，自动加载当前文档
-                    if (isSearchDialogOpen && !searchKeyword.trim()) {
-                        searchDocuments();
-                    }
-                }}
-                title={i18n('aiSidebarActionsSearch')}
-            >
-                <svg class="b3-button__icon"><use xlink:href="#iconSearch"></use></svg>
-            </button>
-            <div class="ai-sidebar__prompt-actions">
-                <button
-                    class="b3-button b3-button--text"
-                    on:click={togglePromptSelector}
-                    title={i18n('aiSidebarPromptTitle')}
-                >
-                    <svg class="b3-button__icon"><use xlink:href="#iconQuote"></use></svg>
-                </button>
-            </div>
-            <!-- 模型设置按钮 -->
-            <ModelPresetButton
-                {providers}
-                {currentProvider}
-                {currentModelId}
-                appliedSettings={tempModelSettings}
-                globalToolAutoApproveSettings={toolAutoApproveSettings}
-                globalToolAutoApproveSettingsAsk={toolAutoApproveSettingsAsk}
-                on:apply={handleApplyModelSettings}
-                {plugin}
-            />
-        </div>
 
         <!-- 提示词选择器下拉菜单 -->
         {#if isPromptSelectorOpen}
@@ -18287,16 +18287,11 @@
         }
     }
 
-    .ai-sidebar__input-row {
-        display: flex;
-        gap: 0;
-    }
-
     .ai-sidebar__input-wrapper {
-        flex: 1;
         position: relative;
         display: flex;
-        align-items: flex-end;
+        flex-direction: column;
+        min-width: 0;
         border: 1px solid var(--b3-border-color);
         border-radius: 12px;
         background: var(--b3-theme-background);
@@ -18312,9 +18307,6 @@
     }
 
     .ai-sidebar__context-indicator {
-        position: absolute;
-        right: 48px; /* 6px (right) + 36px (width) + 6px (gap) = 48px */
-        bottom: 14px; /* Centered vertically relative to the 36px send button */
         width: 20px;
         height: 20px;
         cursor: pointer;
@@ -18427,8 +18419,15 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-top: 2px;
+        padding: 4px 6px 6px;
         flex-wrap: wrap;
+    }
+
+    .ai-sidebar__input-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
     }
 
     .ai-sidebar__upload-btn,
@@ -18893,9 +18892,6 @@
     }
 
     .ai-sidebar__send-btn {
-        position: absolute;
-        right: 6px;
-        bottom: 6px;
         width: 36px;
         height: 36px;
         min-width: 36px;
@@ -20607,11 +20603,6 @@
             padding: 6px 10px;
         }
 
-        .ai-sidebar__context-indicator {
-            right: 44px;
-            bottom: 12px;
-        }
-
         .ai-sidebar__send-btn {
             width: 32px;
             height: 32px;
@@ -20635,17 +20626,10 @@
             padding: 8px 10px;
         }
 
-        .ai-sidebar__context-indicator {
-            right: 40px;
-            bottom: 10px;
-        }
-
         .ai-sidebar__send-btn {
             width: 30px;
             height: 30px;
             min-width: 30px;
-            right: 5px;
-            bottom: 5px;
 
             .b3-button__icon {
                 width: 14px;
@@ -20993,37 +20977,32 @@
         }
     }
 
-    /* Protyle editor wrapper */
+    /* Protyle 挂载在此节点，正文滚动由其 content 容器处理。 */
     .ai-sidebar__editor-wrapper {
-        flex: 1;
-        min-width: 0;
         display: flex;
+        flex-direction: column;
         border-radius: 12px;
         overflow: hidden;
-        min-height: 75px;
+        min-height: 36px;
         max-height: 180px;
-        overflow-y: auto;
-    }
-
-    .ai-sidebar__editor-wrapper :global(.protyle) {
-        background: transparent !important;
-        border: none !important;
+        background: transparent;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-content) {
-        background: transparent !important;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        background: transparent;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg) {
         outline: none;
         width: 100%;
-        padding: 6px 80px 6px 8px !important;
+        padding: 6px 8px !important;
         box-sizing: border-box;
         font-size: 14px;
         line-height: 1.5;
-        min-height: 75px !important;
-        max-height: 180px !important;
-        overflow-y: auto !important;
+        min-height: 36px;
     }
 
     .ai-sidebar__editor-wrapper :global(.protyle-wysiwyg [contenteditable="true"]) {
